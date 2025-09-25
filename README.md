@@ -335,3 +335,11 @@ window.__CMS__ = {
 2. Copia `.env.example` in `.env.local` e imposta variabili.
 3. `pnpm dev` → [http://localhost:3000](http://localhost:3000)
 4. Implementa la **Checklist** in ordine, spuntando ogni item.
+
+
+## Licenza
+© 2025 Bar La >Soluzione Di Rave Samuel. Tutti i diritti riservati.
+
+Questo progetto è **proprietario**. Non è consentito copiare, modificare,
+distribuire o riutilizzare il codice e i contenuti, in tutto o in parte,
+senza autorizzazione scritta del titolare. Per informazioni: info@lasoluzione.eu.

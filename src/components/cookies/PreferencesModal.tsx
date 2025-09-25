@@ -1,8 +1,10 @@
 'use client';
 import { useState } from 'react';
+
+import FocusTrap from './FocusTrap';
+
 import { useConsentStore } from '@/state/useConsentStore';
 import { useCookieUI } from '@/state/useCookieUI';
-import FocusTrap from './FocusTrap';
 
 const POLICY = process.env.NEXT_PUBLIC_POLICY_VERSION || '1.0.0';
 

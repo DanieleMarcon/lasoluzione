@@ -35,6 +35,49 @@
           }
         }
       ]
+    },
+
+    {
+      "label": "04 Scaffold: Header + Hero",
+      "type": "shell",
+      "command": "node setup-header-hero.js",
+      "problemMatcher": []
+    },
+    {
+      "label": "05 Scaffold: Eventi (lista + card)",
+      "type": "shell",
+      "command": "node setup-events.js",
+      "problemMatcher": []
+    },
+    {
+      "label": "06 Scaffold: Sezione Prenota (teaser)",
+      "type": "shell",
+      "command": "node setup-prenota-teaser.js",
+      "problemMatcher": []
+    },
+    {
+      "label": "07 Scaffold: Newsletter (form)",
+      "type": "shell",
+      "command": "node setup-newsletter.js",
+      "problemMatcher": []
+    },
+    {
+      "label": "08 Scaffold: Footer + Mappa deferita",
+      "type": "shell",
+      "command": "node setup-footer-map.js",
+      "problemMatcher": []
+    },
+    {
+      "label": "09 SEO helpers",
+      "type": "shell",
+      "command": "node setup-seo-helpers.js",
+      "problemMatcher": []
+    },
+    {
+      "label": "10 Accessibility pass",
+      "type": "shell",
+      "command": "pnpm lint && echo \"A11y quick checks: Tab order, SkipLink, focus visible, reduced motion\"",
+      "problemMatcher": []
     }
   ]
 }

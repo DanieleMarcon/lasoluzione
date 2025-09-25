@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+
 import { useConsentStore } from '@/state/useConsentStore';
 import { useCookieUI } from '@/state/useCookieUI';
 

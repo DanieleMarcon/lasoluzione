@@ -1,12 +1,13 @@
 'use client';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useState } from 'react';
+
 import { bookingSchema, type BookingData } from './validation';
 import Step1Date from './steps/Step1Date';
 import Step2People from './steps/Step2People';
 import Step3Details from './steps/Step3Details';
 import Step4Review from './steps/Step4Review';
-import { useState } from 'react';
 
 const steps = [
   { id: 1, label: 'Data & orario' },

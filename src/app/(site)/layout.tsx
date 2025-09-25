@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
+
 import '../(site)/globals.css';
 import { SkipLink } from '@/components/accessibility/SkipLink';
 import ConsentScripts from '@/components/layout/ConsentScripts';

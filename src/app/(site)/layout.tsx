@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
 import '../(site)/globals.css';
-import { SkipLink } from '@/src/components/accessibility/SkipLink';
-import ConsentScripts from '@/src/components/layout/ConsentScripts';
+import { SkipLink } from '@/components/accessibility/SkipLink';
+import ConsentScripts from '@/components/layout/ConsentScripts';
+import CookieBar from '@/components/cookies/CookieBar';
+import PreferencesModal from '@/components/cookies/PreferencesModal';
 
 export const metadata: Metadata = {
   title: { default: 'Il Tuo Bar', template: '%s | Il Tuo Bar' },
@@ -43,6 +45,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Carica config CMS lato client (opzionale) */}
         <Script src="/cms-config.example.js" strategy="afterInteractive" />
         {children}
+        <CookieBar />
+        <PreferencesModal />
       </body>
     </html>
   );

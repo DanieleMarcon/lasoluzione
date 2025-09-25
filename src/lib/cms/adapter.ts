@@ -1,4 +1,4 @@
-import type { Event } from '@/src/lib/types';
+import type { Event } from '@/lib/types';
 export interface CmsAdapter {
   getEvents(): Promise<Event[]>;
   getEventBySlug(slug: string): Promise<Event | null>;

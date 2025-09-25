@@ -1,0 +1,15 @@
+:root{
+  --color-brand:#112f4d;
+  --color-ink:#112f4d;
+  --color-muted:#40566f;
+  --color-border:#dfe7ef;
+
+  --space-1: .25rem;
+  --space-2: .5rem;
+  --space-3: .75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  --radius: 12px;
+}

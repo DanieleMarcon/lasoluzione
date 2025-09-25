@@ -1,0 +1,27 @@
+@import "../../styles/tokens.css";
+@import "../../styles/utilities.css";
+
+/* Tipografia base */
+:root { color-scheme: light; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  color: var(--color-ink);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
+  line-height: 1.5;
+}
+
+/* Focus visibile AA */
+:focus-visible {
+  outline: 3px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* Target tocco >=44px */
+a, button { min-height: 44px; min-width: 44px; }
+
+/* Riduzione motion */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}

@@ -25,3 +25,17 @@ a, button { min-height: 44px; min-width: 44px; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
+
+/* BAR_LS_BASE_AND_RESPONSIVE */
+.container { max-width: 1100px; margin: 0 auto; }
+a { color: #112f4d; }
+a:hover, a:focus { text-decoration: underline; }
+.btn:focus, button:focus, a:focus { outline: 2px solid #112f4d; outline-offset: 2px; }
+
+/* Responsive semplici */
+@media (max-width: 640px) {
+  header[role="banner"] nav ul { gap: 0.75rem; }
+  section.container { padding-left: 1rem; padding-right: 1rem; }
+  h1 { font-size: 1.75rem; }
+  h2 { font-size: 1.25rem; }
+}

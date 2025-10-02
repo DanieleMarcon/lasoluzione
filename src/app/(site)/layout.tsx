@@ -1,53 +1,38 @@
-import type { Metadata } from 'next';
-import Script from 'next/script';
-
-import '../(site)/globals.css';
-import { SkipLink } from '@/components/accessibility/SkipLink';
-import ConsentScripts from '@/components/layout/ConsentScripts';
+// src/app/(site)/layout.tsx
+import type { ReactNode } from 'react';
+import Header from '@/components/layout/Header';
+import Footer from '@/components/layout/Footer';
 import CookieBar from '@/components/cookies/CookieBar';
 import PreferencesModal from '@/components/cookies/PreferencesModal';
+import ConsentScripts from '@/components/layout/ConsentScripts';
+import ConsentDebug from '@/components/cookies/ConsentDebug';
 
-export const metadata: Metadata = {
-  title: { default: 'Il Tuo Bar', template: '%s | Il Tuo Bar' },
-  description: 'Bar & eventi. Prenota pranzo o evento privato. Iscriviti alla newsletter.',
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'),
-  openGraph: { type: 'website', title: 'Il Tuo Bar', images: ['/images/hero.jpg'] },
-  alternates: { canonical: '/' },
-  robots: { index: true, follow: true }
+export const metadata = {
+  title: 'Bar La Soluzione',
+  description:
+    'Colazioni, pranzi veloci e serate con musica live. Prenota un tavolo o scopri i prossimi eventi.'
 };
 
-/**
- * Iniezione configurazione CMS lato client:
- * - In produzione, copia/edita /public/cms-config.example.js
- * - Puoi sostituire con fetch server se preferisci.
- */
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function SiteLayout({ children }: { children: ReactNode }) {
+  const showConsentDebug =
+    process.env.NODE_ENV !== 'production' &&
+    process.env.NEXT_PUBLIC_CONSENT_DEBUG === '1';
+
   return (
     <html lang="it">
-      <head>
-        {/* JSON-LD LocalBusiness: sostituisci i dati reali */}
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org',
-              '@type': 'CafeOrCoffeeShop',
-              name: 'Il Tuo Bar',
-              url: process.env.NEXT_PUBLIC_SITE_URL,
-              address: { '@type': 'PostalAddress', addressLocality: 'Milano', addressCountry: 'IT' }
-            })
-          }}
-        />
-      </head>
-      <body>
-        <a className="visually-hidden" href="#main" id="skiplink">Salta al contenuto principale</a>
-        <SkipLink targetId="main" />
-        <ConsentScripts />
-        {/* Carica config CMS lato client (opzionale) */}
-        <Script src="/cms-config.example.js" strategy="afterInteractive" />
-        {children}
+      <body style={{ margin: 0, fontFamily: 'system-ui, Arial, sans-serif' }}>
+        <Header />
+        <main id="main" className="container" style={{ padding: '2rem 1rem', minHeight: '60vh' }}>
+          {children}
+        </main>
+        <Footer />
+
+        {/* Consenso (montati una sola volta qui) */}
         <CookieBar />
         <PreferencesModal />
+        <ConsentScripts />
+
+        {showConsentDebug && <ConsentDebug />}
       </body>
     </html>
   );

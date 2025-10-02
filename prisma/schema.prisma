@@ -1,0 +1,32 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Booking {
+  id             Int       @id @default(autoincrement())
+  date           DateTime
+  people         Int
+  name           String
+  email          String
+  phone          String?
+  notes          String?
+
+  // 👇 aggiunte
+  type           BookingType
+  agreePrivacy   Boolean   @default(false)
+  agreeMarketing Boolean   @default(false)
+
+  createdAt      DateTime  @default(now())
+}
+
+enum BookingType {
+  pranzo
+  aperitivo
+  evento
+}

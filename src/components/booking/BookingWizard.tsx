@@ -16,16 +16,24 @@ type BookingType = 'pranzo' | 'aperitivo' | 'evento';
 type Step = 1 | 2 | 3 | 4;
 
 type FormValues = {
-  date: string;        // es. "2025-10-15"
-  time: string;        // es. "20:00"
+  date: string;        // "YYYY-MM-DD"
+  time: string;        // "HH:mm"
   people: number;
   type: BookingType;
   name: string;
   email: string;
-  phone: string;       // ← obbligatorio lato form (lo schema Zod lo convalida davvero)
+  phone: string;       // obbligatorio
   notes?: string;
   agreePrivacy: boolean;
   agreeMarketing?: boolean;
+};
+
+// campi da validare per ogni step
+const STEP_FIELDS: Record<Step, (keyof FormValues)[]> = {
+  1: ['date', 'time'],
+  2: ['people', 'type'],
+  3: ['name', 'email', 'phone', 'notes'],
+  4: ['agreePrivacy'], // il check privacy è nello step finale
 };
 
 // Progress bar
@@ -33,7 +41,7 @@ const steps: Array<{ id: Step; label: string }> = [
   { id: 1, label: 'Data & orario' },
   { id: 2, label: 'Persone & tipologia' },
   { id: 3, label: 'Dettagli' },
-  { id: 4, label: 'Riepilogo' }
+  { id: 4, label: 'Riepilogo' },
 ];
 
 export default function BookingWizard() {
@@ -42,11 +50,7 @@ export default function BookingWizard() {
   const methods = useForm<FormValues>({
     resolver: zodResolver(bookingSchema),
     mode: 'onChange',
-    /**
-     * Mantiene i valori dei campi anche quando lo step precedente
-     * viene smontato dal DOM.
-     */
-    shouldUnregister: false,
+    shouldUnregister: false, // conserva i valori degli step precedenti
     defaultValues: {
       date: '',
       time: '',
@@ -54,15 +58,16 @@ export default function BookingWizard() {
       type: 'pranzo',
       name: '',
       email: '',
-      phone: '',      // obbligatorio: parte vuoto e verrà richiesto
+      phone: '',
       notes: '',
       agreePrivacy: false,
-      agreeMarketing: false
-    }
+      agreeMarketing: false,
+    },
   });
 
   const next = async () => {
-    const valid = await methods.trigger(); // valida i campi dello step attuale
+    // ✅ valida solo i campi dello step corrente
+    const valid = await methods.trigger(STEP_FIELDS[step], { shouldFocus: true });
     if (valid) setStep(prev => (Math.min(4, (prev + 1) as Step) as Step));
   };
 
@@ -70,19 +75,17 @@ export default function BookingWizard() {
 
   // Submit finale
   const onSubmit = async (data: FormValues) => {
-    // Normalizza i dati per l’API
     const payload = {
       ...data,
       phone: data.phone.trim(),
       notes: data.notes && data.notes.trim().length ? data.notes.trim() : undefined,
-      // agreePrivacy è boolean (lo schema richiede true)
     };
 
     try {
       const res = await fetch('/api/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -94,7 +97,7 @@ export default function BookingWizard() {
 
       const out = await res.json();
       alert(`Richiesta inviata! Codice prenotazione #${out.bookingId}`);
-      methods.reset(); // pulisce il form
+      methods.reset();
       setStep(1);
     } catch (e) {
       console.error(e);
@@ -119,7 +122,7 @@ export default function BookingWizard() {
               padding: '.5rem .75rem',
               border: '1px solid var(--color-border)',
               borderRadius: '12px',
-              background: step === s.id ? 'var(--color-border)' : 'transparent'
+              background: step === s.id ? 'var(--color-border)' : 'transparent',
             }}
           >
             {s.id}. {s.label}

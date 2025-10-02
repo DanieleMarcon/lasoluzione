@@ -1,49 +1,32 @@
 import { z } from 'zod';
 
-// enum coerente con il form
+// enum coerente con il form (select)
 export const bookingType = z.enum(['pranzo', 'aperitivo', 'evento']);
 
 export const bookingSchema = z.object({
-  // accettiamo "YYYY-MM-DD" dal form e/o ISO string
-  date: z
-    .string()
-    .min(1, 'Data obbligatoria'),
+  // accettiamo "YYYY-MM-DD" e "HH:mm" dal form
+  date: z.string().min(1, 'Seleziona una data'),
+  time: z.string().min(1, 'Seleziona un orario'),
 
-  // "HH:mm" dal form
-  time: z
-    .string()
-    .min(1, 'Orario obbligatorio'),
-
-  people: z
-    .number({ invalid_type_error: 'Numero di persone non valido' })
-    .int()
-    .min(1)
-    .max(20),
-
+  people: z.number().int().min(1).max(20),
   type: bookingType,
 
-  name: z.string().min(2).max(80),
-  email: z.string().email(),
+  name: z.string().trim().min(2, 'Inserisci il tuo nome'),
+  email: z.string().email('Email non valida'),
 
-  // ✅ Telefono obbligatorio
-  phone: z
-    .string({ required_error: 'Telefono obbligatorio' })
-    .min(7, 'Telefono non valido')
-    .regex(/^[0-9 +().-]+$/, 'Telefono non valido'),
+  // ✅ OBBLIGATORIO
+  phone: z.string().trim().min(5, 'Telefono non valido'),
 
-  // Note opzionali: stringa vuota -> undefined
-  notes: z
-    .string()
-    .optional()
-    .transform((v) => (v && v.trim().length > 0 ? v.trim() : undefined)),
+  // opzionale
+  notes: z.string().trim().max(500).optional(),
 
-  // Deve essere true
+  // deve essere vero
   agreePrivacy: z.literal(true, {
-    errorMap: () => ({ message: 'Devi accettare la privacy' })
+    errorMap: () => ({ message: 'Devi accettare la privacy' }),
   }),
 
-  // Flag opzionale
-  agreeMarketing: z.boolean().optional().default(false)
+  // opzionale
+  agreeMarketing: z.boolean().optional(),
 });
 
 export type BookingData = z.infer<typeof bookingSchema>;

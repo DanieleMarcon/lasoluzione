@@ -28,3 +28,6 @@ pnpm-debug.log*
 *.local
 *.swp
 *.swo
+
+# Prisma SQLite
+prisma/**/*.db

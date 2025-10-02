@@ -3,26 +3,48 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendBookingEmails } from '@/lib/mailer';
 import { bookingSchema } from '@/components/booking/validation';
+import { getBookingSettings, resolveBookingDate, typeRequiresPrepay } from '@/lib/bookingSettings';
 
 // Nodemailer ha bisogno di runtime Node (non Edge)
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function toDate(dateStr: string, timeStr: string): Date {
-  // costruiamo un ISO locale tipo "2025-10-15T20:00:00"
-  // NB: interpretiamo come ora locale del server di sviluppo
-  const iso = `${dateStr}T${timeStr}:00`;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) throw new Error('Invalid date/time');
-  return d;
-}
-
 export async function POST(req: Request) {
+  console.log('[POST /api/bookings] start');
   try {
     const json = await req.json();
     const parsed = bookingSchema.parse(json);
 
-    const date = toDate(parsed.date, parsed.time);
+    const settings = await getBookingSettings();
+
+    if (!settings.enabledTypes.includes(parsed.type)) {
+      console.warn('[POST /api/bookings] type not allowed', parsed.type);
+      return NextResponse.json(
+        { ok: false, error: 'Tipologia non disponibile' },
+        { status: 400 }
+      );
+    }
+
+    if (!settings.enableDateTimeStep && (!settings.fixedDate || !settings.fixedTime)) {
+      console.error('[POST /api/bookings] Fixed date/time misconfigured');
+      return NextResponse.json(
+        { ok: false, error: 'Configurazione prenotazioni non valida' },
+        { status: 500 }
+      );
+    }
+
+    if (typeRequiresPrepay(settings, parsed.type)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          requiresPrepay: true,
+          message: 'Questa tipologia richiede pagamento anticipato.',
+        },
+        { status: 409 }
+      );
+    }
+
+    const date = resolveBookingDate(settings, parsed.date, parsed.time);
 
     const created = await prisma.booking.create({
       data: {
@@ -31,10 +53,12 @@ export async function POST(req: Request) {
         type: parsed.type,
         name: parsed.name,
         email: parsed.email,
-        phone: parsed.phone ?? null,
+        phone: parsed.phone,
         notes: parsed.notes ?? null,
         agreePrivacy: parsed.agreePrivacy,
-        agreeMarketing: parsed.agreeMarketing ?? false
+        agreeMarketing: parsed.agreeMarketing ?? false,
+        status: 'confirmed',
+        prepayToken: null,
       }
     });
 
@@ -45,7 +69,7 @@ export async function POST(req: Request) {
         people: created.people,
         name: created.name,
         email: created.email,
-        phone: created.phone ?? undefined,
+        phone: created.phone,
         notes: created.notes ?? undefined
       });
     } catch (mailErr) {
@@ -61,6 +85,7 @@ export async function POST(req: Request) {
       );
     }
 
+    console.log('[POST /api/bookings] ok', created.id);
     return NextResponse.json({ ok: true, bookingId: created.id }, { status: 201 });
   } catch (err: any) {
     if (err?.name === 'ZodError') {

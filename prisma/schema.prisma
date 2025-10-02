@@ -9,24 +9,47 @@ datasource db {
 }
 
 model Booking {
-  id             Int       @id @default(autoincrement())
+  id             Int            @id @default(autoincrement())
   date           DateTime
   people         Int
   name           String
   email          String
-  phone          String?
+  phone          String
   notes          String?
 
   // 👇 aggiunte
   type           BookingType
-  agreePrivacy   Boolean   @default(false)
-  agreeMarketing Boolean   @default(false)
+  agreePrivacy   Boolean        @default(false)
+  agreeMarketing Boolean        @default(false)
+  status         BookingStatus  @default(pending)
+  prepayToken    String?
 
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime       @default(now())
+}
+
+model BookingSettings {
+  id                  Int      @id @default(1)
+  enableDateTimeStep  Boolean  @default(true)
+  fixedDate           DateTime?
+  fixedTime           String?
+  enabledTypes        Json
+  typeLabels          Json
+  prepayTypes         Json
+  prepayAmountCents   Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 enum BookingType {
   pranzo
   aperitivo
   evento
+}
+
+enum BookingStatus {
+  pending
+  pending_payment
+  confirmed
+  failed
+  expired
 }

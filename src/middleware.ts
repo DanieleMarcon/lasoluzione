@@ -1,37 +1,59 @@
 // src/middleware.ts
-import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 
-export function middleware(req: NextRequest) {
-  // In dev niente CSP (evita blocchi hot-reload ecc.)
-  if (process.env.NODE_ENV !== 'production') {
-    return NextResponse.next();
+function parseWhitelist(input?: string) {
+  return (input || '')
+    .split(/[,;]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  // BYPASS: route che non vanno mai protette
+  const bypass =
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/static/') ||
+    pathname.startsWith('/public/') ||
+    pathname === '/admin/signin' ||
+    pathname === '/admin/not-authorized';
+
+  if (bypass) return NextResponse.next();
+
+  // Proteggi solo /admin e /api/admin
+  const needsAdmin = pathname.startsWith('/admin') || pathname.startsWith('/api/admin');
+
+  if (!needsAdmin) return NextResponse.next();
+
+  // Verifica sessione
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET! });
+  if (!token) {
+    const url = req.nextUrl.clone();
+    url.pathname = '/admin/signin';
+    url.searchParams.set('from', pathname);
+    return NextResponse.redirect(url);
   }
 
-  const res = NextResponse.next();
+  // White-list email
+  const allowed = parseWhitelist(process.env.ADMIN_EMAILS);
+  const email = (token.email || '').toLowerCase();
 
-  const csp = [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https:",
-    "font-src 'self' data:",
-    // 👇 consenti Google Maps in iframe
-    "frame-src https://www.google.com https://maps.google.com https://www.google.it",
-    "connect-src 'self'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'self'"
-  ].join('; ');
+  if (allowed.length && (!email || !allowed.includes(email))) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[ADMIN GUARD] Email not allowed', { email, allowed });
+    }
+    const url = req.nextUrl.clone();
+    url.pathname = '/admin/not-authorized';
+    return NextResponse.redirect(url);
+  }
 
-  res.headers.set('Content-Security-Policy', csp);
-  res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.headers.set('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
-  res.headers.set('X-Content-Type-Options', 'nosniff');
-
-  return res;
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/admin/:path*', '/api/admin/:path*', '/api/auth/:path*'],
 };

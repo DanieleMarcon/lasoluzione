@@ -80,6 +80,24 @@ bar-landing/
 
 ---
 
+## Auth & Admin
+
+L'area riservata `/admin` usa **Auth.js (NextAuth v5)** con magic link via email.
+
+- Variabili richieste (`.env.local`):
+  - `NEXTAUTH_URL` (per sviluppo: `http://localhost:3000`)
+  - `NEXTAUTH_SECRET` &rarr; genera un valore sicuro con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+  - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`
+  - `MAIL_FROM` (es. `"Bar La Soluzione <no-reply@dominio.it>"`)
+  - `ADMIN_EMAILS` (lista di indirizzi autorizzati, separati da virgola)
+- Il middleware (`src/middleware.ts`) protegge solo `/admin/*` e `/api/admin/*`, reindirizzando gli utenti non autenticati a `/admin/signin` e quelli non whitelisted a `/admin/not-authorized`, evitando loop.
+- Flusso di login:
+  1. Visita `/admin/signin` e inserisci un indirizzo presente in `ADMIN_EMAILS`.
+  2. Apri l'email ricevuta (SMTP configurato in precedenza) e clicca sul magic link.
+  3. Verrai reindirizzato all'area protetta o alla pagina richiesta tramite il parametro `from`.
+
+---
+
 ## 5) Checklist di implementazione (con stato)
 
 ### A. Bootstrap & base progetto

@@ -1,8 +1,9 @@
 // src/lib/admin/session.ts
 import 'server-only';
 
-import { auth } from '@/lib/auth';
 import { isAdminEmail } from './emails';
+
+import { auth } from '@/lib/auth';
 
 export class AdminUnauthorizedError extends Error {
   constructor(message = 'User is not authorized to access admin resources') {

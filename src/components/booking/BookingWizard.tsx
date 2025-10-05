@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+
 import { bookingSchema } from './validation';
 import Step1Date from './steps/Step1Date';
 import Step2People from './steps/Step2People';
 import Step3Details from './steps/Step3Details';
 import Step4Review from './steps/Step4Review';
+
 import type { BookingConfigDTO } from '@/types/bookingConfig';
 
 type BookingType = 'pranzo' | 'cena' | 'aperitivo' | 'evento';

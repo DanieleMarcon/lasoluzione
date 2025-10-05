@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+
 import { useConsentStore } from '@/state/useConsentStore';
 
 const POLICY = process.env.NEXT_PUBLIC_POLICY_VERSION || '1.0.0';

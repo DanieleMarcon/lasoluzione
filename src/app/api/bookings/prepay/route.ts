@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
+
 import { NextResponse } from 'next/server';
+
 import { bookingSchema } from '@/components/booking/validation';
 import { prisma } from '@/lib/prisma';
 import { getBookingSettings, resolveBookingDate, typeRequiresPrepay } from '@/lib/bookingSettings';
@@ -9,7 +11,6 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
-  console.log('[POST /api/bookings/prepay] start');
   try {
     const json = await req.json();
     const parsed = bookingSchema.parse(json);
@@ -144,7 +145,6 @@ export async function POST(req: Request) {
       },
     });
 
-    console.log('[POST /api/bookings/prepay] pending', created.id);
     return NextResponse.json(
       {
         ok: true,

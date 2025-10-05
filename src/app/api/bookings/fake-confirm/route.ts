@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+
 import { prisma } from '@/lib/prisma';
 import { sendBookingEmails } from '@/lib/mailer';
 import { normalizeStoredLunchItems, normalizeStoredDinnerItems } from '@/lib/lunchOrder';
@@ -12,7 +13,6 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: Request) {
-  console.log('[POST /api/bookings/fake-confirm] start');
   try {
     const json = await req.json();
     const { token } = bodySchema.parse(json);
@@ -80,7 +80,6 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log('[POST /api/bookings/fake-confirm] ok', updated.id);
     return NextResponse.json({ ok: true, bookingId: updated.id }, { status: 200 });
   } catch (err: any) {
     if (err?.name === 'ZodError') {

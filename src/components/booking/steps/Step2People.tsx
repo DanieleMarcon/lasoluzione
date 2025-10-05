@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo } from 'react';
 import { useFormContext } from 'react-hook-form';
+
 import type { BookingMenuDTO, BookingTiersDTO, BookingTierDTO } from '@/types/bookingConfig';
 
 type Step2PeopleProps = {
@@ -59,7 +60,8 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
 
   const people = watch('people') as number;
   const selectedType = watch('type') as string;
-  const lunchOrder = (watch('lunchOrder') as LunchOrderItem[] | undefined) ?? [];
+  const lunchOrderValue = watch('lunchOrder') as LunchOrderItem[] | undefined;
+  const lunchOrder = useMemo(() => lunchOrderValue ?? [], [lunchOrderValue]);
   const selectedTier = watch('tier') as TierValue | undefined;
 
   useEffect(() => {
@@ -128,7 +130,7 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
       setValue('tierLabel', selectedTier.label, { shouldValidate: true });
       setValue('tierPriceCents', selectedTier.priceCents, { shouldValidate: true });
     }
-  }, [isTierType, tierOptions, selectedTier, setValue]);
+  }, [isTierType, selectedType, tierOptions, selectedTier, setValue]);
 
   const filteredDishes = useMemo(() => {
     if (isLunch) {

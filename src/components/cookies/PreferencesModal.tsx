@@ -1,6 +1,9 @@
 'use client';
+
 import type { FormEvent } from 'react';
+
 import FocusTrap from './FocusTrap';
+
 import { useConsentStore } from '@/state/useConsentStore';
 
 export default function PreferencesModal() {

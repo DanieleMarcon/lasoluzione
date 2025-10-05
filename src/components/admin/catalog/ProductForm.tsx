@@ -576,7 +576,6 @@ const INITIAL_FILTERS: FilterState = { q: '', active: 'all', category: '' };
 function AdminCatalogProductsManager() {
   const toast = useToast();
   const [products, setProducts] = useState<AdminProduct[]>([]);
-  const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
   const filtersRef = useRef<FilterState>(INITIAL_FILTERS);
   const [searchDraft, setSearchDraft] = useState('');
   const [categoryDraft, setCategoryDraft] = useState('');
@@ -616,7 +615,6 @@ function AdminCatalogProductsManager() {
           category: targetFilters.category,
           active: targetFilters.active,
         };
-        setFilters(appliedFilters);
         filtersRef.current = appliedFilters;
         setSearchDraft(appliedFilters.q);
         setCategoryDraft(appliedFilters.category);

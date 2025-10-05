@@ -1,5 +1,6 @@
 // src/app/admin/signin/page.tsx
 import type { Metadata } from 'next';
+
 import EmailSignInForm from '@/components/admin/EmailSignInForm';
 
 type PageProps = {

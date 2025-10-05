@@ -1,6 +1,7 @@
 // src/app/admin/page.tsx
 import type { CSSProperties } from 'react';
 import type { BookingStatus } from '@prisma/client';
+
 import { prisma } from '@/lib/prisma';
 import { toAdminBookingDTO } from '@/lib/admin/booking-dto';
 

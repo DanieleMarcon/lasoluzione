@@ -1,6 +1,7 @@
-import type { BookingType } from '@prisma/client';
-import type { Prisma } from '@prisma/client';
+import type { BookingType, Prisma } from '@prisma/client';
+
 import { prisma } from './prisma';
+
 import type { BookingConfigDTO } from '@/types/bookingConfig';
 
 export type NormalizedBookingSettings = {

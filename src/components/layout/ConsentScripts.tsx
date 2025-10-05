@@ -3,6 +3,7 @@
 
 import { useEffect } from 'react';
 import Script from 'next/script';
+
 import { useConsentStore } from '@/state/useConsentStore';
 
 export default function ConsentScripts() {

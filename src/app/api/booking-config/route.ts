@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+
 import {
   DEFAULT_BOOKING_CONFIG_DTO,
   getBookingSettings,
@@ -11,7 +12,6 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  console.log('[GET /api/booking-config] start');
   try {
     const settings = await getBookingSettings();
 
@@ -60,7 +60,6 @@ export async function GET() {
     };
 
     const dto = { ...toBookingConfigDTO(settings, menu), tiers };
-    console.log('[GET /api/booking-config] ok');
     return NextResponse.json(dto);
   } catch (error) {
     console.error('[GET /api/booking-config] error', error);

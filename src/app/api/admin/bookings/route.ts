@@ -1,5 +1,6 @@
 // src/app/api/admin/bookings/route.ts
 import { NextResponse } from 'next/server';
+
 import { prisma } from '@/lib/prisma';
 import { assertAdmin } from '@/lib/admin/session';
 import { toAdminBookingDTO } from '@/lib/admin/booking-dto';

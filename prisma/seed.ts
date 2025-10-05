@@ -4,6 +4,234 @@ import { getAdminEmails } from '@/lib/admin/emails';
 
 const prisma = new PrismaClient();
 
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+}
+
+async function seedCatalogSections() {
+  const sections = [
+    { key: 'eventi', title: 'Eventi', enableDateTime: false, active: true, displayOrder: 10 },
+    { key: 'aperitivo', title: 'Aperitivo', enableDateTime: false, active: true, displayOrder: 20 },
+    { key: 'pranzo', title: 'Pranzo', enableDateTime: true, active: true, displayOrder: 30 },
+    { key: 'cena', title: 'Cena', enableDateTime: true, active: true, displayOrder: 40 },
+    { key: 'colazione', title: 'Colazione', enableDateTime: false, active: false, displayOrder: 50 },
+  ] as const;
+
+  for (const section of sections) {
+    await prisma.catalogSection.upsert({
+      where: { key: section.key },
+      update: {
+        title: section.title,
+        description: section.key === 'colazione' ? 'Attivala quando pronta al lancio' : undefined,
+        enableDateTime: section.enableDateTime,
+        active: section.active,
+        displayOrder: section.displayOrder,
+      },
+      create: {
+        key: section.key,
+        title: section.title,
+        description: section.key === 'colazione' ? 'Attivala quando pronta al lancio' : null,
+        enableDateTime: section.enableDateTime,
+        active: section.active,
+        displayOrder: section.displayOrder,
+      },
+    });
+  }
+
+  console.log('[seed] Sections ok');
+}
+
+async function bridgeMenuDishesToProducts() {
+  const sections = await prisma.catalogSection.findMany({
+    where: { key: { in: ['pranzo', 'cena'] } },
+  });
+  const sectionByKey = new Map(sections.map((section) => [section.key, section] as const));
+
+  const dishes = await prisma.menuDish.findMany({ where: { active: true } });
+  let bridged = 0;
+
+  for (const dish of dishes) {
+    const product = await prisma.product.upsert({
+      where: { slug: dish.slug },
+      update: {
+        name: dish.name,
+        description: dish.description ?? null,
+        ingredients: null,
+        allergens: null,
+        priceCents: dish.priceCents,
+        unitCostCents: 0,
+        supplierName: null,
+        stockQty: 0,
+        imageUrl: null,
+        category: dish.category ?? null,
+        order: dish.order,
+        active: dish.active,
+        sourceType: 'menu_dish',
+        sourceId: String(dish.id),
+        isVegan: false,
+        isVegetarian: false,
+        isGlutenFree: false,
+        isLactoseFree: false,
+        isOrganic: false,
+      },
+      create: {
+        slug: dish.slug,
+        name: dish.name,
+        description: dish.description ?? null,
+        ingredients: null,
+        allergens: null,
+        priceCents: dish.priceCents,
+        unitCostCents: 0,
+        supplierName: null,
+        stockQty: 0,
+        imageUrl: null,
+        category: dish.category ?? null,
+        order: dish.order,
+        active: dish.active,
+        sourceType: 'menu_dish',
+        sourceId: String(dish.id),
+        isVegan: false,
+        isVegetarian: false,
+        isGlutenFree: false,
+        isLactoseFree: false,
+        isOrganic: false,
+      },
+    });
+
+    const visibleAt = (dish as any).visibleAt as 'lunch' | 'dinner' | 'both' | undefined;
+    const targetKeys = new Set<string>();
+    if (visibleAt === 'lunch') targetKeys.add('pranzo');
+    if (visibleAt === 'dinner') targetKeys.add('cena');
+    if (visibleAt === 'both' || !visibleAt) {
+      targetKeys.add('pranzo');
+      targetKeys.add('cena');
+    }
+
+    for (const key of targetKeys) {
+      const section = sectionByKey.get(key);
+      if (!section) continue;
+      await prisma.sectionProduct.upsert({
+        where: {
+          sectionId_productId: {
+            sectionId: section.id,
+            productId: product.id,
+          },
+        },
+        update: {
+          order: dish.order,
+          featured: false,
+          showInHome: false,
+        },
+        create: {
+          sectionId: section.id,
+          productId: product.id,
+          order: dish.order,
+          featured: false,
+          showInHome: false,
+        },
+      });
+    }
+
+    bridged += 1;
+  }
+
+  return bridged;
+}
+
+async function bridgeEventTiersToProducts() {
+  const sections = await prisma.catalogSection.findMany({
+    where: { key: { in: ['eventi', 'aperitivo'] } },
+  });
+  const sectionByKey = new Map(sections.map((section) => [section.key, section] as const));
+
+  const tiers = await prisma.eventTier.findMany({ where: { active: true } });
+  let bridged = 0;
+
+  for (const tier of tiers) {
+    const slug = `tier-${tier.type}-${slugify(tier.label)}`;
+    const product = await prisma.product.upsert({
+      where: { slug },
+      update: {
+        name: tier.label,
+        description: null,
+        ingredients: null,
+        allergens: null,
+        priceCents: tier.priceCents,
+        unitCostCents: 0,
+        supplierName: null,
+        stockQty: 0,
+        imageUrl: null,
+        category: tier.type,
+        order: tier.order,
+        active: tier.active,
+        sourceType: 'event_tier',
+        sourceId: tier.id,
+        isVegan: false,
+        isVegetarian: false,
+        isGlutenFree: false,
+        isLactoseFree: false,
+        isOrganic: false,
+      },
+      create: {
+        slug,
+        name: tier.label,
+        description: null,
+        ingredients: null,
+        allergens: null,
+        priceCents: tier.priceCents,
+        unitCostCents: 0,
+        supplierName: null,
+        stockQty: 0,
+        imageUrl: null,
+        category: tier.type,
+        order: tier.order,
+        active: tier.active,
+        sourceType: 'event_tier',
+        sourceId: tier.id,
+        isVegan: false,
+        isVegetarian: false,
+        isGlutenFree: false,
+        isLactoseFree: false,
+        isOrganic: false,
+      },
+    });
+
+    const key = tier.type === 'evento' ? 'eventi' : 'aperitivo';
+    const section = sectionByKey.get(key);
+    if (section) {
+      await prisma.sectionProduct.upsert({
+        where: {
+          sectionId_productId: {
+            sectionId: section.id,
+            productId: product.id,
+          },
+        },
+        update: {
+          order: tier.order,
+          featured: false,
+          showInHome: false,
+        },
+        create: {
+          sectionId: section.id,
+          productId: product.id,
+          order: tier.order,
+          featured: false,
+          showInHome: false,
+        },
+      });
+    }
+
+    bridged += 1;
+  }
+
+  return bridged;
+}
+
 async function seedAdminUsers() {
   const adminEmails = getAdminEmails();
 
@@ -175,6 +403,11 @@ async function main() {
   await seedMenuDishes();
   await seedBookingSettings();
   await seedEventTiers();
+  await seedCatalogSections();
+  const menuDishCount = await bridgeMenuDishesToProducts();
+  const tierCount = await bridgeEventTiersToProducts();
+  console.log(`[seed] Products bridged from MenuDish: ${menuDishCount}`);
+  console.log(`[seed] Products bridged from EventTier: ${tierCount}`);
 }
 
 main()

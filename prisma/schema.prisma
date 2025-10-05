@@ -35,9 +35,122 @@ model Booking {
   tierType            String?
   tierLabel           String?
   tierPriceCents      Int?
+  orderId             String?
 
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+}
+
+model Product {
+  id             Int      @id @default(autoincrement())
+  slug           String   @unique
+  name           String
+  description    String?
+  ingredients    String?
+  allergens      String?
+  priceCents     Int      @default(0)
+  unitCostCents  Int      @default(0)
+  supplierName   String?
+  stockQty       Int      @default(0)
+  imageUrl       String?
+  category       String?
+  order          Int      @default(0)
+  active         Boolean  @default(true)
+
+  // Bridge verso origini legacy (opzionali)
+  sourceType     String?  // 'menu_dish' | 'event_tier'
+  sourceId       String?  // id/slug origine
+
+  // Flag nutrizionali
+  isVegan        Boolean  @default(false)
+  isVegetarian   Boolean  @default(false)
+  isGlutenFree   Boolean  @default(false)
+  isLactoseFree  Boolean  @default(false)
+  isOrganic      Boolean  @default(false)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([active, category, order])
+}
+
+model CatalogSection {
+  id             Int      @id @default(autoincrement())
+  key            String   @unique   // 'eventi' | 'aperitivo' | 'pranzo' | 'cena' | 'colazione'
+  title          String
+  description    String?
+  enableDateTime Boolean  @default(false)
+  active         Boolean  @default(true)
+  displayOrder   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model SectionProduct {
+  sectionId  Int
+  productId  Int
+  order      Int     @default(0)
+  featured   Boolean @default(false)
+  showInHome Boolean @default(false)
+
+  @@id([sectionId, productId])
+  @@index([sectionId, order])
+}
+
+model EventInstance {
+  id          Int      @id @default(autoincrement())
+  productId   Int
+  slug        String   @unique
+  title       String
+  description String?
+  startAt     DateTime
+  endAt       DateTime?
+  showOnHome  Boolean  @default(false)
+  active      Boolean  @default(true)
+  capacity    Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([productId, startAt])
+}
+
+model Cart {
+  id         String   @id @default(cuid())
+  status     String   @default("open")
+  totalCents Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model CartItem {
+  id                 Int      @id @default(autoincrement())
+  cartId             String
+  productId          Int
+  nameSnapshot       String
+  priceCentsSnapshot Int
+  qty                Int
+  imageUrlSnapshot   String?
+  meta               Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([cartId])
+}
+
+model Order {
+  id            String   @id @default(cuid())
+  cartId        String
+  email         String
+  name          String
+  phone         String?
+  status        String   @default("pending")
+  totalCents    Int
+  discountCents Int?
+  paymentRef    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([cartId, status])
 }
 
 model BookingSettings {
@@ -56,7 +169,6 @@ model BookingSettings {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
-
 
 enum BookingType {
   pranzo
@@ -101,7 +213,6 @@ model EventTier {
 
   @@index([type, active, order])
 }
-
 
 model User {
   id            String    @id @default(cuid())

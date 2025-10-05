@@ -1,48 +1,27 @@
-# Auth & Admin
+# Area amministrazione
 
-## Variabili richieste
-Aggiungi queste chiavi a `.env.local` prima di avviare il progetto:
+## Accesso
+- Configura `.env.local` con `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, credenziali SMTP e `ADMIN_EMAILS` (lista separata da virgole/punto e virgola).
+- Avvia `pnpm dev`, visita `/admin/signin`, inserisci un indirizzo autorizzato e conferma il magic link ricevuto.
+- In locale, l’endpoint diagnostico `/api/admin/_whoami` conferma sessione e variabili (solo in dev).
 
-```
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=<stringa_random>
-MAIL_FROM="Bar La Soluzione <no-reply@lasoluzione.eu>"
-SMTP_HOST=...
-SMTP_PORT=465
-SMTP_USER=...
-SMTP_PASS=...
-ADMIN_EMAILS=you@example.com,other@example.com
-```
+## Navigazione principale
+| Percorso | Stato | Descrizione |
+| --- | --- | --- |
+| `/admin` | legacy | Dashboard metriche prenotazioni con lista “prossime”. |
+| `/admin/bookings` | legacy | Gestione prenotazioni (filtri, conferma, email). |
+| `/admin/menu/dishes` | legacy | CRUD piatti pranzo (verrà migrata). |
+| `/admin/tiers` | legacy | CRUD pacchetti evento/aperitivo legacy. |
+| `/admin/settings` | legacy | `BookingSettings` (coperti, prepay, tipi abilitati). |
+| `/admin/catalog/products` | nuovo | Catalogo prodotti unificato: create/edit, flag nutrizionali, toggle attivo, slug auto. |
+| `/admin/catalog/sections` | nuovo | Toggle sezione, displayOrder, `enableDateTime` (solo `pranzo`/`cena`), assegnazioni prodotto (order/featured/home). |
 
-- `NEXTAUTH_SECRET`: genera un valore sicuro con
-  ```bash
-  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-  ```
-- `ADMIN_EMAILS`: puoi separare gli indirizzi con virgole **o** punti e virgola; non è case-sensitive.
+## Flusso ToastProvider
+- `src/components/admin/ui/toast.tsx` fornisce `<ToastProvider>` + `useToast()`.
+- Pagine client-side (`ProductForm`, `SectionsPageClient`) sono montate all’interno del provider dal server component.
+- Regola: chiamare `useToast()` **solo** nei componenti discendenti; i toast scadono dopo ~3,5s.
 
-## Debug in locale
-1. Avvia `pnpm dev`.
-2. Visita `/admin/signin`, inserisci un indirizzo presente in `ADMIN_EMAILS` e conferma il magic link ricevuto.
-3. Con sessione attiva, apri `/api/admin/_whoami` per vedere:
-   - Se il token è presente (`token.raw`).
-   - Quale indirizzo email è stato estratto (`token.email`).
-   - La whitelist normalizzata.
-   - Quali variabili ambiente critiche risultano impostate.
-
-> ℹ️ L'endpoint di debug è disponibile **solo in sviluppo** e risponde 404 in produzione.
-
-## Gestione piatti pranzo
-
-- Accedi a **Catalogo → Piatti pranzo** per creare, modificare o disattivare i piatti mostrati nel wizard pubblico.
-- Ogni piatto può avere categoria (per raggruppamento), prezzo in centesimi e ordine (posizione nella lista).
-- Il toggle “Attivo” controlla la visibilità nel sito; l'eliminazione (bottone *Elimina*) disattiva il piatto lasciandolo modificabile.
-- Le modifiche vengono salvate tramite le API protette (`/api/admin/menu/dishes`).
-
-## Impostazioni pranzo
-- In **Impostazioni**, imposta il `Coperto (centesimi)` per persona e abilita l'opzione *Richiedi pagamento anticipato al pranzo* per forzare il flusso di prepagamento fittizio.
-- Le impostazioni vengono sincronizzate con le prenotazioni pubbliche e con gli endpoint `/api/bookings` / `/api/bookings/prepay`.
-
-## Loop e accessi
-- Il middleware (`src/middleware.ts`) esclude automaticamente `/api/auth`, gli asset e le pagine pubbliche (`/admin/signin`, `/admin/not-authorized`).
-- Utenti non autenticati vengono reindirizzati a `/admin/signin?from=<percorso>`.
-- Utenti autenticati ma non nella whitelist finiscono su `/admin/not-authorized` (in dev viene loggato un avviso in console).
+## Note rapide
+- Tutte le rotte `/api/admin/*` richiedono sessione valida; la middleware reindirizza gli utenti non autorizzati verso `/admin/signin`.
+- `enableDateTime` resta limitato alle sezioni pranzo/cena; per le altre la UI mostra un bottone disabilitato.
+- Le azioni distruttive (delete prodotto, rimozione assegnazione) mostrano prompt `confirm` prima della chiamata API.

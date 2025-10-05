@@ -1,0 +1,3 @@
+# Cart Schema Notes
+
+Il nuovo schema introduce un catalogo unificato composto dai modelli `Product`, `CatalogSection` e `SectionProduct`, che consentono di riutilizzare le stesse schede articolo su più sezioni attivabili (eventi, aperitivo, pranzo, cena, colazione) e di conservarne l’origine legacy tramite `sourceType`/`sourceId`. Le istanze datate per eventi futuri saranno gestite da `EventInstance`, mentre il flusso d’acquisto passa da `Cart` e `CartItem` alla conferma in `Order`, con un riferimento opzionale da `Booking` (`orderId`) per la compatibilità con il sistema di prenotazioni esistente.

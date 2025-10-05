@@ -24,6 +24,18 @@ model Booking {
   status         BookingStatus  @default(pending)
   prepayToken    String?
 
+  lunchItemsJson      Json?
+  coverCents          Int?
+  subtotalCents       Int?
+  totalCents          Int?
+  dinnerItemsJson     Json?
+  dinnerSubtotalCents Int?
+  dinnerCoverCents    Int?
+  dinnerTotalCents    Int?
+  tierType            String?
+  tierLabel           String?
+  tierPriceCents      Int?
+
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 }
@@ -37,12 +49,18 @@ model BookingSettings {
   typeLabels          Json
   prepayTypes         Json
   prepayAmountCents   Int?
+  coverCents          Int      @default(0)
+  lunchRequirePrepay  Boolean  @default(false)
+  dinnerCoverCents    Int      @default(0)
+  dinnerRequirePrepay Boolean  @default(false)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
 
+
 enum BookingType {
   pranzo
+  cena
   aperitivo
   evento
 }
@@ -55,6 +73,35 @@ enum BookingStatus {
   expired
   cancelled
 }
+
+model MenuDish {
+  id          Int      @id @default(autoincrement())
+  name        String
+  slug        String   @unique
+  description String?
+  priceCents  Int      @default(0)
+  active      Boolean  @default(true)
+  category    String?
+  order       Int      @default(0)
+  visibleAt   String   @default("both") // lunch | dinner | both
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model EventTier {
+  id         String  @id @default(cuid())
+  type       String
+  label      String
+  priceCents Int
+  active     Boolean @default(true)
+  order      Int     @default(0)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([type, active, order])
+}
+
 
 model User {
   id            String    @id @default(cuid())

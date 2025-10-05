@@ -31,3 +31,4 @@ pnpm-debug.log*
 
 # Prisma SQLite
 prisma/**/*.db
+*.db-journal

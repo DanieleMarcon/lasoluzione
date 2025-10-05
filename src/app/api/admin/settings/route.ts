@@ -19,7 +19,11 @@ const settingsSchema = z
     enabledTypes: z.array(z.string()).min(1),
     typeLabels: z.record(z.string()).default({}),
     prepayTypes: z.array(z.string()).default([]),
-    prepayAmountCents: z.coerce.number().int().min(0).nullable().optional(),
+    prepayAmountCents: z.coerce.number().int().min(0).max(1_000_000).nullable().optional(),
+    coverCents: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    lunchRequirePrepay: z.boolean().default(false),
+    dinnerCoverCents: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    dinnerRequirePrepay: z.boolean().default(false),
   })
   .superRefine((value, ctx) => {
     if (!value.enableDateTimeStep) {
@@ -65,6 +69,10 @@ export async function PUT(req: Request) {
   }
 
   const enabledTypes = payload.enabledTypes.map((type) => type as BookingType);
+  const allowedTypes = new Set<BookingType>(['pranzo', 'cena', 'aperitivo', 'evento']);
+  if (!enabledTypes.every((type) => allowedTypes.has(type))) {
+    return NextResponse.json({ error: 'Tipologia non valida' }, { status: 400 });
+  }
   const typeLabels: Record<string, string> = {};
   for (const type of enabledTypes) {
     const label = payload.typeLabels[type] ?? type;
@@ -84,6 +92,10 @@ export async function PUT(req: Request) {
     typeLabels: typeLabels as unknown as Prisma.InputJsonValue,
     prepayTypes: sanitizedPrepayTypes as unknown as Prisma.InputJsonValue,
     prepayAmountCents: payload.prepayAmountCents ?? null,
+    coverCents: payload.coverCents,
+    lunchRequirePrepay: payload.lunchRequirePrepay,
+    dinnerCoverCents: payload.dinnerCoverCents,
+    dinnerRequirePrepay: payload.dinnerRequirePrepay,
   };
 
   try {
@@ -97,6 +109,10 @@ export async function PUT(req: Request) {
         typeLabels: createData.typeLabels,
         prepayTypes: createData.prepayTypes,
         prepayAmountCents: createData.prepayAmountCents,
+        coverCents: createData.coverCents,
+        lunchRequirePrepay: createData.lunchRequirePrepay,
+        dinnerCoverCents: createData.dinnerCoverCents,
+        dinnerRequirePrepay: createData.dinnerRequirePrepay,
       },
       create: createData,
     });
@@ -106,5 +122,58 @@ export async function PUT(req: Request) {
   } catch (error) {
     console.error('[admin][PUT settings]', error);
     return NextResponse.json({ error: 'Impossibile salvare le impostazioni' }, { status: 500 });
+  }
+}
+
+const patchSchema = z.object({
+  coverCents: z.coerce.number().int().min(0),
+  lunchRequirePrepay: z.boolean(),
+  dinnerCoverCents: z.coerce.number().int().min(0),
+  dinnerRequirePrepay: z.boolean(),
+});
+
+export async function PATCH(req: Request) {
+  await assertAdmin();
+
+  let payload;
+  try {
+    payload = patchSchema.parse(await req.json());
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Dati non validi', details: error.flatten() }, { status: 400 });
+    }
+    throw error;
+  }
+
+  try {
+    await prisma.bookingSettings.upsert({
+      where: { id: 1 },
+      update: {
+        coverCents: payload.coverCents,
+        lunchRequirePrepay: payload.lunchRequirePrepay,
+        dinnerCoverCents: payload.dinnerCoverCents,
+        dinnerRequirePrepay: payload.dinnerRequirePrepay,
+      },
+      create: {
+        id: 1,
+        enableDateTimeStep: true,
+        fixedDate: null,
+        fixedTime: null,
+        enabledTypes: ['pranzo', 'cena', 'evento'],
+        typeLabels: { pranzo: 'Pranzo', cena: 'Cena', evento: 'Evento' },
+        prepayTypes: [],
+        prepayAmountCents: null,
+        coverCents: payload.coverCents,
+        lunchRequirePrepay: payload.lunchRequirePrepay,
+        dinnerCoverCents: payload.dinnerCoverCents,
+        dinnerRequirePrepay: payload.dinnerRequirePrepay,
+      },
+    });
+
+    const normalized = await getBookingSettings();
+    return NextResponse.json({ ok: true, data: toAdminSettingsDTO(normalized) });
+  } catch (error) {
+    console.error('[admin][PATCH settings]', error);
+    return NextResponse.json({ error: 'Impossibile aggiornare le impostazioni' }, { status: 500 });
   }
 }

@@ -10,7 +10,7 @@ import Step3Details from './steps/Step3Details';
 import Step4Review from './steps/Step4Review';
 import type { BookingConfigDTO } from '@/types/bookingConfig';
 
-type BookingType = 'pranzo' | 'aperitivo' | 'evento';
+type BookingType = 'pranzo' | 'cena' | 'aperitivo' | 'evento';
 type StepKey = 'dateTime' | 'peopleType' | 'details' | 'review';
 
 type FormValues = {
@@ -18,6 +18,12 @@ type FormValues = {
   time: string;
   people: number;
   type: BookingType;
+  lunchOrder: Array<{ dishId: number; qty: number }>;
+  tier?: { id: string; label: string; priceCents: number } | null;
+  tierId?: string;
+  tierType?: 'evento' | 'aperitivo';
+  tierLabel?: string;
+  tierPriceCents?: number;
   name: string;
   email: string;
   phone: string;
@@ -28,7 +34,7 @@ type FormValues = {
 
 const STEP_FIELDS: Record<StepKey, (keyof FormValues)[]> = {
   dateTime: ['date', 'time'],
-  peopleType: ['people', 'type'],
+  peopleType: ['people', 'type', 'lunchOrder', 'tier', 'tierId', 'tierType', 'tierLabel', 'tierPriceCents'],
   details: ['name', 'email', 'phone', 'notes'],
   review: ['agreePrivacy'],
 };
@@ -45,6 +51,8 @@ const DEFAULT_FORM_VALUES: FormValues = {
   time: '',
   people: 2,
   type: 'pranzo',
+  lunchOrder: [],
+  tier: null,
   name: '',
   email: '',
   phone: '',
@@ -60,6 +68,8 @@ function buildResetValues(config: BookingConfigDTO | null): FormValues {
     date: config?.enableDateTimeStep === false ? config.fixedDate ?? '' : '',
     time: config?.enableDateTimeStep === false ? config.fixedTime ?? '' : '',
     type: firstType,
+    lunchOrder: [],
+    tier: null,
   };
 }
 
@@ -137,19 +147,26 @@ export default function BookingWizard() {
     }
   }, [config, methods]);
 
-  const typeOptions = useMemo(
-    () =>
-      config
-        ? config.enabledTypes.map(value => ({
-            value,
-            label: config.typeLabels[value] ?? value,
-            requiresPrepay: config.prepayTypes.includes(value),
-          }))
-        : [],
-    [config]
-  );
+  const typeOptions = useMemo(() => {
+    if (!config) return [];
+    return config.enabledTypes.map((value) => ({
+      value,
+      label: config.typeLabels[value] ?? value,
+      requiresPrepay:
+        config.prepayTypes.includes(value)
+        || (value === 'pranzo' && config.menu.lunchRequirePrepay)
+        || (value === 'cena' && config.menu.dinnerRequirePrepay),
+    }));
+  }, [config]);
 
   const currentStep = activeSteps[stepIndex] ?? activeSteps[0];
+  const currentType = methods.watch('type');
+  const lunchOrderWatch = methods.watch('lunchOrder') ?? [];
+  const hasLunchSelection = Array.isArray(lunchOrderWatch)
+    ? lunchOrderWatch.some((item: any) => Number(item?.qty) > 0)
+    : false;
+  const tierIdWatch = methods.watch('tierId');
+  const hasTierSelection = Boolean(tierIdWatch);
 
   const next = async () => {
     if (!currentStep) return;
@@ -169,13 +186,45 @@ export default function BookingWizard() {
       return;
     }
 
-    const payload = {
-      ...data,
+    const lunchOrder = (data.lunchOrder ?? []).filter(
+      (item) =>
+        Number.isInteger(item.dishId) &&
+        item.dishId > 0 &&
+        Number.isInteger(item.qty) &&
+        item.qty > 0
+    );
+
+    const payload: Record<string, unknown> = {
+      date: data.date,
+      time: data.time,
+      people: data.people,
+      type: data.type,
+      lunchOrder,
+      name: data.name.trim(),
+      email: data.email.trim(),
       phone: data.phone.trim(),
       notes: data.notes && data.notes.trim().length ? data.notes.trim() : undefined,
+      agreePrivacy: data.agreePrivacy,
+      agreeMarketing: data.agreeMarketing ?? false,
     };
 
-    const requiresPrepay = config.prepayTypes.includes(payload.type);
+    const payloadType = payload.type as BookingType;
+    const isTierType = payloadType === 'evento' || payloadType === 'aperitivo';
+    if (isTierType) {
+      payload.tierId = data.tierId;
+      payload.tierType = (data.tierType ?? payloadType) as 'evento' | 'aperitivo';
+      payload.tierLabel = data.tierLabel;
+      payload.tierPriceCents = data.tierPriceCents;
+    }
+
+    if (payloadType !== 'pranzo' && payloadType !== 'cena') {
+      payload.lunchOrder = [];
+    }
+
+    const requiresPrepay =
+      config.prepayTypes.includes(payloadType) ||
+      (payloadType === 'pranzo' && config.menu.lunchRequirePrepay) ||
+      (payloadType === 'cena' && config.menu.dinnerRequirePrepay);
     const endpoint = requiresPrepay ? '/api/bookings/prepay' : '/api/bookings';
 
     try {
@@ -257,7 +306,12 @@ export default function BookingWizard() {
         <form onSubmit={methods.handleSubmit(onSubmit)} aria-live="assertive">
           {currentStep?.key === 'dateTime' && <Step1Date />}
           {currentStep?.key === 'peopleType' && (
-            <Step2People typeOptions={typeOptions} prepayAmountCents={config.prepayAmountCents} />
+            <Step2People
+              typeOptions={typeOptions}
+              prepayAmountCents={config.prepayAmountCents}
+              menu={config.menu}
+              tiers={config.tiers}
+            />
           )}
           {currentStep?.key === 'details' && <Step3Details />}
           {currentStep?.key === 'review' && <Step4Review config={config} />}
@@ -268,7 +322,16 @@ export default function BookingWizard() {
             </button>
 
             {stepIndex < activeSteps.length - 1 ? (
-              <button className="btn" type="button" onClick={next}>
+              <button
+                className="btn"
+                type="button"
+                onClick={next}
+                disabled={
+                  currentStep?.key === 'peopleType' &&
+                  ((currentType === 'pranzo' && !hasLunchSelection) ||
+                    ((currentType === 'evento' || currentType === 'aperitivo') && !hasTierSelection))
+                }
+              >
                 Avanti
               </button>
             ) : (

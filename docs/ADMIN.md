@@ -31,6 +31,17 @@ ADMIN_EMAILS=you@example.com,other@example.com
 
 > ℹ️ L'endpoint di debug è disponibile **solo in sviluppo** e risponde 404 in produzione.
 
+## Gestione piatti pranzo
+
+- Accedi a **Catalogo → Piatti pranzo** per creare, modificare o disattivare i piatti mostrati nel wizard pubblico.
+- Ogni piatto può avere categoria (per raggruppamento), prezzo in centesimi e ordine (posizione nella lista).
+- Il toggle “Attivo” controlla la visibilità nel sito; l'eliminazione (bottone *Elimina*) disattiva il piatto lasciandolo modificabile.
+- Le modifiche vengono salvate tramite le API protette (`/api/admin/menu/dishes`).
+
+## Impostazioni pranzo
+- In **Impostazioni**, imposta il `Coperto (centesimi)` per persona e abilita l'opzione *Richiedi pagamento anticipato al pranzo* per forzare il flusso di prepagamento fittizio.
+- Le impostazioni vengono sincronizzate con le prenotazioni pubbliche e con gli endpoint `/api/bookings` / `/api/bookings/prepay`.
+
 ## Loop e accessi
 - Il middleware (`src/middleware.ts`) esclude automaticamente `/api/auth`, gli asset e le pagine pubbliche (`/admin/signin`, `/admin/not-authorized`).
 - Utenti non autenticati vengono reindirizzati a `/admin/signin?from=<percorso>`.

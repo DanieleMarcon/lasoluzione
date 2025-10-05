@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import type { ChangeEvent, CSSProperties, FormEvent } from 'react';
 
 import type { AdminSettingsDTO } from '@/types/admin';
+import { ToastProvider, useToast } from '@/components/admin/ui/toast';
 
 type Props = {
   settings: AdminSettingsDTO;
@@ -15,7 +16,7 @@ type AlertState = {
   message: string;
 };
 
-export default function SettingsForm({ settings, allTypes }: Props) {
+function SettingsFormInner({ settings, allTypes }: Props) {
   const [enableDateStep, setEnableDateStep] = useState(settings.enableDateTimeStep);
   const [fixedDate, setFixedDate] = useState(settings.fixedDate ?? '');
   const [fixedTime, setFixedTime] = useState(settings.fixedTime ?? '');
@@ -25,8 +26,13 @@ export default function SettingsForm({ settings, allTypes }: Props) {
   const [prepayAmount, setPrepayAmount] = useState(
     settings.prepayAmountCents != null ? String(settings.prepayAmountCents) : ''
   );
+  const [coverCents, setCoverCents] = useState(String(settings.coverCents ?? 0));
+  const [lunchRequirePrepay, setLunchRequirePrepay] = useState(settings.lunchRequirePrepay);
+  const [dinnerCoverCents, setDinnerCoverCents] = useState(String(settings.dinnerCoverCents ?? 0));
+  const [dinnerRequirePrepay, setDinnerRequirePrepay] = useState(settings.dinnerRequirePrepay);
   const [saving, setSaving] = useState(false);
   const [alert, setAlert] = useState<AlertState | null>(null);
+  const toast = useToast();
 
   const typeOptions = useMemo(() => allTypes.sort(), [allTypes]);
 
@@ -82,6 +88,8 @@ export default function SettingsForm({ settings, allTypes }: Props) {
       prepayAmountValue = parsed;
     }
 
+    const coverValue = Number.parseInt(coverCents, 10);
+    const dinnerCoverValue = Number.parseInt(dinnerCoverCents, 10);
     const payload = {
       enableDateTimeStep: enableDateStep,
       fixedDate: enableDateStep ? null : fixedDate || null,
@@ -90,6 +98,10 @@ export default function SettingsForm({ settings, allTypes }: Props) {
       typeLabels,
       prepayTypes: Array.from(prepayTypes),
       prepayAmountCents: prepayAmountValue,
+      coverCents: Number.isNaN(coverValue) || coverValue < 0 ? 0 : coverValue,
+      lunchRequirePrepay,
+      dinnerCoverCents: Number.isNaN(dinnerCoverValue) || dinnerCoverValue < 0 ? 0 : dinnerCoverValue,
+      dinnerRequirePrepay,
     };
 
     try {
@@ -105,7 +117,8 @@ export default function SettingsForm({ settings, allTypes }: Props) {
         throw new Error(body.error || 'Impossibile salvare le impostazioni');
       }
 
-      setAlert({ kind: 'success', message: 'Impostazioni aggiornate correttamente' });
+      setAlert(null);
+      toast.success('Impostazioni aggiornate');
     } catch (error: any) {
       console.error('[SettingsForm] update error', error);
       setAlert({ kind: 'error', message: error?.message ?? 'Impossibile salvare le impostazioni' });
@@ -238,12 +251,72 @@ export default function SettingsForm({ settings, allTypes }: Props) {
         </p>
       </section>
 
+      <section style={{ display: 'grid', gap: '1rem' }}>
+        <h3 style={sectionTitleStyle}>Pranzo</h3>
+        <label style={labelStyle}>
+          <span>Coperto (centesimi per persona)</span>
+          <input
+            type="number"
+            min={0}
+            value={coverCents}
+            onChange={(event) => setCoverCents(event.target.value)}
+            style={inputStyle}
+          />
+        </label>
+        <label style={toggleStyle}>
+          <input
+            type="checkbox"
+            checked={lunchRequirePrepay}
+            onChange={(event) => setLunchRequirePrepay(event.target.checked)}
+          />
+          Richiedi pagamento anticipato automaticamente per il pranzo
+        </label>
+        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>
+          Quando attivo, le prenotazioni per il pranzo utilizzeranno il flusso di prepagamento fittizio
+          come gli eventi.
+        </p>
+      </section>
+
+      <section style={{ display: 'grid', gap: '1rem' }}>
+        <h3 style={sectionTitleStyle}>Cena</h3>
+        <label style={labelStyle}>
+          <span>Coperto cena (centesimi per persona)</span>
+          <input
+            type="number"
+            min={0}
+            value={dinnerCoverCents}
+            onChange={(event) => setDinnerCoverCents(event.target.value)}
+            style={inputStyle}
+          />
+        </label>
+        <label style={toggleStyle}>
+          <input
+            type="checkbox"
+            checked={dinnerRequirePrepay}
+            onChange={(event) => setDinnerRequirePrepay(event.target.checked)}
+          />
+          Richiedi pagamento anticipato automaticamente per la cena
+        </label>
+        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>
+          Le prenotazioni serali useranno questa configurazione per calcolare coperti e flusso di
+          pagamento.
+        </p>
+      </section>
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
         <button type="submit" style={primaryButtonStyle} disabled={saving}>
           {saving ? 'Salvataggio…' : 'Salva impostazioni'}
         </button>
       </div>
     </form>
+  );
+}
+
+export default function SettingsForm(props: Props) {
+  return (
+    <ToastProvider>
+      <SettingsFormInner {...props} />
+    </ToastProvider>
   );
 }
 

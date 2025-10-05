@@ -28,6 +28,13 @@ export function getTransport() {
   return transporter;
 }
 
+type BookingEmailLunchSummary = {
+  items: Array<{ dishId: number; name: string; priceCents: number; qty: number }>;
+  subtotalCents: number;
+  coverCents: number;
+  totalCents: number;
+};
+
 type BookingEmailInput = {
   id: number;
   date: string; // ISO
@@ -36,6 +43,10 @@ type BookingEmailInput = {
   email: string;
   phone?: string;
   notes?: string;
+  lunch?: BookingEmailLunchSummary;
+  dinner?: BookingEmailLunchSummary;
+  tierLabel?: string;
+  tierPriceCents?: number;
 };
 
 export async function sendBookingEmails(data: BookingEmailInput) {
@@ -62,6 +73,86 @@ export async function sendBookingEmails(data: BookingEmailInput) {
     minute: '2-digit'
   });
 
+  const euro = (cents: number) =>
+    (cents / 100).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+
+  const lunchText = (() => {
+    if (!data.lunch) return '';
+    const coverTotal = data.lunch.coverCents * data.people;
+    const lines = data.lunch.items
+      .filter(item => item.qty > 0)
+      .map(item => {
+        const lineTotal = euro(item.priceCents * item.qty);
+        return `  • ${item.qty}× ${item.name} – ${euro(item.priceCents)} cad. (Tot ${lineTotal})`;
+      })
+      .join('\n');
+    return `\nSelezione pranzo:\n${lines}\nCoperto (${euro(data.lunch.coverCents)} x ${data.people}): ${euro(coverTotal)}\nTotale pranzo: ${euro(data.lunch.totalCents)}\n`;
+  })();
+
+  const lunchHtml = (() => {
+    if (!data.lunch) return '';
+    const coverTotal = data.lunch.coverCents * data.people;
+    const items = data.lunch.items
+      .filter(item => item.qty > 0)
+      .map(item => {
+        const lineTotal = euro(item.priceCents * item.qty);
+        return `<li>${item.qty} × ${item.name} — <strong>${euro(item.priceCents)}</strong> cad. (Tot <strong>${lineTotal}</strong>)</li>`;
+      })
+      .join('');
+    return `
+      <h3 style="margin-top:1.5rem;">Selezione pranzo</h3>
+      <ul>${items}</ul>
+      <p><strong>Coperto:</strong> ${euro(data.lunch.coverCents)} × ${data.people} = ${euro(coverTotal)}</p>
+      <p><strong>Totale pranzo:</strong> ${euro(data.lunch.totalCents)}</p>
+    `;
+  })();
+
+  const dinnerText = (() => {
+    const dinner = data.dinner;
+    if (!dinner || !Array.isArray(dinner.items) || dinner.totalCents == null) {
+      return '';
+    }
+    const lines = dinner.items
+      .filter((item) => item && item.qty > 0)
+      .map((item) => {
+        const lineTotalCents = item.priceCents * item.qty;
+        return `• ${item.qty} × ${item.name} — ${euro(lineTotalCents)}`;
+      })
+      .join('\n');
+    return `\n--- CENA ---\n${lines}\nCoperto: ${euro(dinner.coverCents)}\nTotale cena: ${euro(dinner.totalCents)}\n`;
+  })();
+
+  const dinnerHtml = (() => {
+    if (!data.dinner) return '';
+    const coverTotal = data.dinner.coverCents * data.people;
+    const items = data.dinner.items
+      .filter(item => item.qty > 0)
+      .map(item => {
+        const lineTotal = euro(item.priceCents * item.qty);
+        return `<li>${item.qty} × ${item.name} — <strong>${euro(item.priceCents)}</strong> cad. (Tot <strong>${lineTotal}</strong>)</li>`;
+      })
+      .join('');
+    return `
+      <h3 style="margin-top:1.5rem;">Selezione cena</h3>
+      <ul>${items}</ul>
+      <p><strong>Coperto:</strong> ${euro(data.dinner.coverCents)} × ${data.people} = ${euro(coverTotal)}</p>
+      <p><strong>Totale cena:</strong> ${euro(data.dinner.totalCents)}</p>
+    `;
+  })();
+
+  const hasTierInfo = data.tierLabel && typeof data.tierPriceCents === 'number';
+  const tierText = hasTierInfo
+    ? `\nOpzione: ${data.tierLabel} (${euro(data.tierPriceCents!)})\n`
+    : data.tierLabel
+      ? `\nOpzione: ${data.tierLabel}\n`
+      : '';
+
+  const tierHtml = hasTierInfo
+    ? `<li><strong>Opzione:</strong> ${data.tierLabel} (${euro(data.tierPriceCents!)})</li>`
+    : data.tierLabel
+      ? `<li><strong>Opzione:</strong> ${data.tierLabel}</li>`
+      : '';
+
   // Email al cliente
   const r1 = await transporter.sendMail({
     from,
@@ -74,7 +165,7 @@ abbiamo ricevuto la tua prenotazione:
 
 • Data/Ora: ${dateHuman}
 • Persone: ${data.people}
-${data.phone ? `• Telefono: ${data.phone}\n` : ''}${data.notes ? `• Note: ${data.notes}\n` : ''}
+${data.phone ? `• Telefono: ${data.phone}\n` : ''}${data.notes ? `• Note: ${data.notes}\n` : ''}${tierText}${lunchText}${dinnerText}
 
 Presentati in cassa dicendo:
 “Prenotazione a nome ${data.name}, numero ${data.people}, codice #${data.id}”.
@@ -90,7 +181,10 @@ Bar La Soluzione
   <li><strong>Persone:</strong> ${data.people}</li>
   ${data.phone ? `<li><strong>Telefono:</strong> ${data.phone}</li>` : ''}
   ${data.notes ? `<li><strong>Note:</strong> ${data.notes}</li>` : ''}
+  ${tierHtml}
 </ul>
+${lunchHtml}
+${dinnerHtml}
 <p>In cassa comunica:<br/><em>“Prenotazione a nome ${data.name}, ${data.people} persone, codice #${data.id}”.</em></p>
 <p>A presto!<br/>Bar La Soluzione</p>`
   });
@@ -109,7 +203,7 @@ Data/Ora: ${dateHuman}
 Persone: ${data.people}
 Nome: ${data.name}
 Email: ${data.email}
-${data.phone ? `Telefono: ${data.phone}\n` : ''}${data.notes ? `Note: ${data.notes}\n` : ''}`
+${data.phone ? `Telefono: ${data.phone}\n` : ''}${data.notes ? `Note: ${data.notes}\n` : ''}${tierText}${lunchText}${dinnerText}`
   });
   console.log('[mailer] email admin sent:', r2.messageId);
 }

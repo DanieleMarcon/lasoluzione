@@ -16,5 +16,9 @@ export function toAdminSettingsDTO(settings: Awaited<ReturnType<typeof getBookin
     typeLabels: settings.typeLabels,
     prepayTypes: settings.prepayTypes,
     prepayAmountCents: settings.prepayAmountCents ?? null,
+    coverCents: settings.coverCents,
+    lunchRequirePrepay: settings.lunchRequirePrepay,
+    dinnerCoverCents: settings.dinnerCoverCents,
+    dinnerRequirePrepay: settings.dinnerRequirePrepay,
   };
 }

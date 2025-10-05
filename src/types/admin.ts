@@ -11,6 +11,15 @@ export type AdminBooking = {
   status: string;
   createdAt: string;
   updatedAt: string;
+  tierLabel?: string | null;
+  tierPriceCents?: number | null;
+  tierType?: string | null;
+  subtotalCents?: number | null;
+  coverCents?: number | null;
+  totalCents?: number | null;
+  dinnerSubtotalCents?: number | null;
+  dinnerCoverCents?: number | null;
+  dinnerTotalCents?: number | null;
 };
 
 export type BookingListResponse = {
@@ -33,4 +42,8 @@ export type AdminSettingsDTO = {
   typeLabels: Record<string, string>;
   prepayTypes: string[];
   prepayAmountCents: number | null;
+  coverCents: number;
+  lunchRequirePrepay: boolean;
+  dinnerCoverCents: number;
+  dinnerRequirePrepay: boolean;
 };

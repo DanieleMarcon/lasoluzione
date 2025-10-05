@@ -50,7 +50,7 @@ export default function AdminNav({ links, userEmail }: Props) {
         </div>
         <nav style={{ display: 'grid', gap: '0.5rem' }}>
           {links.map((link) => {
-            const isActive = pathname === link.href;
+            const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
             return (
               <Link key={link.href} href={link.href} style={isActive ? activeStyle : linkStyle}>
                 {link.label}

@@ -149,6 +149,18 @@ export default function BookingsView({ settings }: Props) {
     setPage(1);
   }
 
+  function handlePrint() {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('pageSize', String(PAGE_SIZE));
+    if (filters.search) params.set('q', filters.search);
+    if (filters.type) params.set('type', filters.type);
+    if (filters.status) params.set('status', filters.status);
+    if (filters.from) params.set('from', filters.from);
+    if (filters.to) params.set('to', filters.to);
+    window.open(`/admin/bookings/print?${params.toString()}`, '_blank');
+  }
+
   async function triggerAction(
     bookingId: number,
     endpoint: string,
@@ -291,7 +303,10 @@ export default function BookingsView({ settings }: Props) {
             <input name="to" type="date" value={draftFilters.to} onChange={onFilterChange} style={inputStyle} />
           </label>
         </div>
-        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button type="button" onClick={handlePrint} style={secondaryButtonStyle}>
+            Stampa elenco
+          </button>
           <button type="button" onClick={resetFilters} style={secondaryButtonStyle}>
             Reset
           </button>

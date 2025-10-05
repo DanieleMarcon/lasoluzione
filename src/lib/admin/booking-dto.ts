@@ -14,5 +14,14 @@ export function toAdminBookingDTO(booking: Booking) {
     status: booking.status,
     createdAt: booking.createdAt.toISOString(),
     updatedAt: booking.updatedAt.toISOString(),
+    tierLabel: booking.tierLabel,
+    tierPriceCents: booking.tierPriceCents,
+    tierType: booking.tierType,
+    subtotalCents: booking.subtotalCents,
+    coverCents: booking.coverCents,
+    totalCents: booking.totalCents,
+    dinnerSubtotalCents: booking.dinnerSubtotalCents ?? null,
+    dinnerCoverCents: booking.dinnerCoverCents ?? null,
+    dinnerTotalCents: booking.dinnerTotalCents ?? null,
   };
 }

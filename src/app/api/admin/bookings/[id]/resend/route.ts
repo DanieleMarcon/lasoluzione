@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { assertAdmin } from '@/lib/admin/session';
 import { sendBookingEmails } from '@/lib/mailer';
 import { toAdminBookingDTO } from '@/lib/admin/booking-dto';
+import { normalizeStoredLunchItems, normalizeStoredDinnerItems } from '@/lib/lunchOrder';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,29 @@ export async function POST(_: Request, context: { params: { id: string } }) {
     return NextResponse.json({ error: 'Prenotazione non trovata' }, { status: 404 });
   }
 
+  const lunchItems = normalizeStoredLunchItems(booking.lunchItemsJson);
+  const lunch = lunchItems.length
+    ? {
+        items: lunchItems,
+        subtotalCents: booking.subtotalCents ?? 0,
+        coverCents: booking.coverCents ?? 0,
+        totalCents:
+          booking.totalCents ?? (booking.subtotalCents ?? 0) + (booking.coverCents ?? 0) * booking.people,
+      }
+    : undefined;
+
+  const dinnerItems = normalizeStoredDinnerItems((booking as any).dinnerItemsJson);
+  const dinner = dinnerItems.length
+    ? {
+        items: dinnerItems,
+        subtotalCents: (booking as any).dinnerSubtotalCents ?? 0,
+        coverCents: (booking as any).dinnerCoverCents ?? 0,
+        totalCents:
+          (booking as any).dinnerTotalCents ??
+          ((booking as any).dinnerSubtotalCents ?? 0) + ((booking as any).dinnerCoverCents ?? 0) * booking.people,
+      }
+    : undefined;
+
   try {
     await sendBookingEmails({
       id: booking.id,
@@ -37,6 +61,10 @@ export async function POST(_: Request, context: { params: { id: string } }) {
       email: booking.email,
       phone: booking.phone,
       notes: booking.notes ?? undefined,
+      lunch,
+      dinner,
+      tierLabel: booking.tierLabel ?? undefined,
+      tierPriceCents: booking.tierPriceCents ?? undefined,
     });
   } catch (error) {
     console.error('[admin][resend booking] mail error', error);

@@ -9,6 +9,8 @@ import AdminProviders from '@/components/admin/AdminProviders';
 const links = [
   { href: '/admin', label: 'Dashboard' },
   { href: '/admin/bookings', label: 'Prenotazioni' },
+  { href: '/admin/menu/dishes', label: 'Piatti pranzo' },
+  { href: '/admin/tiers', label: 'Opzioni evento/aperitivo' },
   { href: '/admin/settings', label: 'Impostazioni' },
 ];
 

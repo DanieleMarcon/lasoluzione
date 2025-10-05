@@ -3,44 +3,46 @@
 ## Pubblico
 
 ### `GET /api/catalog`
-- **Cache**: `dynamic = force-dynamic` (nessuna cache Next).  
-- **Payload**: restituisce un oggetto `{ sections: SectionDTO[] }`.
-- `SectionDTO`: `{ key, title, description?, enableDateTime, active, displayOrder, products: ProductDTO[] }`.
-- `ProductDTO`: include `id`, `slug`, `name`, `priceCents`, `imageUrl?`, categorie/flag nutrizionali e `order` (ordine nella sezione).
-- Regole: solo sezioni `active = true` e prodotti `active = true`; prodotti ordinati per `order` pivot e nome.
+- **Metodo**: `GET`
+- **Cache**: `force-dynamic` (nessuna cache Next).
+- **Risposta**: `{ sections: SectionDTO[] }` con sole sezioni `active = true`.
+- **SectionDTO**: `{ id, key, title, description?, enableDateTime, displayOrder, products: ProductDTO[] }`.
+- **ProductDTO**: `{ id, slug, name, priceCents, imageUrl?, tags, nutritionFlags, order }`; solo prodotti `active = true`.
+- **Ordinamento**: sezioni per `displayOrder`, prodotti per `order` pivot (fallback nome).
 
-Esempio:
+Esempio minimo:
 ```bash
-curl -s http://localhost:3000/api/catalog | jq '.sections[0]'
+curl -s http://localhost:3000/api/catalog | jq '.sections | length'
 ```
 
-## Admin (autenticazione magic-link)
+## Admin (richiede sessione magic-link)
 
 ### `GET /api/admin/products`
-Querystring: `page`, `pageSize`, `q`, `category`, `active` (`true|false|all`).  
-Risposta: `{ ok, data: Product[], meta: { page, pageSize, total, totalPages } }`.
+- Querystring supportate: `page`, `pageSize`, `q`, `category`, `active` (`true|false|all`).
+- Risposta: `{ ok: true, data: Product[], meta: { page, pageSize, total, totalPages } }`.
+- Filtra automaticamente sui prodotti con `tenantId` attuale (quando applicabile).
 
-### `POST /api/admin/products`
-Body JSON (campi principali): `name`, `slug?`, `description?`, `ingredients?`, `allergens?`, `priceCents`, `unitCostCents?`, `supplierName?`, `stockQty?`, `imageUrl?`, `category?`, `order?`, `active?`, flag nutrizionali.
-- Slug auto-generato se vuoto; controlli `slug_conflict` (409) e validazioni Zod (`validation_error`).
-
-Richiesta esempio (GET con sessione attiva e cookies di NextAuth):
+Esempio minimo (cookie sessione valido):
 ```bash
 curl -s --cookie "next-auth.session-token=..." \
-  "http://localhost:3000/api/admin/products?page=1&pageSize=10"
+  "http://localhost:3000/api/admin/products?page=1&pageSize=5"
 ```
 
+### `POST /api/admin/products`
+- Body JSON: `name`, `slug?`, `description?`, `ingredients?`, `allergens?`, `priceCents`, `unitCostCents?`, `supplierName?`, `stockQty?`, `imageUrl?`, `category?`, `order?`, `active?`, flag nutrizionali (`isVegan`, `isVegetarian`, `containsAlcohol`, ecc.).
+- Valida con Zod; slug auto-generato se omesso. Errori possibili: `validation_error` (422), `slug_conflict` (409).
+
 ### `POST /api/admin/sections`
-Body: `{ key, title, active?, enableDateTime?, displayOrder? }`. Upsert by `key`.  
-Note: `enableDateTime` effettivo solo per sezioni `pranzo` e `cena` (UI e API rispettano la regola).
+- Body: `{ key, title, description?, active?, enableDateTime?, displayOrder? }`.
+- Comportamento: upsert su `key`; `enableDateTime` applicato **solo** quando `key` ∈ {`pranzo`, `cena`}.
 
 ### `POST /api/admin/sections/:id/products`
-Body: `{ productId, order?, featured?, showInHome? }` assegnando/aggiornando il link sezione-prodotto.
+- Body: `{ productId, order?, featured?, showInHome? }`.
+- Effetto: crea o aggiorna record pivot `SectionProduct` mantenendo ordering.
 
 ### `DELETE /api/admin/sections/:id/products`
-Richiede `productId` (query o body) e rimuove l’assegnazione.
+- Richiede `productId` (querystring o body) e rimuove il collegamento sezione↔prodotto.
 
-## TODO (fase 2)
-- `/api/cart` + `/api/cart/items` (creazione carrello, mutazioni quantità, persistenza sessione).
-- `/api/orders` (checkout, pagamento, email).  
-- Endpoint pubblici per tracking carrello/ordini una volta definita la UI.
+## TODO (fase 2+)
+- `/api/cart` + `/api/cart/items`: creare carrello, mutare quantità, persistenza sessione.
+- `/api/orders`: checkout con pagamento o auto-conferma per totale 0 €, generazione email.

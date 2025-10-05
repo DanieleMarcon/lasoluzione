@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+
 import { prisma } from '@/lib/prisma';
 
 export const runtime = 'nodejs';
@@ -10,7 +11,6 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: Request) {
-  console.log('[POST /api/bookings/fake-cancel] start');
   try {
     const json = await req.json();
     const { token } = bodySchema.parse(json);
@@ -29,7 +29,6 @@ export async function POST(req: Request) {
       data: { status: 'failed', prepayToken: null },
     });
 
-    console.log('[POST /api/bookings/fake-cancel] ok', booking.id);
     return NextResponse.json({ ok: true, bookingId: booking.id }, { status: 200 });
   } catch (err: any) {
     if (err?.name === 'ZodError') {

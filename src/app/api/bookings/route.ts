@@ -1,5 +1,6 @@
 // src/app/api/bookings/route.ts
 import { NextResponse } from 'next/server';
+
 import { prisma } from '@/lib/prisma';
 import { sendBookingEmails } from '@/lib/mailer';
 import { bookingSchema } from '@/components/booking/validation';
@@ -11,7 +12,6 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
-  console.log('[POST /api/bookings] start');
   try {
     const json = await req.json();
     const parsed = bookingSchema.parse(json);
@@ -188,7 +188,6 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log('[POST /api/bookings] ok', created.id);
     return NextResponse.json({ ok: true, bookingId: created.id }, { status: 201 });
   } catch (err: any) {
     if (err?.name === 'ZodError') {

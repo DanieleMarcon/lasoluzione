@@ -188,7 +188,9 @@ ${dinnerHtml}
 <p>In cassa comunica:<br/><em>“Prenotazione a nome ${data.name}, ${data.people} persone, codice #${data.id}”.</em></p>
 <p>A presto!<br/>Bar La Soluzione</p>`
   });
-  console.log('[mailer] email cliente sent:', r1.messageId);
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn('[mailer] email cliente sent', r1.messageId);
+  }
 
   // Email al bar
   const r2 = await transporter.sendMail({
@@ -205,5 +207,7 @@ Nome: ${data.name}
 Email: ${data.email}
 ${data.phone ? `Telefono: ${data.phone}\n` : ''}${data.notes ? `Note: ${data.notes}\n` : ''}${tierText}${lunchText}${dinnerText}`
   });
-  console.log('[mailer] email admin sent:', r2.messageId);
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn('[mailer] email admin sent', r2.messageId);
+  }
 }

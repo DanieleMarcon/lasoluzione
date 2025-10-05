@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+
 import { useConsentStore } from '@/state/useConsentStore';
 
 const FALLBACK_SRC =

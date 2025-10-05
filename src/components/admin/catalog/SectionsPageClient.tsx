@@ -1,8 +1,9 @@
 "use client";
 
-import { useToast } from '@/components/admin/ui/toast';
 import type { CSSProperties } from 'react';
 import { useCallback, useMemo, useState } from 'react';
+
+import { useToast } from '@/components/admin/ui/toast';
 
 type SectionProductRow = {
   productId: number;

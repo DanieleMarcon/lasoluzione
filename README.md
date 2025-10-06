@@ -143,6 +143,15 @@ pnpm dev                     # http://localhost:3000
 
 ---
 
+## Payments (Revolut)
+
+- Configura le variabili sandbox in `.env.local` copiandole da `.env.example`: `REVOLUT_SECRET_KEY`, `NEXT_PUBLIC_REVOLUT_PUBLIC_KEY`, `REVOLUT_API_VERSION`, `REVOLUT_API_BASE`, `PAY_RETURN_URL`, `PAY_CANCEL_URL`, `NEXT_PUBLIC_BASE_URL` (puntano all'ambiente sandbox e all'URL locale).
+- Flusso checkout MVP: `/api/payments/checkout` → widget Revolut → `/checkout/return` → `/api/payments/order-status`.
+- Nessun webhook richiesto per l'MVP; si possono aggiungere in seguito per la riconciliazione ordini/pagamenti.
+- Testa i pagamenti nello sandbox usando le carte di test fornite nella documentazione Revolut.
+
+---
+
 ## 7) Endpoints (selezione)
 
 **Pubblico (legacy)**  

@@ -56,10 +56,8 @@ model Product {
   category       String?
   order          Int      @default(0)
   active         Boolean  @default(true)
-
-  // Bridge verso origini legacy (opzionali)
-  sourceType     String?  // 'menu_dish' | 'event_tier'
-  sourceId       String?  // id/slug origine
+  sourceType     String?
+  sourceId       String?
 
   // Flag nutrizionali
   isVegan        Boolean  @default(false)
@@ -71,7 +69,11 @@ model Product {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  @@index([active, category, order])
+  // RELAZIONI
+  cartItems      CartItem[]
+
+  @@index([active, order])
+  @@index([category, order])
 }
 
 model CatalogSection {
@@ -115,26 +117,38 @@ model EventInstance {
 }
 
 model Cart {
-  id         String   @id @default(cuid())
-  status     String   @default("open")
-  totalCents Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id         String     @id @default(cuid())
+  status     String     @default("open")
+  totalCents Int        @default(0)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  // RELAZIONI
+  items      CartItem[]
 }
 
 model CartItem {
   id                 Int      @id @default(autoincrement())
   cartId             String
   productId          Int
+
+  // snapshot per stabilità storica
   nameSnapshot       String
   priceCentsSnapshot Int
   qty                Int
+
   imageUrlSnapshot   String?
   meta               Json?
+
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
+  // RELAZIONI
+  cart     Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
   @@index([cartId])
+  @@index([productId])
 }
 
 model Order {

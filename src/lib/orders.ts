@@ -1,7 +1,7 @@
-import type { Cart, CartItem, Order } from '@prisma/client';
+import type { Order } from '@prisma/client';
 
 import { prisma } from './prisma';
-import { getCartByToken, recalcCartTotal } from '@/lib/cart';
+import { type CartWithItems, getCartByToken, recalcCartTotal } from '@/lib/cart';
 
 import type { CheckoutInput, OrderDTO } from '@/types/order';
 
@@ -10,9 +10,7 @@ export type ValidateCartResult = {
   reason?: string;
 };
 
-type CartWithItems = (Cart & { items: CartItem[] }) | null;
-
-export function validateCartReady(cart: CartWithItems): ValidateCartResult {
+export function validateCartReady(cart: CartWithItems | null): ValidateCartResult {
   if (!cart) {
     return { ok: false, reason: 'CART_NOT_FOUND' };
   }

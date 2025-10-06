@@ -1,38 +1,35 @@
 // src/lib/cart.ts
-import type { Prisma as PrismaTypes, Cart, CartItem } from '@prisma/client';
+import type { Cart, CartItem } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
-export async function getCartById(id: string) {
-  const found = await prisma.cart.findUnique(
-    {
-      where: { id },
-      include: { items: true },
-    } satisfies PrismaTypes.CartFindUniqueArgs
-  );
-  return found!;
+export type CartWithItems = Cart & { items: CartItem[] };
+
+async function findCartWithItems(id: string): Promise<CartWithItems | null> {
+  const cart = await prisma.cart.findUnique({ where: { id } });
+  if (!cart) return null;
+  const items = await prisma.cartItem.findMany({ where: { cartId: id } });
+  return { ...cart, items } satisfies CartWithItems;
 }
 
-export async function getCartByToken(token: string) {
-  return getCartById(token);
+export async function getCartById(id: string): Promise<CartWithItems | null> {
+  return findCartWithItems(id);
 }
 
-export async function ensureCart(token?: string) {
+export async function getCartByToken(token: string): Promise<CartWithItems | null> {
+  return findCartWithItems(token);
+}
+
+export async function ensureCart(token?: string | null): Promise<CartWithItems> {
   if (token) {
-    const existing = await prisma.cart.findUnique(
-      {
-        where: { id: token },
-        include: { items: true },
-      } satisfies PrismaTypes.CartFindUniqueArgs
-    );
+    const existing = await findCartWithItems(token);
     if (existing) return existing;
   }
-  const created = await prisma.cart.create(
-    {
-      data: { status: 'open', totalCents: 0 },
-      include: { items: true },
-    } satisfies PrismaTypes.CartCreateArgs
-  );
-  return created;
+
+  const created = await prisma.cart.create({
+    data: { status: 'open', totalCents: 0 },
+  });
+
+  return { ...created, items: [] } satisfies CartWithItems;
 }
 
 export async function recalcCartTotal(cartId: string) {
@@ -44,7 +41,7 @@ export async function recalcCartTotal(cartId: string) {
 
 import type { CartDTO } from '@/types/cart';
 
-export function toCartDTO(cart: Cart & { items: CartItem[] }): CartDTO {
+export function toCartDTO(cart: CartWithItems): CartDTO {
   return {
     id: cart.id,
     token: cart.id,

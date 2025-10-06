@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ChangeEvent, FormEvent, useMemo, useState } from 'react';
 
 import { ToastProvider, useToast } from '@/components/admin/ui/toast';
+import CheckoutButton from '@/components/cart/CheckoutButton';
 import { useCart } from '@/hooks/useCart';
 import { formatCurrency } from '@/lib/formatCurrency';
 import type { OrderDTO } from '@/types/order';
@@ -144,11 +145,21 @@ function CheckoutContent() {
         className="container"
         style={{ padding: '2rem 1rem', maxWidth: 640, margin: '0 auto', textAlign: 'center' }}
       >
-        <h1 style={{ color: '#b45309' }}>Pagamento non configurato</h1>
-        <p style={{ fontSize: '1.1rem', color: '#0f172a' }}>Pagamento da integrare.</p>
-        <p style={{ color: '#475569' }}>
-          Ti avviseremo appena il gateway di pagamento sarà attivo per completare il tuo ordine.
+        <h1 style={{ color: '#0f172a', marginBottom: '0.5rem' }}>Completa il pagamento</h1>
+        <p style={{ fontSize: '1.05rem', color: '#334155' }}>
+          Ordine <strong>#{order.id}</strong> creato correttamente. Premi il pulsante per aprire il checkout Revolut e
+          finalizzare il pagamento di {formatCurrency(order.totalCents)}.
         </p>
+
+        <div style={{ margin: '2rem auto 0', maxWidth: 320 }}>
+          <CheckoutButton orderId={order.id} />
+        </div>
+
+        <p style={{ marginTop: '1.5rem', color: '#64748b' }}>
+          Una volta completata la transazione verrai reindirizzato alla pagina di conferma. Se chiudi la finestra puoi
+          sempre riprendere il pagamento dal link ricevuto via email.
+        </p>
+
         <div style={{ marginTop: '2rem' }}>
           <Link
             href="/prenota"

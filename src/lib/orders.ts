@@ -1,7 +1,7 @@
 import type { Cart, CartItem, Order } from '@prisma/client';
 
 import { prisma } from './prisma';
-import { getCartByToken, recalcCartTotal } from './cart';
+import { getCartByToken, recalcCartTotal } from '@/lib/cart';
 
 import type { CheckoutInput, OrderDTO } from '@/types/order';
 

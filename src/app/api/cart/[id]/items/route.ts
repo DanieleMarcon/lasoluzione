@@ -65,17 +65,6 @@ export async function POST(request: Request, ctx: RouteContext) {
     where: { cartId, productId: payload.productId },
   });
 
-  // Normalizza meta per Prisma (JsonNull quando vogliamo esplicitamente nullo)
-  const normalizedMetaUpdate =
-    payload.meta === undefined
-      ? undefined
-      : payload.meta === null
-      ? Prisma.JsonNull
-      : (payload.meta as Prisma.InputJsonValue);
-
-  const normalizedMetaCreate =
-    payload.meta === null ? Prisma.JsonNull : (payload.meta as Prisma.InputJsonValue | undefined);
-
   if (existingItem) {
     // UPDATE item
     const nextQty = payload.qty ?? existingItem.qty;
@@ -87,8 +76,10 @@ export async function POST(request: Request, ctx: RouteContext) {
         nameSnapshot: payload.nameSnapshot ?? existingItem.nameSnapshot,
         priceCentsSnapshot: payload.priceCentsSnapshot ?? existingItem.priceCentsSnapshot,
         imageUrlSnapshot: payload.imageUrlSnapshot ?? existingItem.imageUrlSnapshot,
-        // ⬇⬇ FIX: non usare `null` grezzo, ma Prisma.JsonNull, e lascia undefined per "non toccare"
-        meta: normalizedMetaUpdate,
+        meta:
+          payload.meta !== undefined
+            ? (payload.meta as any)
+            : existingItem.meta ?? Prisma.JsonNull,
       },
     });
 
@@ -109,8 +100,7 @@ export async function POST(request: Request, ctx: RouteContext) {
       nameSnapshot: payload.nameSnapshot ?? 'Prodotto',
       priceCentsSnapshot: payload.priceCentsSnapshot ?? 0,
       imageUrlSnapshot: payload.imageUrlSnapshot,
-      // ⬇⬇ FIX: su create, traduci null → Prisma.JsonNull
-      meta: normalizedMetaCreate,
+      meta: payload.meta !== undefined ? (payload.meta as any) : Prisma.JsonNull,
     },
   });
 

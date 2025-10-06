@@ -131,15 +131,12 @@ model CartItem {
   id                 Int      @id @default(autoincrement())
   cartId             String
   productId          Int
-
   // snapshot per stabilità storica
   nameSnapshot       String
   priceCentsSnapshot Int
   qty                Int
-
   imageUrlSnapshot   String?
   meta               Json?
-
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

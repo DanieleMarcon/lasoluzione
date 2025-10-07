@@ -24,12 +24,11 @@ export type UseCart = {
   ready: boolean;
   totalQty: number;
 
-  // azioni
   refresh: () => Promise<CartDTO | null>;
   setCart: (cart: CartDTO | null) => void;
   addItem: (payload: AddPayload) => Promise<void>;
   removeItem: (productId: number) => Promise<void>;
-  pending: Record<number, boolean>; // pending per singolo prodotto
+  pending: Record<number, boolean>;
 };
 
 async function parseResponse(res: Response): Promise<CartResponse> {
@@ -100,6 +99,7 @@ export function useCart(): UseCart {
     [persistToken]
   );
 
+  // Bootstrap: leggi il token locale e carica/crea il carrello
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const stored = window.localStorage.getItem(CART_STORAGE_KEY);
@@ -121,7 +121,6 @@ export function useCart(): UseCart {
         const res = await fetch(`/api/cart/${encodeURIComponent(cart.id)}/items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          // IMPORTANTISSIMO: passiamo anche lo snapshot di nome/prezzo
           body: JSON.stringify({
             productId: payload.productId,
             qty: payload.qty ?? 1,
@@ -169,5 +168,17 @@ export function useCart(): UseCart {
   const totalQty = useMemo(() => (cart?.items ?? []).reduce((acc, it) => acc + it.qty, 0), [cart]);
   const ready = !!cart && !loading;
 
-  return { cart, cartToken, loading, error, ready, totalQty, refresh, setCart: setCartState, addItem, removeItem, pending };
+  return {
+    cart,
+    cartToken,
+    loading,
+    error,
+    ready,
+    totalQty,
+    refresh,
+    setCart: setCartState,
+    addItem,
+    removeItem,
+    pending,
+  };
 }

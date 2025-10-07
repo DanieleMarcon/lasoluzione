@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import RevolutCheckout from '@revolut/checkout';
+
+import loadRevolutCheckout from '@/lib/revolut-checkout';
 
 export default function CheckoutButton({ orderId, disabled }: { orderId: string; disabled?: boolean }) {
   const [loading, setLoading] = useState(false);
@@ -27,7 +28,7 @@ export default function CheckoutButton({ orderId, disabled }: { orderId: string;
       }
 
       const { token } = data;
-      const instance = await RevolutCheckout(token, 'sandbox');
+      const instance = await loadRevolutCheckout(token, 'sandbox');
 
       instance.payWithPopup({
         onSuccess() {
@@ -40,9 +41,10 @@ export default function CheckoutButton({ orderId, disabled }: { orderId: string;
           window.location.href = `/checkout/cancel?orderId=${encodeURIComponent(orderId)}`;
         },
       });
-    } catch (e: any) {
-      console.error('[checkout][client] error', e);
-      alert(e?.message || 'Pagamento non avviato. Riprova tra poco.');
+    } catch (error: unknown) {
+      console.error('[checkout][client] error', error);
+      const message = error instanceof Error ? error.message : 'Pagamento non avviato. Riprova tra poco.';
+      alert(message);
     } finally {
       setLoading(false);
     }

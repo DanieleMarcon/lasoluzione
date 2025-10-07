@@ -1,6 +1,8 @@
 // src/app/api/cart/[id]/items/route.ts
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
+
 import { prisma } from '@/lib/prisma';
 // import { assertAdmin } from '@/lib/admin/session'; // se la rotta è pubblica, lascialo commentato
 
@@ -18,8 +20,20 @@ const upsertSchema = z.object({
 });
 
 type RouteContext = { params: { id: string } };
-// tipo di appoggio per le reduce
-type PQ = { priceCentsSnapshot: number; qty: number };
+
+function resolveMetaValue(
+  meta: z.infer<typeof upsertSchema>['meta']
+): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined {
+  if (meta === undefined) {
+    return undefined;
+  }
+
+  if (meta === null) {
+    return Prisma.NullableJsonNullValueInput.DbNull;
+  }
+
+  return meta as Prisma.InputJsonValue;
+}
 
 /**
  * POST = add/update riga nel carrello
@@ -59,8 +73,8 @@ export async function POST(request: Request, ctx: RouteContext) {
       where: { cartId },
       select: { priceCentsSnapshot: true, qty: true },
     });
-    const nextTotal = items.reduce(
-      (acc: number, it: PQ) => acc + it.priceCentsSnapshot * it.qty,
+    const nextTotal = items.reduce<number>(
+      (acc, item) => acc + item.priceCentsSnapshot * item.qty,
       0
     );
     await prisma.cart.update({ where: { id: cartId }, data: { totalCents: nextTotal } });
@@ -77,6 +91,8 @@ export async function POST(request: Request, ctx: RouteContext) {
     // UPDATE item
     const nextQty = payload.qty ?? existingItem.qty;
 
+    const metaValue = resolveMetaValue(payload.meta);
+
     const updated = await prisma.cartItem.update({
       where: { id: existingItem.id },
       data: {
@@ -87,7 +103,7 @@ export async function POST(request: Request, ctx: RouteContext) {
         imageUrlSnapshot:
           payload.imageUrlSnapshot ?? existingItem.imageUrlSnapshot,
         // Se meta è presente nel payload: lo applichiamo (può essere oggetto o null per svuotare)
-        ...(payload.meta !== undefined ? { meta: payload.meta as any } : {}),
+        ...(metaValue !== undefined ? { meta: metaValue } : {}),
       },
     });
 
@@ -96,8 +112,8 @@ export async function POST(request: Request, ctx: RouteContext) {
       where: { cartId },
       select: { priceCentsSnapshot: true, qty: true },
     });
-    const nextTotal = items.reduce(
-      (acc: number, it: PQ) => acc + it.priceCentsSnapshot * it.qty,
+    const nextTotal = items.reduce<number>(
+      (acc, item) => acc + item.priceCentsSnapshot * item.qty,
       0
     );
     await prisma.cart.update({ where: { id: cartId }, data: { totalCents: nextTotal } });
@@ -106,6 +122,8 @@ export async function POST(request: Request, ctx: RouteContext) {
   }
 
   // CREATE item
+  const metaValue = resolveMetaValue(payload.meta);
+
   const created = await prisma.cartItem.create({
     data: {
       cartId,
@@ -115,7 +133,7 @@ export async function POST(request: Request, ctx: RouteContext) {
       priceCentsSnapshot: payload.priceCentsSnapshot ?? 0,
       imageUrlSnapshot: payload.imageUrlSnapshot,
       // Se meta è presente: lo settiamo; altrimenti non inviamo il campo
-      ...(payload.meta !== undefined ? { meta: payload.meta as any } : {}),
+      ...(metaValue !== undefined ? { meta: metaValue } : {}),
     },
   });
 
@@ -124,8 +142,8 @@ export async function POST(request: Request, ctx: RouteContext) {
     where: { cartId },
     select: { priceCentsSnapshot: true, qty: true },
   });
-  const nextTotal = items.reduce(
-    (acc: number, it: PQ) => acc + it.priceCentsSnapshot * it.qty,
+  const nextTotal = items.reduce<number>(
+    (acc, item) => acc + item.priceCentsSnapshot * item.qty,
     0
   );
   await prisma.cart.update({ where: { id: cartId }, data: { totalCents: nextTotal } });
@@ -152,8 +170,8 @@ export async function DELETE(request: Request, ctx: RouteContext) {
     where: { cartId },
     select: { priceCentsSnapshot: true, qty: true },
   });
-  const nextTotal = items.reduce(
-    (acc: number, it: PQ) => acc + it.priceCentsSnapshot * it.qty,
+  const nextTotal = items.reduce<number>(
+    (acc, item) => acc + item.priceCentsSnapshot * item.qty,
     0
   );
   await prisma.cart.update({ where: { id: cartId }, data: { totalCents: nextTotal } });

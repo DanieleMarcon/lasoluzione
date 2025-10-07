@@ -1,7 +1,10 @@
 // next.config.mjs
 import createMDX from '@next/mdx';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const isProd = process.env.NODE_ENV === 'production';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -11,9 +14,19 @@ const nextConfig = {
   experimental: { mdxRs: true },
 
   // Estensioni di pagina supportate
-  pageExtensions: ['ts', 'tsx', 'md', 'mdx'],
+  pageExtensions: ['tsx', 'ts', 'mdx'],
 
   images: { remotePatterns: [] },
+
+  webpack(config) {
+    config.resolve = config.resolve ?? {};
+    config.resolve.alias = {
+      ...(config.resolve.alias ?? {}),
+      '@mdx-js/react': path.join(__dirname, 'src/lib/mdx-react-stub.tsx'),
+      '@revolut/checkout': path.join(__dirname, 'src/lib/revolut-checkout.ts'),
+    };
+    return config;
+  },
 
   async headers() {
     // In dev lasciamo 'unsafe-eval' per Fast Refresh; in prod lo togliamo.
@@ -47,12 +60,9 @@ const nextConfig = {
   },
 };
 
-// MDX plugin con import provider esplicito
+// MDX plugin base
 const withMDX = createMDX({
   extension: /\.mdx?$/,
-  options: {
-    providerImportSource: '@mdx-js/react',
-  },
 });
 
 export default withMDX(nextConfig);

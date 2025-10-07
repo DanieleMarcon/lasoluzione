@@ -58,7 +58,7 @@ export default function AdminSignInPage({ searchParams }: PageProps) {
               fontSize: '0.95rem'
             }}
           >
-            Questo indirizzo non è autorizzato ad accedere all'area admin.
+            {"Questo indirizzo non è autorizzato ad accedere all'area admin."}
           </div>
         )}
 

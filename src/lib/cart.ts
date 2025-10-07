@@ -99,8 +99,8 @@ export async function ensureCart(token?: string | null): Promise<CartWithItems> 
     data: { status: 'open', totalCents: 0 },
     include: { items: true },
   });
-
-  return mapCartWithItems({
+  
+return mapCartWithItems({
     ...created,
     items: created.items.map((item) => ({
       ...item,

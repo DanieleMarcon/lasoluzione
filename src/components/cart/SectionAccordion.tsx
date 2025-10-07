@@ -1,9 +1,8 @@
 /* eslint-disable @next/next/no-img-element */
-"use client";
+'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-
-import { useCart } from './CartProvider';
+import { useCart } from '@/hooks/useCart';
 
 import type { CatalogDTO, CatalogSectionDTO } from '@/types/catalog';
 
@@ -31,48 +30,47 @@ const currencyFormatter = new Intl.NumberFormat('it-IT', {
 });
 
 export default function SectionAccordion() {
-  const { addItem, loading: cartLoading } = useCart();
+  // dall’hook del carrello
+  const { cartToken, loading: cartLoading, refresh } = useCart();
+
   const [sections, setSections] = useState<CatalogSection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openSection, setOpenSection] = useState<CatalogSectionDTO['key'] | null>(null);
   const [openDetails, setOpenDetails] = useState<Record<number, boolean>>({});
+  const [pending, setPending] = useState<Record<number, boolean>>({}); // stato per i bottoni “Aggiungi”
 
+  // Carica il catalogo
   useEffect(() => {
-    let isActive = true;
+    let alive = true;
 
-    const loadSections = async () => {
+    (async () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch('/api/catalog', { cache: 'no-store' });
-        if (!response.ok) {
-          throw new Error('Impossibile caricare il catalogo');
-        }
-        const data = (await response.json()) as CatalogDTO;
-        if (!isActive) return;
-        const ordered = SECTION_ORDER.map((key) =>
-          data.sections.find((section) => section.key === key && section.active),
-        ).filter((section): section is CatalogSectionDTO => Boolean(section));
+        const res = await fetch('/api/catalog', { cache: 'no-store' });
+        if (!res.ok) throw new Error('Impossibile caricare il catalogo');
+        const data = (await res.json()) as CatalogDTO;
 
-        if (ordered.length > 0) {
-          setOpenSection((prev) => prev ?? ordered[0].key);
-        }
+        if (!alive) return;
+
+        const ordered = SECTION_ORDER
+          .map((k) => data.sections.find((s) => s.key === k && s.active))
+          .filter((s): s is CatalogSectionDTO => Boolean(s));
+
+        if (ordered.length > 0) setOpenSection((prev) => prev ?? ordered[0].key);
 
         setSections(ordered as CatalogSection[]);
-      } catch (err) {
-        console.error('[SectionAccordion] unable to fetch catalog', err);
-        if (!isActive) return;
-        setError('Non siamo riusciti a caricare il menu. Riprova più tardi.');
+      } catch (e) {
+        console.error('[SectionAccordion] fetch catalog error', e);
+        if (alive) setError('Non siamo riusciti a caricare il menu. Riprova più tardi.');
       } finally {
-        if (isActive) setLoading(false);
+        if (alive) setLoading(false);
       }
-    };
-
-    loadSections();
+    })();
 
     return () => {
-      isActive = false;
+      alive = false;
     };
   }, []);
 
@@ -84,11 +82,53 @@ export default function SectionAccordion() {
     setOpenDetails((prev) => ({ ...prev, [productId]: !prev[productId] }));
   }, []);
 
+  /**
+   * Aggiunge al carrello:
+   * - se non c’è ancora un token, lo crea via refresh()
+   * - invia anche gli snapshot (name/price/img) così il totale risulta corretto
+   * - poi rifresha il carrello per aggiornare il totale nella UI
+   */
   const handleAddToCart = useCallback(
-    async (productId: number) => {
-      await addItem(productId, 1);
+    async (p: CatalogProduct) => {
+      // assicurati di avere un token
+      let token = cartToken;
+      if (!token) {
+        const created = await refresh(); // l’hook, con token null, crea il carrello
+        token = created?.token ?? null;
+      }
+      if (!token) return;
+
+      try {
+        setPending((m) => ({ ...m, [p.id]: true }));
+
+        const res = await fetch(`/api/cart/${encodeURIComponent(token)}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            productId: p.id,
+            qty: 1,
+            nameSnapshot: p.name,
+            priceCentsSnapshot: p.priceCents,       // <-- fondamentale per il totale
+            imageUrlSnapshot: p.imageUrl ?? undefined,
+            // meta: puoi passare un oggetto opzionale se servono dettagli aggiuntivi
+          }),
+        });
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({} as any));
+          throw new Error(body?.error || `HTTP ${res.status}`);
+        }
+
+        // aggiorna lo stato del carrello (totale, righe, ecc.)
+        await refresh();
+      } catch (e) {
+        console.error('[SectionAccordion] add item error', e);
+        // opzionale: toast d’errore
+      } finally {
+        setPending((m) => ({ ...m, [p.id]: false }));
+      }
     },
-    [addItem],
+    [cartToken, refresh]
   );
 
   const content = useMemo(() => {
@@ -102,11 +142,7 @@ export default function SectionAccordion() {
     }
 
     if (error) {
-      return (
-        <div className="alert alert-danger" role="alert">
-          {error}
-        </div>
-      );
+      return <div className="alert alert-danger">{error}</div>;
     }
 
     if (sections.length === 0) {
@@ -132,6 +168,7 @@ export default function SectionAccordion() {
             <small className="text-muted d-block mt-2">{section.description}</small>
           ) : null}
         </button>
+
         {openSection === section.key ? (
           <div className="px-4 pb-4">
             {section.products.length === 0 ? (
@@ -139,14 +176,10 @@ export default function SectionAccordion() {
             ) : (
               section.products.map((product) => {
                 const isDetailsOpen = openDetails[product.id] ?? false;
-                const hasDetails = Boolean(
-                  (product as CatalogProduct).description ||
-                    (product as CatalogProduct).ingredients ||
-                    (product as CatalogProduct).allergens,
-                );
-                const description = (product as CatalogProduct).description;
-                const ingredients = (product as CatalogProduct).ingredients;
-                const allergens = (product as CatalogProduct).allergens;
+                const hasDetails =
+                  Boolean(product.description) ||
+                  Boolean(product.ingredients) ||
+                  Boolean(product.allergens);
 
                 return (
                   <div className="border rounded-3 p-3 mb-3" key={product.id}>
@@ -159,6 +192,7 @@ export default function SectionAccordion() {
                           style={{ width: 72, height: 72, objectFit: 'cover' }}
                         />
                       ) : null}
+
                       <div className="flex-grow-1">
                         <div className="d-flex justify-content-between align-items-start flex-wrap gap-2">
                           <div>
@@ -169,6 +203,7 @@ export default function SectionAccordion() {
                               {currencyFormatter.format(product.priceCents / 100)}
                             </span>
                           </div>
+
                           <div className="d-flex gap-2">
                             {hasDetails ? (
                               <button
@@ -179,44 +214,45 @@ export default function SectionAccordion() {
                                 {isDetailsOpen ? 'Nascondi dettagli' : 'Dettagli'}
                               </button>
                             ) : null}
+
                             <button
                               type="button"
                               className="btn btn-primary btn-sm"
-                              disabled={cartLoading}
-                              onClick={() => handleAddToCart(product.id)}
+                              disabled={cartLoading || !!pending[product.id]}
+                              onClick={() => handleAddToCart(product)}
                             >
-                              Aggiungi
+                              {pending[product.id] ? 'Attendere…' : 'Aggiungi'}
                             </button>
                           </div>
                         </div>
+
                         {hasDetails ? (
                           <div
                             className="mt-3"
                             style={{ display: isDetailsOpen ? 'block' : 'none' }}
                             aria-live="polite"
                           >
-                            {description ? (
+                            {product.description ? (
                               <p className="mb-2">
-                                <strong>Descrizione:</strong> {description}
+                                <strong>Descrizione:</strong> {product.description}
                               </p>
                             ) : null}
-                            {ingredients ? (
+                            {product.ingredients ? (
                               <p className="mb-2">
-                                <strong>Ingredienti:</strong> {ingredients}
+                                <strong>Ingredienti:</strong> {product.ingredients}
                               </p>
                             ) : null}
-                            {allergens ? (
+                            {product.allergens ? (
                               <p className="mb-0">
-                                <strong>Allergeni:</strong> {allergens}
+                                <strong>Allergeni:</strong> {product.allergens}
                               </p>
                             ) : null}
                           </div>
-                        ) : null}
-                        {!hasDetails ? (
+                        ) : (
                           <p className="text-muted small mb-0 mt-2">
                             Nessun dettaglio aggiuntivo disponibile.
                           </p>
-                        ) : null}
+                        )}
                       </div>
                     </div>
                   </div>
@@ -227,7 +263,18 @@ export default function SectionAccordion() {
         ) : null}
       </div>
     ));
-  }, [cartLoading, error, handleAddToCart, handleToggleDetails, handleToggleSection, loading, openDetails, openSection, sections]);
+  }, [
+    loading,
+    error,
+    sections,
+    openSection,
+    openDetails,
+    cartLoading,
+    pending,
+    handleAddToCart,
+    handleToggleDetails,
+    handleToggleSection,
+  ]);
 
   return <div>{content}</div>;
 }

@@ -1,14 +1,23 @@
 // src/lib/cart.ts
-import type { Cart, CartItem } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
-export type CartWithItems = Cart & { items: CartItem[] };
+// funzione dummy per avere i tipi reali (non viene mai eseguita)
+function _cartWithItemsType() {
+  return prisma.cart.findUnique({
+    where: { id: '' as string },
+    include: { items: true },
+  });
+}
+export type CartWithItems = NonNullable<
+  Awaited<ReturnType<typeof _cartWithItemsType>>
+>;
+type CartItemEntity = CartWithItems['items'][number];
 
 async function findCartWithItems(id: string): Promise<CartWithItems | null> {
-  const cart = await prisma.cart.findUnique({ where: { id } });
-  if (!cart) return null;
-  const items = await prisma.cartItem.findMany({ where: { cartId: id } });
-  return { ...cart, items } satisfies CartWithItems;
+  return prisma.cart.findUnique({
+    where: { id },
+    include: { items: true },
+  }) as Promise<CartWithItems | null>;
 }
 
 export async function getCartById(id: string): Promise<CartWithItems | null> {
@@ -27,14 +36,22 @@ export async function ensureCart(token?: string | null): Promise<CartWithItems> 
 
   const created = await prisma.cart.create({
     data: { status: 'open', totalCents: 0 },
+    include: { items: true },
   });
 
-  return { ...created, items: [] } satisfies CartWithItems;
+  return created as CartWithItems;
 }
 
 export async function recalcCartTotal(cartId: string) {
-  const items = await prisma.cartItem.findMany({ where: { cartId } });
-  const total = items.reduce((acc, it) => acc + it.priceCentsSnapshot * it.qty, 0);
+  type PQ = { priceCentsSnapshot: number; qty: number };
+  const items = await prisma.cartItem.findMany({
+    where: { cartId },
+    select: { priceCentsSnapshot: true, qty: true },
+  });
+  const total = items.reduce(
+    (acc: number, it: PQ) => acc + it.priceCentsSnapshot * it.qty,
+    0
+  );
   await prisma.cart.update({ where: { id: cartId }, data: { totalCents: total } });
   return total;
 }
@@ -44,17 +61,17 @@ import type { CartDTO } from '@/types/cart';
 export function toCartDTO(cart: CartWithItems): CartDTO {
   return {
     id: cart.id,
-    token: cart.id,
+    token: cart.id, // nel tuo dominio token == id
     status: cart.status as CartDTO['status'],
     totalCents: cart.totalCents,
-    items: cart.items.map((it) => ({
+    items: cart.items.map((it: CartItemEntity) => ({
       id: it.id,
       productId: it.productId,
       nameSnapshot: it.nameSnapshot,
       priceCentsSnapshot: it.priceCentsSnapshot,
       qty: it.qty,
       imageUrlSnapshot: it.imageUrlSnapshot ?? undefined,
-      meta: (it.meta as any) ?? undefined,
+      meta: (it.meta as unknown) ?? undefined,
     })),
   };
 }

@@ -1,9 +1,11 @@
-import type { Order } from '@prisma/client';
-
+// src/lib/orders.ts
 import { prisma } from './prisma';
 import { type CartWithItems, getCartByToken, recalcCartTotal } from '@/lib/cart';
 
 import type { CheckoutInput, OrderDTO } from '@/types/order';
+
+// Tipo Order basato sul return di prisma.order.create
+type OrderEntity = Awaited<ReturnType<typeof prisma.order.create>>;
 
 export type ValidateCartResult = {
   ok: boolean;
@@ -11,13 +13,9 @@ export type ValidateCartResult = {
 };
 
 export function validateCartReady(cart: CartWithItems | null): ValidateCartResult {
-  if (!cart) {
-    return { ok: false, reason: 'CART_NOT_FOUND' };
-  }
+  if (!cart) return { ok: false, reason: 'CART_NOT_FOUND' };
 
-  if (cart.status === 'expired') {
-    return { ok: false, reason: 'CART_EXPIRED' };
-  }
+  if (cart.status === 'expired') return { ok: false, reason: 'CART_EXPIRED' };
 
   if (cart.status !== 'open' && cart.status !== 'locked') {
     return { ok: false, reason: 'CART_NOT_READY' };
@@ -40,7 +38,7 @@ export class OrderCheckoutError extends Error {
   }
 }
 
-export async function createOrderFromCart(input: CheckoutInput): Promise<Order> {
+export async function createOrderFromCart(input: CheckoutInput): Promise<OrderEntity> {
   const { token, email, name, phone } = input;
 
   if (!token) {
@@ -75,7 +73,7 @@ export async function createOrderFromCart(input: CheckoutInput): Promise<Order> 
   return order;
 }
 
-export function toOrderDTO(order: Order): OrderDTO {
+export function toOrderDTO(order: OrderEntity): OrderDTO {
   return {
     id: order.id,
     cartId: order.cartId,

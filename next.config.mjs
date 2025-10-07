@@ -1,18 +1,22 @@
 // next.config.mjs
-
 import createMDX from '@next/mdx';
 
-/** @type {import('next').NextConfig} */
 const isProd = process.env.NODE_ENV === 'production';
 
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  // Abilita il compilatore MDX di Next
   experimental: { mdxRs: true },
+
+  // Estensioni di pagina supportate
+  pageExtensions: ['ts', 'tsx', 'md', 'mdx'],
 
   images: { remotePatterns: [] },
 
   async headers() {
-    // In dev lasciamo 'unsafe-eval' (serve a React Fast Refresh). In prod lo togliamo.
+    // In dev lasciamo 'unsafe-eval' per Fast Refresh; in prod lo togliamo.
     const csp = [
       "default-src 'self'",
       `script-src 'self' 'unsafe-inline'${isProd ? '' : " 'unsafe-eval'"}`,
@@ -24,7 +28,7 @@ const nextConfig = {
       "frame-src 'self' https://www.google.com https://*.google.com https://www.google.it https://*.google.it",
       "base-uri 'self'",
       "form-action 'self'",
-      "frame-ancestors 'self'"
+      "frame-ancestors 'self'",
     ].join('; ');
 
     return [
@@ -36,14 +40,19 @@ const nextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Permissions-Policy', value: 'geolocation=(), microphone=(), camera=()' },
           // Non blocca il tuo iframe in uscita verso Google; impedisce solo che *il tuo sito* venga iframato da terzi.
-          { key: 'X-Frame-Options', value: 'SAMEORIGIN' }
-        ]
-      }
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+        ],
+      },
     ];
   },
-
-  pageExtensions: ['tsx', 'ts', 'mdx']
 };
 
-const withMDX = createMDX({});
+// MDX plugin con import provider esplicito
+const withMDX = createMDX({
+  extension: /\.mdx?$/,
+  options: {
+    providerImportSource: '@mdx-js/react',
+  },
+});
+
 export default withMDX(nextConfig);

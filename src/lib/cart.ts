@@ -1,7 +1,7 @@
 // src/lib/cart.ts
 import { prisma } from '@/lib/prisma';
-import type { Prisma } from '@prisma/client';
 
+// ---- Tipi locali (indipendenti da Prisma) ----
 export type CartItemEntity = {
   id: number;
   cartId: string;
@@ -24,10 +24,19 @@ export type CartWithItems = {
   items: CartItemEntity[];
 };
 
-type PrismaCartWithItems = Prisma.CartGetPayload<{ include: { items: true } }>;
-type CartItemSummary = { priceCentsSnapshot: number; qty: number };
-
-function mapCartItem(item: PrismaCartWithItems['items'][number]): CartItemEntity {
+// ---- Mapping helpers ----
+function mapCartItem(item: {
+  id: number;
+  cartId: string;
+  productId: number;
+  nameSnapshot: string;
+  priceCentsSnapshot: number;
+  qty: number;
+  imageUrlSnapshot: string | null;
+  meta: unknown | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): CartItemEntity {
   return {
     id: item.id,
     cartId: item.cartId,
@@ -36,13 +45,20 @@ function mapCartItem(item: PrismaCartWithItems['items'][number]): CartItemEntity
     priceCentsSnapshot: item.priceCentsSnapshot,
     qty: item.qty,
     imageUrlSnapshot: item.imageUrlSnapshot ?? null,
-    meta: (item.meta as unknown) ?? null,
+    meta: item.meta ?? null,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };
 }
 
-function mapCartWithItems(cart: PrismaCartWithItems): CartWithItems {
+function mapCartWithItems(cart: {
+  id: string;
+  status: string;
+  totalCents: number;
+  createdAt: Date;
+  updatedAt: Date;
+  items: Array<Parameters<typeof mapCartItem>[0]>;
+}): CartWithItems {
   return {
     id: cart.id,
     status: cart.status,
@@ -53,14 +69,13 @@ function mapCartWithItems(cart: PrismaCartWithItems): CartWithItems {
   };
 }
 
+// ---- Queries ----
 async function findCartWithItems(id: string): Promise<CartWithItems | null> {
   const cart = await prisma.cart.findUnique({
     where: { id },
     include: { items: true },
   });
-
   if (!cart) return null;
-
   return mapCartWithItems(cart);
 }
 
@@ -77,29 +92,28 @@ export async function ensureCart(token?: string | null): Promise<CartWithItems> 
     const existing = await findCartWithItems(token);
     if (existing) return existing;
   }
-
   const created = await prisma.cart.create({
     data: { status: 'open', totalCents: 0 },
     include: { items: true },
   });
-
   return mapCartWithItems(created);
 }
 
 export async function recalcCartTotal(cartId: string) {
-  const items: CartItemSummary[] = await prisma.cartItem.findMany({
+  const items = await prisma.cartItem.findMany({
     where: { cartId },
     select: { priceCentsSnapshot: true, qty: true },
   });
-  const total = items.reduce<number>(
-    (acc: number, item: CartItemSummary) =>
-      acc + item.priceCentsSnapshot * item.qty,
+  const total = items.reduce(
+    (acc: number, it: { priceCentsSnapshot: number; qty: number }) =>
+      acc + it.priceCentsSnapshot * it.qty,
     0
   );
   await prisma.cart.update({ where: { id: cartId }, data: { totalCents: total } });
   return total;
 }
 
+// ---- DTO ----
 import type { CartDTO, CartItemDTO } from '@/types/cart';
 
 function toCartItemDTO(item: CartItemEntity): CartItemDTO {
@@ -110,15 +124,8 @@ function toCartItemDTO(item: CartItemEntity): CartItemDTO {
     priceCentsSnapshot: item.priceCentsSnapshot,
     qty: item.qty,
   };
-
-  if (item.imageUrlSnapshot) {
-    dto.imageUrlSnapshot = item.imageUrlSnapshot;
-  }
-
-  if (item.meta != null) {
-    dto.meta = item.meta;
-  }
-
+  if (item.imageUrlSnapshot) dto.imageUrlSnapshot = item.imageUrlSnapshot;
+  if (item.meta != null) dto.meta = item.meta;
   return dto;
 }
 

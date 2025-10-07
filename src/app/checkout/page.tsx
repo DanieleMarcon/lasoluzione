@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ChangeEvent, FormEvent, useMemo, useState } from 'react';
+import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 
 import { ToastProvider, useToast } from '@/components/admin/ui/toast';
 import CheckoutButton from '@/components/cart/CheckoutButton';
@@ -33,16 +33,15 @@ function CheckoutContent() {
   const [submitting, setSubmitting] = useState(false);
   const [order, setOrder] = useState<OrderDTO | null>(null);
 
+  const items = cart?.items ?? [];
+  const hasItems = items.length > 0;
+  const totalCents = cart?.totalCents ?? 0;
+
   const view: OrderView = order
     ? order.status === 'confirmed'
       ? 'confirmed'
       : 'pending'
     : 'idle';
-
-  const items = cart?.items ?? [];
-  const hasItems = items.length > 0;
-
-  const totalCents = cart?.totalCents ?? 0;
 
   const summaryDescription = useMemo(() => {
     if (loading) return 'Caricamento del carrello in corso…';
@@ -51,7 +50,8 @@ function CheckoutContent() {
     return 'Controlla i dettagli dell’ordine prima di completare il checkout.';
   }, [loading, error, hasItems]);
 
-  const handleInputChange = (field: keyof FormState) =>
+  const handleInputChange =
+    (field: keyof FormState) =>
     (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const value = event.target.value;
       setFormState((prev) => ({ ...prev, [field]: value }));
@@ -59,6 +59,7 @@ function CheckoutContent() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
     if (!cartToken) {
       toast.error('Carrello non disponibile. Riprova più tardi.');
       return;
@@ -90,7 +91,9 @@ function CheckoutContent() {
         }),
       });
 
-      const body = (await res.json().catch(() => null)) as { ok: boolean; data?: OrderDTO; error?: string } | null;
+      const body = (await res.json().catch(() => null)) as
+        | { ok: boolean; data?: OrderDTO; error?: string }
+        | null;
 
       if (!res.ok || !body?.ok || !body.data) {
         toast.error(body?.error || 'Impossibile completare il checkout.');

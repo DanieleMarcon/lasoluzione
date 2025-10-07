@@ -103,7 +103,7 @@ export default async function AdminDashboardPage() {
           <div style={cardStyle}>
             <h2 style={cardTitleStyle}>Da confermare</h2>
             <p style={countStyle}>{pendingConfirmation}</p>
-            <p style={cardHintStyle}>Richieste in stato "pending"</p>
+            <p style={cardHintStyle}>Richieste in stato &quot;pending&quot;</p>
           </div>
           <div style={cardStyle}>
             <h2 style={cardTitleStyle}>Annullate</h2>

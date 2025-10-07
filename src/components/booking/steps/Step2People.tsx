@@ -24,6 +24,17 @@ type TierValue = {
   order: number;
 };
 
+type BookingStepFormValues = {
+  people: number;
+  type: string;
+  lunchOrder?: LunchOrderItem[];
+  tier?: TierValue | null;
+  tierId?: string;
+  tierType?: 'evento' | 'aperitivo';
+  tierLabel?: string;
+  tierPriceCents?: number;
+};
+
 function formatMoney(cents: number) {
   return (cents / 100).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 }
@@ -38,13 +49,28 @@ function toTierValue(tier: BookingTierDTO): TierValue {
   };
 }
 
+function extractErrorMessage(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object') {
+    return undefined;
+  }
+
+  if ('message' in error) {
+    const maybeMessage = (error as { message?: unknown }).message;
+    if (typeof maybeMessage === 'string') {
+      return maybeMessage;
+    }
+  }
+
+  return undefined;
+}
+
 export default function Step2People({ typeOptions, prepayAmountCents, menu, tiers }: Step2PeopleProps) {
   const {
     register,
     formState: { errors },
     setValue,
     watch,
-  } = useFormContext();
+  } = useFormContext<BookingStepFormValues>();
 
   useEffect(() => {
     register('lunchOrder');
@@ -58,17 +84,17 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
     register('tierPriceCents');
   }, [register]);
 
-  const people = watch('people') as number;
-  const selectedType = watch('type') as string;
-  const lunchOrderValue = watch('lunchOrder') as LunchOrderItem[] | undefined;
+  const people = watch('people');
+  const selectedType = watch('type');
+  const lunchOrderValue = watch('lunchOrder');
   const lunchOrder = useMemo(() => lunchOrderValue ?? [], [lunchOrderValue]);
-  const selectedTier = watch('tier') as TierValue | undefined;
+  const selectedTier = watch('tier') ?? undefined;
 
   useEffect(() => {
     if (typeOptions.length === 0) return;
-    if (!typeOptions.some(option => option.value === selectedType)) {
+    if (!typeOptions.some((option) => option.value === selectedType)) {
       const fallback = typeOptions[0];
-      setValue('type', fallback.value as any, { shouldValidate: true });
+      setValue('type', fallback.value, { shouldValidate: true });
     }
   }, [selectedType, setValue, typeOptions]);
 
@@ -83,9 +109,9 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
   const isDinner = selectedType === 'cena';
   const isMealWithMenu = isLunch || isDinner;
 
-  const tierOptions = useMemo(() => {
-    if (!isTierType) return [] as TierValue[];
-    const key = selectedType as 'evento' | 'aperitivo';
+  const tierOptions = useMemo<TierValue[]>(() => {
+    if (!isTierType) return [];
+    const key = selectedType === 'evento' ? 'evento' : 'aperitivo';
     return [...(tiers[key] ?? [])]
       .filter((tier) => tier.active)
       .sort((a, b) => {
@@ -117,22 +143,26 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
     }
 
     const exists = selectedTier && tierOptions.some((tier) => tier.id === selectedTier.id);
+    const tierTypeValue: 'evento' | 'aperitivo' = selectedType === 'evento' ? 'evento' : 'aperitivo';
+
     if (!exists) {
       const first = tierOptions[0];
       setValue('tier', first, { shouldValidate: true });
       setValue('tierId', first.id, { shouldValidate: true });
-      setValue('tierType', selectedType as 'evento' | 'aperitivo', { shouldValidate: true });
+      setValue('tierType', tierTypeValue, { shouldValidate: true });
       setValue('tierLabel', first.label, { shouldValidate: true });
       setValue('tierPriceCents', first.priceCents, { shouldValidate: true });
     } else if (selectedTier) {
       setValue('tierId', selectedTier.id, { shouldValidate: true });
-      setValue('tierType', selectedType as 'evento' | 'aperitivo', { shouldValidate: true });
+      setValue('tierType', tierTypeValue, { shouldValidate: true });
       setValue('tierLabel', selectedTier.label, { shouldValidate: true });
       setValue('tierPriceCents', selectedTier.priceCents, { shouldValidate: true });
     }
   }, [isTierType, selectedType, tierOptions, selectedTier, setValue]);
 
-  const filteredDishes = useMemo(() => {
+  type MenuDishItem = BookingMenuDTO['dishes'][number];
+
+  const filteredDishes = useMemo<MenuDishItem[]>(() => {
     if (isLunch) {
       return menu.dishes.filter((dish) => dish.visibleAt === 'lunch' || dish.visibleAt === 'both');
     }
@@ -152,7 +182,7 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
 
   const updateQty = (dishId: number, qty: number) => {
     const nextQty = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 0;
-    const next = lunchOrder.filter(item => item.dishId !== dishId);
+    const next = lunchOrder.filter((item) => item.dishId !== dishId);
     if (nextQty > 0) {
       next.push({ dishId, qty: nextQty });
     }
@@ -160,8 +190,8 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
   };
 
   const groups = useMemo(() => {
-    const map = new Map<string, typeof filteredDishes>();
-    filteredDishes.forEach(dish => {
+    const map = new Map<string, MenuDishItem[]>();
+    filteredDishes.forEach((dish) => {
       const key = dish.category ?? '';
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(dish);
@@ -176,20 +206,26 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
       ? menu.dinnerCoverCents
       : 0;
   const subtotalCents = isMealWithMenu
-    ? filteredDishes.reduce((acc, dish) => acc + dish.priceCents * (orderMap.get(dish.id) ?? 0), 0)
+    ? filteredDishes.reduce<number>(
+      (acc, dish) => acc + dish.priceCents * (orderMap.get(dish.id) ?? 0),
+      0
+    )
     : 0;
   const coverTotalCents = isMealWithMenu ? mealCoverCents * peopleCount : 0;
   const totalCents = isMealWithMenu ? subtotalCents + coverTotalCents : 0;
 
-  const lunchError = errors.lunchOrder as any;
-  const tierErrorSources = [
+  const lunchErrorMessage = extractErrorMessage(errors.lunchOrder);
+  const tierErrorSources: Array<{ message?: string } | undefined> = [
     errors.tier as { message?: string } | undefined,
     errors.tierId as { message?: string } | undefined,
     errors.tierType as { message?: string } | undefined,
     errors.tierLabel as { message?: string } | undefined,
     errors.tierPriceCents as { message?: string } | undefined,
   ];
-  const tierErrorMessage = tierErrorSources.find((err) => err?.message)?.message;
+  const tierErrorMessage = tierErrorSources
+    .map((errorItem) => extractErrorMessage(errorItem))
+    .find((message) => typeof message === 'string');
+  const peopleErrorMessage = extractErrorMessage(errors.people);
 
   return (
     <fieldset>
@@ -207,7 +243,7 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
       />
       <br />
       <span id="err-people" role="alert">
-        {(errors.people as any)?.message}
+        {peopleErrorMessage}
       </span>
       <div style={{ marginTop: '.75rem' }}>
         <span id="type-label">Tipologia</span>
@@ -216,7 +252,7 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
           {typeOptions.length === 0 ? (
             <p>Nessuna tipologia disponibile al momento.</p>
           ) : (
-            typeOptions.map(option => {
+            typeOptions.map((option) => {
               const requiresPrepay = option.requiresPrepay;
               const isLunchOption = option.value === 'pranzo';
               const isDinnerOption = option.value === 'cena';
@@ -288,6 +324,7 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
                         value={tier.id}
                         checked={checked}
                         onChange={() => {
+                          const tierTypeValue = selectedType === 'evento' ? 'evento' : 'aperitivo';
                           setValue('tier', tier, {
                             shouldValidate: true,
                             shouldDirty: true,
@@ -296,7 +333,7 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
                             shouldValidate: true,
                             shouldDirty: true,
                           });
-                          setValue('tierType', selectedType as 'evento' | 'aperitivo', {
+                          setValue('tierType', tierTypeValue, {
                             shouldValidate: true,
                             shouldDirty: true,
                           });
@@ -342,7 +379,7 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
           )}
 
           {groups.length === 0 ? (
-            <p>Nessun piatto configurato. Contatta l'amministratore.</p>
+            <p>{"Nessun piatto configurato. Contatta l'amministratore."}</p>
           ) : (
             groups.map(([category, dishes]) => (
               <section key={category || 'no-category'} style={{ borderTop: '1px solid #e5e7eb', paddingTop: '1rem' }}>
@@ -395,8 +432,8 @@ export default function Step2People({ typeOptions, prepayAmountCents, menu, tier
             ))
           )}
 
-          {lunchError && (
-            <p style={{ margin: 0, color: '#b91c1c' }}>{lunchError.message}</p>
+          {lunchErrorMessage && (
+            <p style={{ margin: 0, color: '#b91c1c' }}>{lunchErrorMessage}</p>
           )}
 
           <div

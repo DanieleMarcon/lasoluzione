@@ -119,9 +119,10 @@ function SettingsFormInner({ settings, allTypes }: Props) {
 
       setAlert(null);
       toast.success('Impostazioni aggiornate');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[SettingsForm] update error', error);
-      setAlert({ kind: 'error', message: error?.message ?? 'Impossibile salvare le impostazioni' });
+      const message = error instanceof Error ? error.message : 'Impossibile salvare le impostazioni';
+      setAlert({ kind: 'error', message });
     } finally {
       setSaving(false);
     }
@@ -246,8 +247,8 @@ function SettingsFormInner({ settings, allTypes }: Props) {
           />
         </label>
         <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>
-          Tipologie contrassegnate come "richiede pagamento" mostreranno il bottone di pre-pagamento nel
-          flusso pubblico. L'importo viene usato anche nei messaggi email.
+          Tipologie contrassegnate come &quot;richiede pagamento&quot; mostreranno il bottone di pre-pagamento nel
+          flusso pubblico. L&apos;importo viene usato anche nei messaggi email.
         </p>
       </section>
 

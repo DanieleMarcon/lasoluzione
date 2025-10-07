@@ -21,8 +21,8 @@ export default function NotAuthorizedPage() {
       <div style={{ textAlign: 'center', maxWidth: 420, display: 'grid', gap: '1rem' }}>
         <h1 style={{ fontSize: '2rem', margin: 0 }}>Accesso non autorizzato</h1>
         <p style={{ margin: 0, color: '#d1d5db' }}>
-          L'indirizzo email utilizzato non fa parte della lista autorizzata. Se pensi ci sia un
-          errore contatta il responsabile del sito.
+          {"L'indirizzo email utilizzato non fa parte della lista autorizzata. Se pensi ci sia un"}
+          {" errore contatta il responsabile del sito."}
         </p>
         <a
           href="/admin/signin"

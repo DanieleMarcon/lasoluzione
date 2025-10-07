@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+
 import { prisma } from '@/lib/prisma';
 import { createRevolutOrder } from '@/lib/revolut';
 
@@ -31,17 +32,14 @@ export async function POST(req: Request) {
 
     // Create Revolut order
     const description = `Prenotazione #${order.id} - Bar La Soluzione`;
-    const successUrl = `${process.env.PAY_RETURN_URL}?orderId=${encodeURIComponent(order.id)}`;
-    const cancelUrl = `${process.env.PAY_CANCEL_URL}?orderId=${encodeURIComponent(order.id)}`;
 
-    const { paymentRef, publicId } = await createRevolutOrder({
+    const { paymentRef, token } = await createRevolutOrder({
       amountMinor: totalCents,
       currency: 'EUR',
       merchantOrderId: order.id,
       customer: { email: order.email, name: order.name },
       description,
-      successUrl,
-      cancelUrl,
+      captureMode: 'automatic',
     });
 
     await prisma.order.update({
@@ -51,10 +49,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      data: { mode: 'widget', orderId: order.id, paymentRef, publicId },
+      data: { mode: 'widget', orderId: order.id, paymentRef, token },
     });
   } catch (err: any) {
     console.error('[payments][checkout] error', err);
-    return NextResponse.json({ ok: false, error: 'Checkout error' }, { status: 500 });
+    return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status: 500 });
   }
 }

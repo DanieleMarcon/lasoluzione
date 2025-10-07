@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+
 import { prisma } from '@/lib/prisma';
 import { retrieveRevolutOrder, isRevolutPaid } from '@/lib/revolut';
 
@@ -32,12 +33,13 @@ export async function GET(req: Request) {
     }
 
     const remote = await retrieveRevolutOrder(paymentRef);
-    const paid = isRevolutPaid(remote.state);
+    const state = remote.state;
+    const paid = isRevolutPaid(state);
 
     if (paid) {
       await prisma.order.update({ where: { id: orderId }, data: { status: 'paid' } });
       return NextResponse.json({ ok: true, data: { status: 'paid' } });
-    } else if (remote.state === 'failed' || remote.state === 'cancelled') {
+    } else if (state === 'failed' || state === 'cancelled' || state === 'declined') {
       await prisma.order.update({ where: { id: orderId }, data: { status: 'failed' } });
       return NextResponse.json({ ok: true, data: { status: 'failed' } });
     }
@@ -45,6 +47,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, data: { status: 'pending' } });
   } catch (err: any) {
     console.error('[payments][status] error', err);
-    return NextResponse.json({ ok: false, error: 'Status error' }, { status: 500 });
+    return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status: 500 });
   }
 }

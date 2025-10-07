@@ -15,6 +15,7 @@
     "seed": "prisma db seed"
   },
   "dependencies": {
+    "@revolut/checkout": "^2.6.0",
     "@auth/prisma-adapter": "^1.0.7",
     "@hookform/resolvers": "^3.10.0",
     "@prisma/client": "^6.16.3",

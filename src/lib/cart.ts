@@ -10,7 +10,7 @@ export type CartItemEntity = {
   priceCentsSnapshot: number;
   qty: number;
   imageUrlSnapshot: string | null;
-  meta: unknown;
+  meta: unknown | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -36,7 +36,7 @@ function mapCartItem(item: PrismaCartWithItems['items'][number]): CartItemEntity
     priceCentsSnapshot: item.priceCentsSnapshot,
     qty: item.qty,
     imageUrlSnapshot: item.imageUrlSnapshot ?? null,
-    meta: item.meta as unknown,
+    meta: (item.meta as unknown) ?? null,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };
@@ -100,7 +100,27 @@ export async function recalcCartTotal(cartId: string) {
   return total;
 }
 
-import type { CartDTO } from '@/types/cart';
+import type { CartDTO, CartItemDTO } from '@/types/cart';
+
+function toCartItemDTO(item: CartItemEntity): CartItemDTO {
+  const dto: CartItemDTO = {
+    id: item.id,
+    productId: item.productId,
+    nameSnapshot: item.nameSnapshot,
+    priceCentsSnapshot: item.priceCentsSnapshot,
+    qty: item.qty,
+  };
+
+  if (item.imageUrlSnapshot) {
+    dto.imageUrlSnapshot = item.imageUrlSnapshot;
+  }
+
+  if (item.meta != null) {
+    dto.meta = item.meta;
+  }
+
+  return dto;
+}
 
 export function toCartDTO(cart: CartWithItems): CartDTO {
   return {
@@ -108,17 +128,6 @@ export function toCartDTO(cart: CartWithItems): CartDTO {
     token: cart.id, // nel tuo dominio token == id
     status: cart.status as CartDTO['status'],
     totalCents: cart.totalCents,
-    items: cart.items.map((it: CartItemEntity) => {
-      const metaValue = it.meta;
-      return {
-        id: it.id,
-        productId: it.productId,
-        nameSnapshot: it.nameSnapshot,
-        priceCentsSnapshot: it.priceCentsSnapshot,
-        qty: it.qty,
-        imageUrlSnapshot: it.imageUrlSnapshot ?? undefined,
-        ...(metaValue == null ? {} : { meta: metaValue }),
-      };
-    }),
+    items: cart.items.map(toCartItemDTO),
   };
 }

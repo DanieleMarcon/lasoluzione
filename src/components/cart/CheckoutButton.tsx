@@ -1,18 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import RevolutCheckout from '@revolut/checkout';
 
-declare global {
-  interface Window {
-    RevolutCheckout?: (publicKey: string) => { pay(publicId: string): Promise<void> };
-  }
-}
-
-const PUBLIC_KEY = process.env.NEXT_PUBLIC_REVOLUT_PUBLIC_KEY;
-
-type Props = { orderId: string; disabled?: boolean };
-
-export default function CheckoutButton({ orderId, disabled }: Props) {
+export default function CheckoutButton({ orderId, disabled }: { orderId: string; disabled?: boolean }) {
   const [loading, setLoading] = useState(false);
 
   async function startCheckout() {
@@ -23,41 +14,35 @@ export default function CheckoutButton({ orderId, disabled }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId }),
       });
-      const body = (await res.json().catch(() => null)) as
-        | { ok: boolean; data?: { mode: 'free'; redirectUrl: string } | { mode: 'widget'; publicId: string }; error?: string }
-        | null;
+      const { ok, data, error } = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        data?: { mode: 'free'; redirectUrl: string; orderId: string } | { mode: 'widget'; orderId: string; paymentRef: string; token: string };
+        error?: string;
+      };
+      if (!ok || !data) throw new Error(error || 'Checkout error');
 
-      if (!res.ok || !body?.ok || !body.data) {
-        throw new Error(body?.error || 'Checkout error');
-      }
-
-      if (body.data.mode === 'free') {
-        window.location.href = body.data.redirectUrl;
+      if (data.mode === 'free') {
+        window.location.href = data.redirectUrl;
         return;
       }
 
-      const publicId = body.data.publicId;
+      const { token } = data;
+      const instance = await RevolutCheckout(token, 'sandbox');
 
-      if (!PUBLIC_KEY) {
-        throw new Error('Revolut public key is not configured');
-      }
-
-      await ensureRevolutScript();
-
-      const revolutCheckout = window.RevolutCheckout;
-      if (typeof revolutCheckout !== 'function') {
-        throw new Error('RevolutCheckout not available');
-      }
-
-      const widget = revolutCheckout(PUBLIC_KEY);
-      if (!widget || typeof widget.pay !== 'function') {
-        throw new Error('Revolut widget not available');
-      }
-
-      await widget.pay(publicId);
-    } catch (error) {
-      console.error('[checkout][client] error', error);
-      alert('Pagamento non avviato. Riprova tra poco.');
+      instance.payWithPopup({
+        onSuccess() {
+          window.location.href = `/checkout/return?orderId=${encodeURIComponent(orderId)}`;
+        },
+        onError() {
+          window.location.href = `/checkout/return?orderId=${encodeURIComponent(orderId)}`;
+        },
+        onCancel() {
+          window.location.href = `/checkout/cancel?orderId=${encodeURIComponent(orderId)}`;
+        },
+      });
+    } catch (e: any) {
+      console.error('[checkout][client] error', e);
+      alert(e?.message || 'Pagamento non avviato. Riprova tra poco.');
     } finally {
       setLoading(false);
     }
@@ -65,22 +50,7 @@ export default function CheckoutButton({ orderId, disabled }: Props) {
 
   return (
     <button className="btn btn-success w-100" onClick={startCheckout} disabled={disabled || loading}>
-      {loading ? 'Avvio pagamento…' : 'Paga con Revolut'}
+      {loading ? 'Avvio pagamento…' : 'Paga con carta / Revolut Pay'}
     </button>
   );
-}
-
-function ensureRevolutScript(): Promise<void> {
-  const id = 'revolut-pay-script';
-  if (document.getElementById(id)) return Promise.resolve();
-
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.id = id;
-    script.src = 'https://merchant.revolut.com/checkout.js';
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load Revolut script'));
-    document.head.appendChild(script);
-  });
 }

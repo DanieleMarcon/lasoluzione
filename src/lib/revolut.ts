@@ -1,87 +1,67 @@
 import 'server-only';
 
-type RevolutCreateOrderInput = {
-  amountMinor: number;            // cents
-  currency: 'EUR';
-  merchantOrderId: string;        // local Order.id
+export type RevolutCreateOrderInput = {
+  amountMinor: number;
+  currency: string; // e.g. 'EUR'
+  merchantOrderId: string;
   customer?: { email?: string; name?: string | null };
   description?: string;
-  successUrl: string;
-  cancelUrl: string;
+  captureMode?: 'automatic' | 'manual';
 };
 
-type RevolutOrderResponse = {
-  id: string;                     // Revolut order/payment id
-  public_id?: string;             // token for client widget (exact field per doc)
-  state?: string;                 // status field (approved, pending, failed...)
-  amount?: number;
-  currency?: string;
+export type RevolutOrder = {
+  id: string;
+  token: string; // public identifier for widget
+  state: 'pending' | 'processing' | 'authorised' | 'completed' | 'cancelled' | 'failed' | 'declined' | string;
+  amount: number;
+  currency: string;
 };
 
-const BASE = process.env.REVOLUT_API_BASE!;
+const BASE = `${(process.env.REVOLUT_API_BASE || 'https://sandbox-merchant.revolut.com').replace(/\/$/, '')}/api`;
 const API_VERSION = process.env.REVOLUT_API_VERSION!;
 const SECRET = process.env.REVOLUT_SECRET_KEY!;
 
 function reqHeaders() {
   return {
-    'Authorization': `Bearer ${SECRET}`,
+    Authorization: `Bearer ${SECRET}`,
     'Revolut-Api-Version': API_VERSION,
     'Content-Type': 'application/json',
-  };
+  } as const;
 }
 
-export async function revolutFetch<T = any>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+export async function revolutFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const url = `${BASE}${path}`;
+  const res = await fetch(url, {
     ...init,
     headers: { ...reqHeaders(), ...(init?.headers || {}) },
     cache: 'no-store',
-    // timeouts handled by platform; keep it simple
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Revolut API ${res.status} on ${path}: ${text}`);
+    throw new Error(`Revolut API ${res.status} ${init?.method || 'GET'} ${path} :: ${text}`);
   }
   return res.json() as Promise<T>;
 }
 
-// NOTE: endpoint path/body shape can differ slightly by API version; keep adapter layer here.
-export async function createRevolutOrder(input: RevolutCreateOrderInput): Promise<{ paymentRef: string; publicId: string }> {
-  // Example body — adapt keys if your API version requires different names.
+export async function createRevolutOrder(input: RevolutCreateOrderInput): Promise<{ paymentRef: string; token: string }> {
   const body = {
     amount: input.amountMinor,
     currency: input.currency,
-    merchant_order_id: input.merchantOrderId,
     description: input.description,
-    customer: {
-      email: input.customer?.email,
-      name: input.customer?.name || undefined,
-    },
-    // success/cancel URLs may live under "checkout" or "payment" options depending on API version
-    success_url: input.successUrl,
-    cancel_url: input.cancelUrl,
-    capture_mode: 'automatic',
-  };
+    merchant_order_data: { reference: input.merchantOrderId },
+    customer: input.customer?.email ? { email: input.customer.email } : undefined,
+    capture_mode: input.captureMode ?? 'automatic',
+  } satisfies Record<string, unknown>;
 
-  const resp = await revolutFetch<RevolutOrderResponse>('/orders', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
-
-  const paymentRef = resp.id;
-  const publicId = resp.public_id || '';
-  if (!paymentRef || !publicId) {
-    throw new Error('Missing paymentRef/publicId from Revolut create order response');
-  }
-  return { paymentRef, publicId };
+  const resp = await revolutFetch<RevolutOrder>('/orders', { method: 'POST', body: JSON.stringify(body) });
+  if (!resp.id || !('token' in resp)) throw new Error('Missing token/id in Create Order response');
+  return { paymentRef: resp.id, token: (resp as { token: string }).token };
 }
 
-export async function retrieveRevolutOrder(paymentRef: string): Promise<RevolutOrderResponse> {
-  return revolutFetch<RevolutOrderResponse>(`/orders/${encodeURIComponent(paymentRef)}`, {
-    method: 'GET',
-  });
+export async function retrieveRevolutOrder(orderId: string): Promise<RevolutOrder> {
+  return revolutFetch<RevolutOrder>(`/orders/${encodeURIComponent(orderId)}`, { method: 'GET' });
 }
 
 export function isRevolutPaid(state?: string) {
-  // Map Revolut states to "paid"
-  return state === 'approved' || state === 'completed' || state === 'paid' || state === 'settled';
+  return state === 'completed';
 }

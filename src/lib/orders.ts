@@ -13,6 +13,15 @@ import {
   sendOrderNotificationToAdmin,
 } from '@/lib/mailer';
 
+// Argomenti "validati" per ottenere Order con cart(items) + bookings
+const orderWithCartArgs = Prisma.validator<Prisma.OrderDefaultArgs>()({
+  include: { cart: { include: { items: true } }, bookings: true },
+});
+
+export type OrderWithCart = Prisma.OrderGetPayload<typeof orderWithCartArgs>;
+export type CartWithItems = OrderWithCart['cart'];
+export type CartItemRow = CartWithItems['items'][number];
+
 const DEFAULT_BOOKING_SETTINGS_ID = 1;
 
 export const OrderInput = z.object({
@@ -40,10 +49,6 @@ export type CreateOrderSuccess =
 
 export type CreateOrderResult = CreateOrderSuccess | { ok: false; error: string };
 
-type OrderWithCart = Prisma.OrderGetPayload<{
-  include: { cart: { include: { items: true } }; bookings: true };
-}>;
-
 export class OrderWorkflowError extends Error {
   status: number;
 
@@ -55,23 +60,20 @@ export class OrderWorkflowError extends Error {
 }
 
 async function getOrderWithCart(orderId: string): Promise<OrderWithCart> {
-  const order = (await prisma.order.findUnique({
+  const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: {
-      cart: { include: { items: true } },
-      bookings: true,
-    },
-  })) as OrderWithCart | null;
+    ...orderWithCartArgs,
+  });
 
   if (!order || !order.cart) {
     throw new OrderWorkflowError('order_not_found', 404);
   }
 
-  return order as OrderWithCart;
+  return order;
 }
 
-function mapItemsForMail(cart: OrderWithCart['cart']) {
-  return cart.items.map((item) => ({
+function mapItemsForMail(cart: CartWithItems) {
+  return cart.items.map((item: CartItemRow) => ({
     id: item.id,
     productId: item.productId,
     name: item.nameSnapshot,
@@ -81,8 +83,19 @@ function mapItemsForMail(cart: OrderWithCart['cart']) {
   }));
 }
 
+function mapCartItems(cart: CartWithItems) {
+  return cart.items.map((item: CartItemRow) => ({
+    productId: item.productId,
+    name: item.nameSnapshot,
+    qty: item.qty,
+    priceCents: item.priceCentsSnapshot,
+  }));
+}
+
+type CartItemDto = ReturnType<typeof mapCartItems>[number];
+
 function detectBookingType(order: OrderWithCart): Booking['type'] {
-  const hasEventItem = order.cart.items.some((item) => {
+  const hasEventItem = order.cart.items.some((item: CartItemRow) => {
     const meta = item.meta as Record<string, unknown> | null;
     if (meta && typeof meta === 'object') {
       const values = Object.values(meta).map((value) =>
@@ -123,13 +136,11 @@ async function ensureBookingInternal(order: OrderWithCart) {
 
   const bookingDate = settings?.fixedDate ?? new Date();
   const bookingType = detectBookingType(order);
-  const items = order.cart.items.map((item) => ({
-    productId: item.productId,
-    name: item.nameSnapshot,
-    qty: item.qty,
-    priceCents: item.priceCentsSnapshot,
-  }));
-  const people = items.reduce((sum, item) => sum + item.qty, 0) || 1;
+  const items = mapCartItems(order.cart);
+  const people = items.reduce(
+    (sum: number, item: CartItemDto) => sum + item.qty,
+    0
+  ) || 1;
   const totalCents = order.totalCents ?? order.cart.totalCents ?? 0;
 
   const data = {
@@ -138,13 +149,13 @@ async function ensureBookingInternal(order: OrderWithCart) {
     name: order.name,
     email: order.email,
     phone: order.phone ?? '',
-    notes: order.notes ?? null,
     type: bookingType,
     status: 'confirmed' as const,
     orderId: order.id,
     lunchItemsJson: items,
     subtotalCents: totalCents,
     totalCents,
+    ...(order.notes != null ? { notes: order.notes } : {}),
   } satisfies Parameters<typeof prisma.booking.upsert>[0]['create'];
 
   const currentBooking = order.bookings[0]

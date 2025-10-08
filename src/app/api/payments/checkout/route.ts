@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { recalcCartTotal } from '@/lib/cart';
 import { createRevolutOrder } from '@/lib/revolut';
 import { sendOrderPaymentEmail } from '@/lib/mailer';
-import { encodeRevolutPaymentMeta, mergeEmailStatus } from '@/lib/paymentRef';
+import { encodeRevolutPaymentMeta, mergeEmailStatus, parsePaymentRef } from '@/lib/paymentRef';
+import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,10 +18,11 @@ function getBaseUrl() {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({} as any));
-    const orderId = body?.orderId as string | undefined;
-    if (!orderId) {
+    const parsed = z.object({ orderId: z.string().min(1) }).safeParse(body ?? {});
+    if (!parsed.success) {
       return NextResponse.json({ ok: false, error: 'Missing orderId' }, { status: 400 });
     }
+    const { orderId } = parsed.data;
 
     // Recupero ordine
     const order = await prisma.order.findUnique({ where: { id: orderId } });
@@ -54,19 +56,42 @@ export async function POST(req: Request) {
 
     // Flusso a 0€
     if (totalCents <= 0) {
-      const updated = await prisma.order.update({
+      const providerRef = order.providerRef ?? `FREE-${order.id}`;
+      await prisma.order.update({
         where: { id: orderId },
-        data: { status: 'paid', paymentRef: 'FREE' },
+        data: { status: 'paid', paymentRef: 'FREE', providerRef },
       });
-      const redirectUrl = `${returnUrl}?orderId=${encodeURIComponent(orderId)}&ref=FREE`;
+      const redirectUrl = `${returnUrl}?ref=${encodeURIComponent(providerRef)}`;
       return NextResponse.json({
         ok: true,
-        data: { orderId: updated.id, amountCents: totalCents, redirectUrl, configWarning },
+        data: { orderId: order.id, amountCents: totalCents, redirectUrl, paymentRef: providerRef, configWarning },
       });
     }
 
     // Crea ordine su Revolut
     const description = `Prenotazione #${order.id} - Bar La Soluzione`;
+
+    let providerRef = order.providerRef ?? null;
+    const parsedRef = parsePaymentRef(order.paymentRef);
+    if (!providerRef && parsedRef.kind === 'revolut') {
+      providerRef = parsedRef.meta.orderId;
+      await prisma.order.update({ where: { id: order.id }, data: { providerRef } });
+    }
+
+    if (providerRef && parsedRef.kind === 'revolut' && parsedRef.meta.checkoutPublicId) {
+      return NextResponse.json({
+        ok: true,
+        data: {
+          orderId: order.id,
+          amountCents: totalCents,
+          paymentRef: providerRef,
+          checkoutPublicId: parsedRef.meta.checkoutPublicId,
+          hostedPaymentUrl: parsedRef.meta.hostedPaymentUrl,
+          email: parsedRef.meta.emailError ? { ok: false, error: parsedRef.meta.emailError } : { ok: true },
+          configWarning,
+        },
+      });
+    }
 
     const revolutOrder = await createRevolutOrder({
       amountMinor: totalCents,
@@ -82,6 +107,7 @@ export async function POST(req: Request) {
     const baseMeta = {
       provider: 'revolut' as const,
       orderId: revolutOrder.paymentRef,
+      checkoutPublicId: revolutOrder.checkoutPublicId,
       hostedPaymentUrl: revolutOrder.hostedPaymentUrl,
     };
 
@@ -103,6 +129,7 @@ export async function POST(req: Request) {
       data: {
         status: 'pending_payment',
         paymentRef: encodeRevolutPaymentMeta(finalMeta),
+        providerRef: revolutOrder.paymentRef,
       },
     });
 
@@ -111,6 +138,7 @@ export async function POST(req: Request) {
       data: {
         orderId: order.id,
         amountCents: totalCents,
+        paymentRef: revolutOrder.paymentRef,
         checkoutPublicId: revolutOrder.checkoutPublicId,
         hostedPaymentUrl: finalMeta.hostedPaymentUrl,
         email: emailResult,

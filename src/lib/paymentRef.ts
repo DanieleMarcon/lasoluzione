@@ -3,6 +3,7 @@ import 'server-only';
 export type RevolutPaymentMeta = {
   provider: 'revolut';
   orderId: string;
+  checkoutPublicId?: string;
   hostedPaymentUrl?: string;
   emailSentAt?: string;
   emailError?: string;
@@ -45,6 +46,7 @@ export function parsePaymentRef(value: string | null | undefined): ParsedPayment
           meta: {
             provider: 'revolut',
             orderId: parsed.orderId,
+            checkoutPublicId: typeof parsed.checkoutPublicId === 'string' ? parsed.checkoutPublicId : undefined,
             hostedPaymentUrl: parsed.hostedPaymentUrl,
             emailSentAt: parsed.emailSentAt,
             emailError: parsed.emailError,

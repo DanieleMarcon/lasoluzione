@@ -220,6 +220,125 @@ ${data.phone ? `Telefono: ${data.phone}\n` : ''}${data.notes ? `Note: ${data.not
   }
 }
 
+function parseBookingItems(value: unknown): Array<{ name: string; qty: number; priceCents: number }> {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => ({
+        name: typeof item?.name === 'string' ? item.name : '',
+        qty: typeof item?.qty === 'number' ? item.qty : Number(item?.qty ?? 0),
+        priceCents: typeof item?.priceCents === 'number' ? item.priceCents : Number(item?.priceCents ?? 0),
+      }))
+      .filter((item) => item.name);
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parseBookingItems(parsed);
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+async function ensureTransport() {
+  const transporter = getTransport();
+  try {
+    await transporter.verify();
+  } catch (error) {
+    console.warn('[mailer] verify SMTP fallita, continuo', error);
+  }
+  return transporter;
+}
+
+export async function sendCustomerOrderEmail({ order, booking }: { order: any; booking: any }) {
+  if (!order?.email) {
+    console.warn('[mailer] email cliente non inviata: manca indirizzo');
+    return;
+  }
+
+  if (!hasSmtpConfig() || !MAIL_FROM) {
+    console.info('[mailer] sendCustomerOrderEmail skipped (SMTP non configurato)', {
+      to: order.email,
+      orderId: order.id,
+    });
+    return;
+  }
+
+  const transporter = await ensureTransport();
+  const items = parseBookingItems(booking?.lunchItemsJson);
+  const totalCents = typeof booking?.totalCents === 'number' ? booking.totalCents : 0;
+  const itemsHtml = items
+    .map(
+      (item) =>
+        `<li>${item.qty} × ${item.name} — <strong>${euro(item.priceCents)}</strong> cad. (Tot ${euro(
+          item.priceCents * item.qty,
+        )})</li>`,
+    )
+    .join('');
+
+  const html = `
+    <h1>Grazie per l’ordine</h1>
+    <p>Ordine #${order.id} — Totale ${euro(totalCents)}</p>
+    ${itemsHtml ? `<p>Dettaglio prodotti:</p><ul>${itemsHtml}</ul>` : ''}
+  `;
+
+  const textLines = [`Grazie per l’ordine #${order.id}.`, `Totale: ${euro(totalCents)}.`];
+  if (items.length > 0) {
+    textLines.push('Dettaglio prodotti:');
+    items.forEach((item) => textLines.push(`- ${item.qty} × ${item.name} — ${euro(item.priceCents * item.qty)}`));
+  }
+
+  await transporter.sendMail({
+    from: MAIL_FROM,
+    to: order.email,
+    subject: 'Conferma ordine',
+    html,
+    text: textLines.join('\n'),
+  });
+}
+
+export async function sendAdminOrderEmail({ order, booking }: { order: any; booking: any }) {
+  const to = MAIL_TO_BOOKINGS || MAIL_FROM;
+  if (!to) {
+    console.warn('[mailer] email admin non inviata: destinatario mancante');
+    return;
+  }
+
+  if (!hasSmtpConfig() || !MAIL_FROM) {
+    console.info('[mailer] sendAdminOrderEmail skipped (SMTP non configurato)', {
+      to,
+      orderId: order?.id,
+    });
+    return;
+  }
+
+  const transporter = await ensureTransport();
+  const totalCents = typeof booking?.totalCents === 'number' ? booking.totalCents : 0;
+
+  const phoneText = order?.phone ? `, ${order.phone}` : '';
+  const html = `
+    <h1>Nuovo ordine</h1>
+    <p>#${order?.id} — Cliente: ${order?.name ?? ''} (${order?.email ?? ''}${phoneText})</p>
+    <p>Totale: ${euro(totalCents)}</p>
+  `;
+
+  const text = `Nuovo ordine #${order?.id}
+Cliente: ${order?.name ?? ''} (${order?.email ?? ''}${phoneText})
+Totale: ${euro(totalCents)}`;
+
+  await transporter.sendMail({
+    from: MAIL_FROM,
+    to,
+    subject: 'Nuovo ordine ricevuto',
+    html,
+    text,
+  });
+}
+
 const EURO_FORMATTER = new Intl.NumberFormat('it-IT', {
   style: 'currency',
   currency: 'EUR',

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { Prisma, type Booking, type Order as PrismaOrder } from '@prisma/client';
+import type { Prisma, CartItem, Booking, Order as PrismaOrder } from '@prisma/client';
 import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
@@ -13,14 +13,15 @@ import {
   sendOrderNotificationToAdmin,
 } from '@/lib/mailer';
 
-// Argomenti "validati" per ottenere Order con cart(items) + bookings
-const orderWithCartArgs = Prisma.validator<Prisma.OrderDefaultArgs>()({
-  include: { cart: { include: { items: true } }, bookings: true },
-});
+// Include riutilizzabile per leggere un Order completo di cart.items + bookings
+export const orderInclude = {
+  cart: { include: { items: true } },
+  bookings: true,
+} as const;
 
-export type OrderWithCart = Prisma.OrderGetPayload<typeof orderWithCartArgs>;
+export type OrderWithCart = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
 export type CartWithItems = OrderWithCart['cart'];
-export type CartItemRow = CartWithItems['items'][number];
+export type CartItemRow = CartItem;
 
 const DEFAULT_BOOKING_SETTINGS_ID = 1;
 
@@ -62,7 +63,7 @@ export class OrderWorkflowError extends Error {
 async function getOrderWithCart(orderId: string): Promise<OrderWithCart> {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    ...orderWithCartArgs,
+    include: orderInclude,
   });
 
   if (!order || !order.cart) {
@@ -72,9 +73,8 @@ async function getOrderWithCart(orderId: string): Promise<OrderWithCart> {
   return order;
 }
 
-function mapItemsForMail(cart: CartWithItems) {
+function mapItemsForJson(cart: CartWithItems) {
   return cart.items.map((item: CartItemRow) => ({
-    id: item.id,
     productId: item.productId,
     name: item.nameSnapshot,
     qty: item.qty,
@@ -83,29 +83,13 @@ function mapItemsForMail(cart: CartWithItems) {
   }));
 }
 
-function mapCartItems(cart: CartWithItems) {
-  return cart.items.map((item: CartItemRow) => ({
-    productId: item.productId,
-    name: item.nameSnapshot,
-    qty: item.qty,
-    priceCents: item.priceCentsSnapshot,
-  }));
-}
+type CartItemDto = ReturnType<typeof mapItemsForJson>[number];
 
-type CartItemDto = ReturnType<typeof mapCartItems>[number];
+const mapItemsForMail = mapItemsForJson;
 
 function detectBookingType(order: OrderWithCart): Booking['type'] {
   const hasEventItem = order.cart.items.some((item: CartItemRow) => {
-    const meta = item.meta as Record<string, unknown> | null;
-    if (meta && typeof meta === 'object') {
-      const values = Object.values(meta).map((value) =>
-        typeof value === 'string' ? value.toLowerCase() : value
-      );
-      if (values.some((value) => value === 'eventi' || value === 'event' || value === 'evento')) {
-        return true;
-      }
-    }
-    return item.nameSnapshot.toLowerCase().includes('evento');
+    return (item.nameSnapshot ?? '').toLowerCase().includes('evento');
   });
 
   return hasEventItem ? 'evento' : 'pranzo';
@@ -136,7 +120,7 @@ async function ensureBookingInternal(order: OrderWithCart) {
 
   const bookingDate = settings?.fixedDate ?? new Date();
   const bookingType = detectBookingType(order);
-  const items = mapCartItems(order.cart);
+  const items = mapItemsForJson(order.cart);
   const people = items.reduce(
     (sum: number, item: CartItemDto) => sum + item.qty,
     0

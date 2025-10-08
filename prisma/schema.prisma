@@ -155,13 +155,12 @@ model Order {
   cartId        String   @unique
   email         String
   name          String
-  phone         String
-  notes         String?
+  phone         String?
   status        String   @default("pending")
   totalCents    Int
   discountCents Int?
   paymentRef    String?
-  providerRef   String?  @unique
+  notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -169,6 +168,7 @@ model Order {
   bookings Booking[]
 
   @@index([cartId, status])
+  @@index([paymentRef])
 }
 
 model BookingSettings {

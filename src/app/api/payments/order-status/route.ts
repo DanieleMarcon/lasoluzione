@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
 
-import { NextResponse } from 'next/server';
+import { findOrderByReference, pollOrderStatus } from '@/lib/orders';
 
 export const dynamic = 'force-dynamic';
-
-import { findOrderByReference, pollOrderStatus } from '@/lib/orders';
 
 async function handleStatus(identifier: { orderId?: string | null; ref?: string | null }) {
   let orderId = identifier.orderId?.trim();

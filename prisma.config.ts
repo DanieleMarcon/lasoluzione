@@ -1,9 +1,10 @@
 // prisma.config.ts
-import { defineConfig } from "prisma/config";
+import 'dotenv/config';              // carica .env
+import { defineConfig } from 'prisma/config';
 
 export default defineConfig({
-  // schema: "prisma/schema.prisma", // default
+  schema: 'prisma/schema.prisma',
   migrations: {
-    seed: "tsx prisma/seed.ts",
+    seed: 'tsx prisma/seed.ts',
   },
 });

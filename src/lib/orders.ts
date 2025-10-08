@@ -38,7 +38,7 @@ export class OrderCheckoutError extends Error {
 }
 
 export async function createOrderFromCart(input: CheckoutInput): Promise<Order> {
-  const { token, email, name, phone } = input;
+  const { token, email, name, phone, notes } = input;
 
   if (!token) {
     throw new OrderCheckoutError('MISSING_CART_TOKEN');
@@ -54,7 +54,7 @@ export async function createOrderFromCart(input: CheckoutInput): Promise<Order> 
   const ensuredCart = cart;
 
   const totalCents = await recalcCartTotal(ensuredCart.id);
-  const status = totalCents === 0 ? 'confirmed' : 'pending';
+  const status = totalCents === 0 ? 'paid' : 'pending_payment';
   const paymentRef = totalCents === 0 ? 'FREE' : null;
 
   const order = await prisma.order.create({
@@ -65,6 +65,7 @@ export async function createOrderFromCart(input: CheckoutInput): Promise<Order> 
       phone,
       status,
       totalCents,
+      notes: notes ?? null,
       ...(paymentRef ? { paymentRef } : {}),
     },
   });

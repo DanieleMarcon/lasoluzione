@@ -36,6 +36,7 @@ model Booking {
   tierLabel           String?
   tierPriceCents      Int?
   orderId             String?
+  order               Order?        @relation(fields: [orderId], references: [id])
 
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -125,6 +126,7 @@ model Cart {
 
   // RELAZIONI
   items      CartItem[]
+  order      Order?
 }
 
 model CartItem {
@@ -150,16 +152,21 @@ model CartItem {
 
 model Order {
   id            String   @id @default(cuid())
-  cartId        String
+  cartId        String   @unique
   email         String
   name          String
   phone         String?
+  notes         String?
   status        String   @default("pending")
   totalCents    Int
   discountCents Int?
   paymentRef    String?
+  providerRef   String?  @unique
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  cart     Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  bookings Booking[]
 
   @@index([cartId, status])
 }

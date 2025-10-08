@@ -4,6 +4,7 @@ import type { BookingStatus } from '@prisma/client';
 
 import { prisma } from '@/lib/prisma';
 import { toAdminBookingDTO } from '@/lib/admin/booking-dto';
+import { formatCurrency } from '@/lib/formatCurrency';
 
 function startOfDay(date: Date) {
   const next = new Date(date);
@@ -43,7 +44,7 @@ export default async function AdminDashboardPage() {
 
   const activeStatuses: BookingStatus[] = ['pending', 'pending_payment', 'confirmed'];
 
-  const [todayCount, nextSevenCount, pendingPayment, pendingConfirmation, cancelledCount, upcoming] =
+  const [todayCount, nextSevenCount, pendingPayment, pendingConfirmation, cancelledCount, upcoming, latest] =
     await Promise.all([
       prisma.booking.count({
         where: {
@@ -68,9 +69,14 @@ export default async function AdminDashboardPage() {
         orderBy: { date: 'asc' },
         take: 10,
       }),
+      prisma.booking.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
     ]);
 
   const upcomingRows = upcoming.map(toAdminBookingDTO);
+  const latestRows = latest.map(toAdminBookingDTO);
 
   return (
     <div style={{ display: 'grid', gap: '2rem' }}>
@@ -151,6 +157,40 @@ export default async function AdminDashboardPage() {
               )}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section>
+        <h2 style={{ margin: '2rem 0 1rem', fontSize: '1.25rem', fontWeight: 600 }}>Ultime prenotazioni</h2>
+        <div style={{ backgroundColor: '#fff', borderRadius: 16, boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)', padding: '1.5rem' }}>
+          {latestRows.length === 0 ? (
+            <p style={{ margin: 0, color: '#6b7280' }}>Non ci sono prenotazioni recenti.</p>
+          ) : (
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.75rem' }}>
+              {latestRows.map((booking) => (
+                <li
+                  key={booking.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    borderBottom: '1px solid #f1f5f9',
+                    paddingBottom: '0.75rem',
+                  }}
+                >
+                  <div style={{ textAlign: 'left' }}>
+                    <strong style={{ display: 'block', color: '#0f172a' }}>#{booking.id} — {booking.name}</strong>
+                    <span style={{ color: '#64748b', fontSize: '0.9rem' }}>
+                      Creato il {formatDate(booking.createdAt)}
+                    </span>
+                  </div>
+                  <span style={{ color: '#0f172a', fontWeight: 600 }}>
+                    {formatCurrency(booking.totalCents ?? 0)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </section>
     </div>

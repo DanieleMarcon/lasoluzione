@@ -6,7 +6,7 @@
 - ✅ **Token-based widget** — CheckoutButton imports `@revolut/checkout`, instantiates `await RevolutCheckout(token, 'sandbox')`, and triggers `payWithPopup` callbacks for success/error/cancel navigation.【F:src/components/cart/CheckoutButton.tsx†L1-L41】
 - ✅ **Popup flow navigation** — API no longer sends `success_url`/`cancel_url`; the client redirects explicitly on callback, aligning with popup best practices.【F:src/app/api/payments/checkout/route.ts†L33-L54】【F:src/components/cart/CheckoutButton.tsx†L24-L41】
 - ✅ **Order state mapping** — Only `completed` marks local orders as paid, while `failed`/`cancelled`/`declined` become failures and everything else stays pending.【F:src/lib/revolut.ts†L70-L72】【F:src/app/api/payments/order-status/route.ts†L33-L49】
-- ✅ **Environment variables** — `.env.example` lists only the secret key, API settings, and return URLs required for the token flow; `NEXT_PUBLIC_REVOLUT_PUBLIC_KEY` is removed.【F:.env.example†L1-L6】
+- ✅ **Environment variables** — `.env.example` elenca chiavi pubbliche/segretissime, base URL e redirect necessari per il checkout integrato (`NEXT_PUBLIC_REVOLUT_PUBLIC_KEY`, `NEXT_PUBLIC_REVOLUT_ENV`, `REVOLUT_SECRET_KEY`).【F:.env.example†L1-L14】
 - ✅ **Error surfacing** — API routes bubble up Revolut error messages via JSON responses, improving support diagnostics; the client still alerts but logs details for follow-up.【F:src/app/api/payments/checkout/route.ts†L55-L59】【F:src/app/api/payments/order-status/route.ts†L46-L49】【F:src/components/cart/CheckoutButton.tsx†L35-L39】
 
 ## Notes

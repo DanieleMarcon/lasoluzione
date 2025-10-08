@@ -11,7 +11,7 @@ const checkoutSchema = z
     token: z.string().min(1),
     email: z.string().email(),
     name: z.string().min(1),
-    phone: z.string().min(1).optional(),
+    phone: z.string().trim().min(8, 'Telefono non valido'),
     notes: z.string().min(1).max(2000).optional(),
   })
   .strict();

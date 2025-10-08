@@ -44,6 +44,8 @@ export default function Step3Details() {
         type="tel"
         placeholder="+39 …"
         {...register('phone')}
+        required
+        minLength={8}
         aria-invalid={!!(errors as any).phone}
         aria-describedby="err-phone"
       />

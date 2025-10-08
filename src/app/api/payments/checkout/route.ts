@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { recalcCartTotal } from '@/lib/cart';
 import { createRevolutOrder } from '@/lib/revolut';
+import { sendOrderPaymentEmail } from '@/lib/mailer';
+import { encodeRevolutPaymentMeta, mergeEmailStatus } from '@/lib/paymentRef';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +39,15 @@ export async function POST(req: Request) {
       });
     }
 
-    // Costruisco i redirect URL
+    const publicKey = process.env.NEXT_PUBLIC_REVOLUT_PUBLIC_KEY;
+    const configWarning = publicKey
+      ? undefined
+      : 'NEXT_PUBLIC_REVOLUT_PUBLIC_KEY non configurata: il checkout verrà aperto in una nuova finestra.';
+    if (configWarning) {
+      console.warn('[payments][checkout] missing public checkout key');
+    }
+
+    // Costruisco i redirect URL (utili per hosted fallback Revolut)
     const base = getBaseUrl();
     const returnUrl = process.env.PAY_RETURN_URL || `${base}/checkout/return`;
     const cancelUrl = process.env.PAY_CANCEL_URL || `${base}/checkout/cancel`;
@@ -51,34 +61,61 @@ export async function POST(req: Request) {
       const redirectUrl = `${returnUrl}?orderId=${encodeURIComponent(orderId)}&ref=FREE`;
       return NextResponse.json({
         ok: true,
-        data: { mode: 'free', redirectUrl, orderId: updated.id },
+        data: { orderId: updated.id, amountCents: totalCents, redirectUrl, configWarning },
       });
     }
 
     // Crea ordine su Revolut
     const description = `Prenotazione #${order.id} - Bar La Soluzione`;
 
-    const { paymentRef, token } = await createRevolutOrder({
+    const revolutOrder = await createRevolutOrder({
       amountMinor: totalCents,
       currency: 'EUR',
       merchantOrderId: order.id,
       customer: { email: order.email, name: order.name },
       description,
       captureMode: 'automatic',
-      // redirect per hosted page / fallback
       returnUrl,
       cancelUrl,
     } as any);
 
-    // Stato ordine in attesa pagamento
+    const baseMeta = {
+      provider: 'revolut' as const,
+      orderId: revolutOrder.paymentRef,
+      hostedPaymentUrl: revolutOrder.hostedPaymentUrl,
+    };
+
+    const emailResult = await sendOrderPaymentEmail({
+      to: order.email,
+      orderId: order.id,
+      amountCents: totalCents,
+      hostedPaymentUrl: baseMeta.hostedPaymentUrl,
+    });
+
+    if (!emailResult.ok) {
+      console.warn('[payments][checkout] invio email non riuscito', emailResult.error || 'unknown_error');
+    }
+
+    const finalMeta = mergeEmailStatus(baseMeta, emailResult);
+
     await prisma.order.update({
       where: { id: order.id },
-      data: { status: 'pending_payment', paymentRef },
+      data: {
+        status: 'pending_payment',
+        paymentRef: encodeRevolutPaymentMeta(finalMeta),
+      },
     });
 
     return NextResponse.json({
       ok: true,
-      data: { mode: 'widget', orderId: order.id, paymentRef, token, returnUrl, cancelUrl },
+      data: {
+        orderId: order.id,
+        amountCents: totalCents,
+        checkoutPublicId: revolutOrder.checkoutPublicId,
+        hostedPaymentUrl: finalMeta.hostedPaymentUrl,
+        email: emailResult,
+        configWarning,
+      },
     });
   } catch (err) {
     console.error('[payments][checkout] error', err);

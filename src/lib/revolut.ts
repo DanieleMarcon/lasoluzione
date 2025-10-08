@@ -18,7 +18,11 @@ export type RevolutCreateOrderInput = {
 
 export type RevolutOrder = {
   id: string;
-  token?: string; // public identifier per widget (può essere assente in alcune risposte)
+  public_id?: string;
+  public_token?: string;
+  public_url?: string;
+  token?: string;
+  checkout_url?: string;
   state:
     | 'pending'
     | 'processing'
@@ -30,6 +34,7 @@ export type RevolutOrder = {
     | string;
   amount: number;
   currency: string;
+  _links?: Array<{ rel?: string; href?: string }>;
 };
 
 function getApiBase() {
@@ -84,9 +89,15 @@ export async function revolutFetch<T>(path: string, init?: RequestInit): Promise
   return res.json() as Promise<T>;
 }
 
+export type CreateRevolutOrderResult = {
+  paymentRef: string;
+  checkoutPublicId?: string;
+  hostedPaymentUrl?: string;
+};
+
 export async function createRevolutOrder(
   input: RevolutCreateOrderInput
-): Promise<{ paymentRef: string; token: string }> {
+): Promise<CreateRevolutOrderResult> {
   // NOTA: returnUrl/cancelUrl NON vengono inviati all'API Orders (le tieni per la UI/redirect).
   const { amountMinor, currency, description, merchantOrderId, customer, captureMode } = input;
 
@@ -104,13 +115,41 @@ export async function createRevolutOrder(
     body: JSON.stringify(body),
   });
 
-  // In alcune versioni di risposta 'token' può essere opzionale: lo richiediamo per il widget.
-  const token = (resp as { token?: string }).token;
-  if (!resp.id || !token) {
-    throw new Error('Missing token/id in Create Order response');
+  if (!resp?.id) {
+    throw new Error('Missing id in Create Order response');
   }
 
-  return { paymentRef: resp.id, token };
+  const checkoutPublicId =
+    resp.public_id ||
+    resp.token ||
+    (resp as { publicId?: string }).publicId ||
+    undefined;
+
+  const hostedPaymentUrl = (() => {
+    if (typeof resp.checkout_url === 'string' && resp.checkout_url) return resp.checkout_url;
+    if (typeof resp.public_url === 'string' && resp.public_url) return resp.public_url;
+    const link = Array.isArray(resp._links)
+      ? resp._links.find((item) => item?.rel === 'public_url' || item?.rel === 'checkout')
+      : null;
+    if (link?.href) return link.href;
+    if (resp._links && !Array.isArray(resp._links)) {
+      const maybeLink = (resp._links as Record<string, { href?: string }>);
+      if (typeof maybeLink?.public_url?.href === 'string') return maybeLink.public_url.href;
+      if (typeof maybeLink?.checkout?.href === 'string') return maybeLink.checkout.href;
+    }
+    if (checkoutPublicId) {
+      const env = (process.env.NEXT_PUBLIC_REVOLUT_ENV || process.env.REVOLUT_ENV || 'sandbox').toLowerCase();
+      const base = env === 'sandbox' ? 'https://sandbox-merchant.revolut.com' : 'https://merchant.revolut.com';
+      return `${base.replace(/\/$/, '')}/pay/${checkoutPublicId}`;
+    }
+    return undefined;
+  })();
+
+  return {
+    paymentRef: resp.id,
+    checkoutPublicId,
+    hostedPaymentUrl,
+  };
 }
 
 export async function retrieveRevolutOrder(orderId: string): Promise<RevolutOrder> {

@@ -10,22 +10,30 @@ const {
   MAIL_TO_BOOKINGS
 } = process.env;
 
+let cachedTransport: nodemailer.Transporter | null = null;
+
+function hasSmtpConfig(): boolean {
+  return Boolean(SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS && MAIL_FROM);
+}
+
 export function getTransport() {
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !MAIL_FROM) {
+  if (cachedTransport) return cachedTransport;
+
+  if (!hasSmtpConfig()) {
     throw new Error(
       'SMTP env vars mancanti: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM'
     );
   }
   const port = Number(SMTP_PORT);
 
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
+  cachedTransport = nodemailer.createTransport({
+    host: SMTP_HOST!,
     port,
     secure: port === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASS }
+    auth: { user: SMTP_USER!, pass: SMTP_PASS! }
   });
 
-  return transporter;
+  return cachedTransport;
 }
 
 type BookingEmailLunchSummary = {
@@ -209,5 +217,96 @@ ${data.phone ? `Telefono: ${data.phone}\n` : ''}${data.notes ? `Note: ${data.not
   });
   if (process.env.NODE_ENV !== 'production') {
     console.warn('[mailer] email admin sent', r2.messageId);
+  }
+}
+
+const EURO_FORMATTER = new Intl.NumberFormat('it-IT', {
+  style: 'currency',
+  currency: 'EUR',
+});
+
+function euro(amountCents: number) {
+  return EURO_FORMATTER.format(amountCents / 100);
+}
+
+export type OrderPaymentEmailInput = {
+  to: string;
+  orderId: string;
+  amountCents: number;
+  hostedPaymentUrl?: string;
+};
+
+export type OrderPaymentEmailResult = {
+  ok: boolean;
+  skipped?: boolean;
+  error?: string;
+  messageId?: string;
+};
+
+export async function sendOrderPaymentEmail(
+  input: OrderPaymentEmailInput
+): Promise<OrderPaymentEmailResult> {
+  const from = MAIL_FROM;
+  const subject = `Completa il pagamento del tuo ordine #${input.orderId}`;
+  const amount = euro(input.amountCents);
+  const buttonHtml = input.hostedPaymentUrl
+    ? `<p style="margin:2rem 0; text-align:center;"><a href="${input.hostedPaymentUrl}" style="display:inline-block;padding:0.85rem 1.75rem;border-radius:999px;background:#14532d;color:#fff;font-weight:600;text-decoration:none;">Paga ora</a></p>`
+    : '';
+  const linkText = input.hostedPaymentUrl
+    ? `Paga ora: ${input.hostedPaymentUrl}`
+    : 'Accedi alla tua area personale per completare il pagamento.';
+
+  const textBody = `Ciao,
+
+abbiamo creato il tuo ordine #${input.orderId} per un totale di ${amount}.
+
+${linkText}
+
+Se hai già pagato ignora questo messaggio.`;
+
+  const htmlBody = `
+    <p>Ciao,</p>
+    <p>abbiamo creato il tuo ordine <strong>#${input.orderId}</strong> per un totale di <strong>${amount}</strong>.</p>
+    ${buttonHtml || ''}
+    ${input.hostedPaymentUrl ? `<p style="text-align:center; color:#6b7280; font-size:0.95rem;">Se il pulsante non funziona copia e incolla questo link nel browser:<br /><a href="${input.hostedPaymentUrl}">${input.hostedPaymentUrl}</a></p>` : ''}
+    <p style="margin-top:2rem; color:#475569;">Se hai già completato il pagamento puoi ignorare questa email.</p>
+    <p style="margin-top:1.5rem;">Grazie!<br/>Bar La Soluzione</p>
+  `;
+
+  if (!hasSmtpConfig() || !from) {
+    console.info('[mailer] sendOrderPaymentEmail skipped (SMTP non configurato)', {
+      to: input.to,
+      subject,
+      text: textBody,
+      hostedPaymentUrl: input.hostedPaymentUrl,
+    });
+    return { ok: false, skipped: true, error: 'SMTP non configurato' };
+  }
+
+  try {
+    const transporter = getTransport();
+    try {
+      await transporter.verify();
+    } catch (verifyError) {
+      console.warn('[mailer] verify SMTP failed, continuo con invio', verifyError);
+    }
+
+    const info = await transporter.sendMail({
+      from,
+      to: input.to,
+      subject,
+      text: textBody,
+      html: htmlBody,
+    });
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[mailer] payment email sent', info.messageId);
+    }
+
+    return { ok: true, messageId: info.messageId };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[mailer] sendOrderPaymentEmail error', error);
+    return { ok: false, error: message };
   }
 }

@@ -12,6 +12,6 @@ export type CheckoutInput = {
   token: string;
   email: string;
   name: string;
-  phone?: string;
+  phone: string;
   notes?: string;
 };

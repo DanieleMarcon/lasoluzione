@@ -29,7 +29,7 @@ export const bookingSchema = z
   email: z.string().email('Email non valida'),
 
   // ✅ OBBLIGATORIO
-  phone: z.string().trim().min(5, 'Telefono non valido'),
+  phone: z.string().trim().min(8, 'Inserisci un numero di telefono valido'),
 
   // opzionale
   notes: z.string().trim().max(500).optional(),

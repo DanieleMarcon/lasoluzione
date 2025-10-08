@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { Prisma, CartItem, Booking, Order as PrismaOrder } from '@prisma/client';
+import type { Booking, Cart, CartItem, Order, Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
@@ -13,13 +13,27 @@ import {
   sendOrderNotificationToAdmin,
 } from '@/lib/mailer';
 
-// Include riutilizzabile per leggere un Order completo di cart.items + bookings
-export const orderInclude = {
+// Include usato solo nei metodi Prisma (nessun tipo derivato da qui)
+const baseInclude = {
   cart: { include: { items: true } },
   bookings: true,
 } as const;
 
-export type OrderWithCart = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
+/**
+ * Helper che legge un ordine "ricco" (cart + items + bookings).
+ * Lasciamo che Prisma inferisca il tipo dal valore inline, poi deriviamo il tipo
+ * dal return del helper (niente OrderGetPayload/DefaultArgs).
+ */
+async function getOrderWithCart(orderId: string) {
+  return prisma.order.findUnique({
+    where: { id: orderId },
+    include: baseInclude,
+  });
+}
+
+// Tipo runtime-safe derivato dall’helper (niente generics Prisma)
+type NonNull<T> = T extends null | undefined ? never : T;
+export type OrderWithCart = NonNull<Awaited<ReturnType<typeof getOrderWithCart>>>;
 export type CartWithItems = OrderWithCart['cart'];
 export type CartItemRow = CartItem;
 
@@ -60,20 +74,7 @@ export class OrderWorkflowError extends Error {
   }
 }
 
-async function getOrderWithCart(orderId: string): Promise<OrderWithCart> {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: orderInclude,
-  });
-
-  if (!order || !order.cart) {
-    throw new OrderWorkflowError('order_not_found', 404);
-  }
-
-  return order;
-}
-
-function mapItemsForJson(cart: CartWithItems) {
+function mapItems(cart: CartWithItems) {
   return cart.items.map((item: CartItemRow) => ({
     productId: item.productId,
     name: item.nameSnapshot,
@@ -83,20 +84,23 @@ function mapItemsForJson(cart: CartWithItems) {
   }));
 }
 
-type CartItemDto = ReturnType<typeof mapItemsForJson>[number];
+const mapItemsForMail = mapItems;
 
-const mapItemsForMail = mapItemsForJson;
+function hasEvent(order: OrderWithCart) {
+  return order.cart.items.some((item: CartItemRow) =>
+    (item.nameSnapshot ?? '').toLowerCase().includes('evento'),
+  );
+}
 
 function detectBookingType(order: OrderWithCart): Booking['type'] {
-  const hasEventItem = order.cart.items.some((item: CartItemRow) => {
-    return (item.nameSnapshot ?? '').toLowerCase().includes('evento');
-  });
-
-  return hasEventItem ? 'evento' : 'pranzo';
+  return hasEvent(order) ? 'evento' : 'pranzo';
 }
 
 export async function ensureBookingFromOrder(orderId: string) {
   const order = await getOrderWithCart(orderId);
+  if (!order) {
+    throw new OrderWorkflowError('order_not_found', 404);
+  }
   return ensureBookingInternal(order);
 }
 
@@ -120,11 +124,8 @@ async function ensureBookingInternal(order: OrderWithCart) {
 
   const bookingDate = settings?.fixedDate ?? new Date();
   const bookingType = detectBookingType(order);
-  const items = mapItemsForJson(order.cart);
-  const people = items.reduce(
-    (sum: number, item: CartItemDto) => sum + item.qty,
-    0
-  ) || 1;
+  const items = mapItems(order.cart);
+  const people = items.reduce((sum, item) => sum + item.qty, 0) || 1;
   const totalCents = order.totalCents ?? order.cart.totalCents ?? 0;
 
   const data = {
@@ -139,7 +140,7 @@ async function ensureBookingInternal(order: OrderWithCart) {
     lunchItemsJson: items,
     subtotalCents: totalCents,
     totalCents,
-    ...(order.notes != null ? { notes: order.notes } : {}),
+    ...(('notes' in order && order.notes != null) ? { notes: order.notes } : {}),
   } satisfies Parameters<typeof prisma.booking.upsert>[0]['create'];
 
   const currentBooking = order.bookings[0]
@@ -235,8 +236,11 @@ export async function createOrderFromCart(rawInput: unknown): Promise<CreateOrde
   }
 }
 
-export async function finalizePaidOrder(orderId: string): Promise<PrismaOrder> {
+export async function finalizePaidOrder(orderId: string): Promise<Order> {
   const order = await getOrderWithCart(orderId);
+  if (!order) {
+    throw new OrderWorkflowError('order_not_found', 404);
+  }
 
   await prisma.order.update({
     where: { id: order.id },

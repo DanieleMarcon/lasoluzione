@@ -254,6 +254,249 @@ async function ensureTransport() {
   return transporter;
 }
 
+type OrderMailItem = {
+  name: string;
+  qty: number;
+  priceCents: number;
+  totalCents?: number;
+};
+
+type BasicOrderInfo = {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  notes?: string | null;
+  totalCents?: number | null;
+};
+
+function itemsTotalCents(items: OrderMailItem[], fallback?: number | null): number {
+  const sum = items.reduce((acc, item) => acc + item.priceCents * item.qty, 0);
+  if (sum > 0) return sum;
+  return typeof fallback === 'number' ? fallback : 0;
+}
+
+function renderItemsHtml(items: OrderMailItem[]): string {
+  if (items.length === 0) return '';
+  const rows = items
+    .map(
+      (item) =>
+        `<li>${item.qty} × ${item.name} — <strong>${euro(item.priceCents * item.qty)}</strong></li>`
+    )
+    .join('');
+  return `<ul>${rows}</ul>`;
+}
+
+function renderItemsText(items: OrderMailItem[]): string {
+  if (items.length === 0) return '';
+  return items
+    .map((item) => `• ${item.qty} × ${item.name} — ${euro(item.priceCents * item.qty)}`)
+    .join('\n');
+}
+
+function resolveBaseUrl() {
+  const fromEnv = process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL || 'http://localhost:3000';
+  return fromEnv.replace(/\/$/, '');
+}
+
+function shortId(id: string) {
+  if (!id) return '';
+  return id.length <= 8 ? id.toUpperCase() : id.slice(-8).toUpperCase();
+}
+
+function adminRecipients(): string[] {
+  const list = new Set<string>();
+  const fromEnv = process.env.ADMIN_EMAILS;
+  if (fromEnv) {
+    fromEnv
+      .split(',')
+      .map((email) => email.trim())
+      .filter(Boolean)
+      .forEach((email) => list.add(email));
+  }
+  if (MAIL_TO_BOOKINGS) list.add(MAIL_TO_BOOKINGS);
+  if (!list.size && MAIL_FROM) list.add(MAIL_FROM);
+  return Array.from(list);
+}
+
+export async function sendOrderConfirmation({
+  to,
+  order,
+  items,
+}: {
+  to?: string | null;
+  order: BasicOrderInfo;
+  items: OrderMailItem[];
+}) {
+  const recipient = (to || order.email)?.trim();
+  if (!recipient) {
+    console.warn('[mailer] conferma ordine non inviata: destinatario mancante', { orderId: order.id });
+    return;
+  }
+
+  if (!hasSmtpConfig() || !MAIL_FROM) {
+    console.info('[mailer] sendOrderConfirmation skipped (SMTP non configurato)', {
+      to: recipient,
+      orderId: order.id,
+    });
+    return;
+  }
+
+  const transporter = await ensureTransport();
+  const totalCents = itemsTotalCents(items, order.totalCents);
+  const reviewUrl = `${resolveBaseUrl()}/checkout/return?orderId=${encodeURIComponent(order.id)}`;
+
+  const subject = `Conferma ordine #${shortId(order.id)} – La Soluzione`;
+  const itemsHtml = renderItemsHtml(items);
+  const itemsText = renderItemsText(items);
+
+  const html = `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; color: #0f172a;">
+      <h1 style="font-size: 1.35rem; margin-bottom: 0.5rem;">Grazie per l’ordine</h1>
+      <p style="margin: 0 0 1rem;">Ordine <strong>#${order.id}</strong> a nome <strong>${order.name}</strong>.</p>
+      <p style="margin: 0 0 1rem;">Totale: <strong>${euro(totalCents)}</strong></p>
+      ${itemsHtml ? `<h2 style="font-size:1.05rem; margin-top:1.5rem;">Dettaglio prodotti</h2>${itemsHtml}` : ''}
+      ${order.notes ? `<p style="margin-top:1rem;"><strong>Note:</strong> ${order.notes}</p>` : ''}
+      <p style="margin-top:1.5rem;">Telefono: ${order.phone ?? 'non fornito'}</p>
+      <p style="margin-top:2rem;"><a href="${reviewUrl}" style="color:#2563eb; font-weight:600;">Rivedi ordine</a></p>
+      <p style="margin-top:2rem; color:#475569;">A presto!<br/>La Soluzione</p>
+    </div>
+  `;
+
+  const text = [
+    `Grazie per l’ordine #${order.id}.`,
+    `Totale: ${euro(totalCents)}.`,
+    itemsText,
+    order.notes ? `Note: ${order.notes}` : '',
+    `Telefono: ${order.phone ?? 'non fornito'}`,
+    `Rivedi ordine: ${reviewUrl}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  await transporter.sendMail({
+    from: MAIL_FROM,
+    to: recipient,
+    subject,
+    html,
+    text,
+  });
+}
+
+export async function sendOrderNotificationToAdmin({
+  order,
+  items,
+  booking,
+}: {
+  order: BasicOrderInfo;
+  items: OrderMailItem[];
+  booking?: { date?: Date | string | null; people?: number | null } | null;
+}) {
+  const recipients = adminRecipients();
+  if (recipients.length === 0) {
+    console.warn('[mailer] notifica admin non inviata: nessun destinatario');
+    return;
+  }
+
+  if (!hasSmtpConfig() || !MAIL_FROM) {
+    console.info('[mailer] sendOrderNotificationToAdmin skipped (SMTP non configurato)', {
+      orderId: order.id,
+      to: recipients,
+    });
+    return;
+  }
+
+  const transporter = await ensureTransport();
+  const totalCents = itemsTotalCents(items, order.totalCents);
+  const itemsHtml = renderItemsHtml(items);
+  const itemsText = renderItemsText(items);
+  const bookingInfo = booking?.date
+    ? new Date(booking.date).toLocaleString('it-IT', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null;
+
+  const subject = `Nuovo ordine #${shortId(order.id)} (${euro(totalCents)})`;
+  const html = `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; color: #0f172a;">
+      <h1 style="font-size: 1.25rem;">Nuovo ordine ricevuto</h1>
+      <p><strong>#${order.id}</strong> – ${order.name} (${order.email}${order.phone ? `, ${order.phone}` : ''})</p>
+      <p><strong>Totale:</strong> ${euro(totalCents)}</p>
+      ${bookingInfo ? `<p><strong>Data:</strong> ${bookingInfo}</p>` : ''}
+      ${typeof booking?.people === 'number' ? `<p><strong>Persone:</strong> ${booking.people}</p>` : ''}
+      ${itemsHtml ? `<h2 style="font-size:1.05rem; margin-top:1.5rem;">Dettaglio</h2>${itemsHtml}` : ''}
+      ${order.notes ? `<p style="margin-top:1rem;"><strong>Note cliente:</strong> ${order.notes}</p>` : ''}
+    </div>
+  `;
+
+  const text = [
+    `Nuovo ordine #${order.id}`,
+    `Cliente: ${order.name} (${order.email}${order.phone ? `, ${order.phone}` : ''})`,
+    `Totale: ${euro(totalCents)}`,
+    bookingInfo ? `Data: ${bookingInfo}` : '',
+    typeof booking?.people === 'number' ? `Persone: ${booking.people}` : '',
+    itemsText,
+    order.notes ? `Note cliente: ${order.notes}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  await transporter.sendMail({
+    from: MAIL_FROM,
+    to: recipients,
+    subject,
+    html,
+    text,
+  });
+}
+
+export async function sendOrderFailure({
+  order,
+  reason,
+}: {
+  order: { id: string; email?: string | null; name?: string | null };
+  reason?: string | null;
+}) {
+  const subject = `Problema con l’ordine #${shortId(order.id)} – La Soluzione`;
+  const reasonText = reason ? reason.toString() : 'transazione non completata';
+
+  if (order.email && hasSmtpConfig() && MAIL_FROM) {
+    const transporter = await ensureTransport();
+    const text = [
+      `Ciao ${order.name ?? ''},`,
+      `abbiamo riscontrato un problema con il pagamento dell’ordine #${order.id}.`,
+      `Dettagli: ${reasonText}.`,
+      'Se il pagamento è andato a buon fine contattaci rispondendo a questa email.',
+    ].join('\n\n');
+
+    const html = `
+      <p>Ciao ${order.name ?? ''},</p>
+      <p>abbiamo riscontrato un problema con il pagamento dell’ordine <strong>#${order.id}</strong>.</p>
+      <p>Dettagli: <strong>${reasonText}</strong>.</p>
+      <p>Se hai già completato il pagamento rispondi a questa email o contattaci telefonicamente.</p>
+    `;
+
+    await transporter.sendMail({ from: MAIL_FROM, to: order.email, subject, text, html });
+  } else {
+    console.info('[mailer] ordine fallito: email cliente non inviata', { orderId: order.id });
+  }
+
+  const recipients = adminRecipients();
+  if (recipients.length && hasSmtpConfig() && MAIL_FROM) {
+    const transporter = await ensureTransport();
+    await transporter.sendMail({
+      from: MAIL_FROM,
+      to: recipients,
+      subject,
+      text: `Ordine #${order.id} non completato. Motivo: ${reasonText}.`,
+    });
+  }
+}
+
 export async function sendCustomerOrderEmail({ order, booking }: { order: any; booking: any }) {
   if (!order?.email) {
     console.warn('[mailer] email cliente non inviata: manca indirizzo');

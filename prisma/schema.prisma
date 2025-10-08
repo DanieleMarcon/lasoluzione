@@ -155,7 +155,7 @@ model Order {
   cartId        String   @unique
   email         String
   name          String
-  phone         String?
+  phone         String
   notes         String?
   status        String   @default("pending")
   totalCents    Int

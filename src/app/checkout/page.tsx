@@ -2,20 +2,19 @@
 
 import Link from 'next/link';
 import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import * as z from 'zod';
 
 import { ToastProvider, useToast } from '@/components/admin/ui/toast';
-import CheckoutButton from '@/components/cart/CheckoutButton';
 import { useCart } from '@/hooks/useCart';
 import { formatCurrency } from '@/lib/formatCurrency';
-import type { OrderDTO } from '@/types/order';
 
 export const customerSchema = z.object({
   name: z.string().min(2, 'Nome obbligatorio'),
   email: z.string().email('Email non valida'),
   phone: z
     .string()
-    .min(7, 'Telefono obbligatorio')
+    .min(6, 'Telefono obbligatorio')
     .regex(/^[0-9+()\s.-]{7,}$/, 'Telefono non valido'),
   notes: z.string().optional(),
 });
@@ -34,35 +33,24 @@ const INITIAL_FORM_STATE: FormState = {
   notes: '',
 };
 
-type OrderView = 'idle' | 'confirmed' | 'pending';
-
-type CheckoutSession = {
-  paymentRef: string;
-  checkoutPublicId?: string | null;
-  hostedPaymentUrl?: string | null;
-};
+type OrderView = 'idle' | 'pending_payment';
 
 function CheckoutContent() {
+  const router = useRouter();
   const { cart, cartToken, loading, error } = useCart();
   const toast = useToast();
   const [formState, setFormState] = useState<FormState>(INITIAL_FORM_STATE);
   const [submitting, setSubmitting] = useState(false);
-  const [order, setOrder] = useState<OrderDTO | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
-  const [checkoutSession, setCheckoutSession] = useState<CheckoutSession | null>(null);
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [warnings, setWarnings] = useState<string[]>([]);
+  const [orderView, setOrderView] = useState<OrderView>('idle');
+  const [orderInfo, setOrderInfo] = useState<{ orderId: string; totalCents: number } | null>(null);
+  const [revolutToken, setRevolutToken] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [revolutLoading, setRevolutLoading] = useState(false);
 
   const items = cart?.items ?? [];
   const hasItems = items.length > 0;
   const totalCents = cart?.totalCents ?? 0;
-
-  const view: OrderView = order
-    ? order.status === 'confirmed' || order.status === 'paid'
-      ? 'confirmed'
-      : 'pending'
-    : 'idle';
 
   const summaryDescription = useMemo(() => {
     if (loading) return 'Caricamento del carrello in corso…';
@@ -81,76 +69,32 @@ function CheckoutContent() {
       }
     };
 
-  const prepareCheckout = async (nextOrderId: string) => {
-    setCheckoutSession(null);
-    setCheckoutLoading(true);
-    setCheckoutError(null);
-    setWarnings([]);
-
+  const startRevolutCheckout = async (token: string, orderId: string) => {
+    setRevolutLoading(true);
+    setPaymentError(null);
     try {
-      const res = await fetch('/api/payments/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: nextOrderId }),
+      const { default: RevolutCheckout } = await import('@revolut/checkout');
+      const sdk = await RevolutCheckout(token, {
+        mode: process.env.NEXT_PUBLIC_REVOLUT_ENV === 'prod' ? 'prod' : 'sandbox',
+        locale: 'it',
       });
-
-      const body = (await res.json().catch(() => null)) as
-        | {
-            ok?: boolean;
-            data?: {
-              paymentRef?: string;
-              checkoutPublicId?: string | null;
-              hostedPaymentUrl?: string | null;
-              redirectUrl?: string | null;
-              email?: { ok: boolean; skipped?: boolean; error?: string } | null;
-              configWarning?: string | null;
-            };
-            error?: string;
-          }
-        | null;
-
-      if (!res.ok || !body?.ok || !body.data) {
-        throw new Error(body?.error || 'Impossibile avviare il pagamento.');
-      }
-
-      if (body.data.redirectUrl) {
-        window.location.href = body.data.redirectUrl;
-        return;
-      }
-
-      if (!body.data.paymentRef) {
-        throw new Error('Riferimento pagamento non disponibile.');
-      }
-
-      const nextWarnings: string[] = [];
-      const emailResult = body.data.email;
-      if (emailResult && (!emailResult.ok || emailResult.skipped)) {
-        nextWarnings.push(
-          'Non siamo riusciti a inviare l’email automatica. Puoi completare il pagamento direttamente da qui.'
-        );
-      }
-      if (body.data.configWarning) {
-        nextWarnings.push(body.data.configWarning);
-      }
-      setWarnings(nextWarnings);
-
-      setCheckoutSession({
-        paymentRef: body.data.paymentRef,
-        checkoutPublicId: body.data.checkoutPublicId ?? null,
-        hostedPaymentUrl: body.data.hostedPaymentUrl ?? null,
+      await sdk.payWithPopup({
+        onSuccess: () => router.push(`/checkout/return?orderId=${encodeURIComponent(orderId)}`),
+        onError: () => setPaymentError('Pagamento non riuscito. Riprova a breve.'),
+        onCancel: () => router.push('/prenota'),
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Impossibile avviare il pagamento. Riprova più tardi.';
-      setCheckoutError(message);
+      console.error('[Checkout] Revolut popup error', err);
+      setPaymentError('Impossibile avviare il pagamento. Contatta il supporto o riprova.');
     } finally {
-      setCheckoutLoading(false);
+      setRevolutLoading(false);
     }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!cartToken) {
+    if (!cartToken || !cart?.id) {
       toast.error('Carrello non disponibile. Riprova più tardi.');
       return;
     }
@@ -189,7 +133,7 @@ function CheckoutContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: cartToken,
+          cartId: cart.id,
           email: validated.data.email,
           name: validated.data.name,
           phone: validated.data.phone,
@@ -198,7 +142,13 @@ function CheckoutContent() {
       });
 
       const body = (await res.json().catch(() => null)) as
-        | { ok: boolean; data?: OrderDTO; error?: string }
+        | {
+            ok: boolean;
+            data?:
+              | { orderId: string; status: 'paid' }
+              | { orderId: string; status: 'pending_payment'; totalCents: number; revolutToken: string };
+            error?: string;
+          }
         | null;
 
       if (!res.ok || !body?.ok || !body.data) {
@@ -206,9 +156,16 @@ function CheckoutContent() {
         return;
       }
 
-      setOrder(body.data);
       setPhoneError(null);
-      await prepareCheckout(body.data.id);
+      if (body.data.status === 'paid') {
+        router.push(`/checkout/success?orderId=${encodeURIComponent(body.data.orderId)}`);
+        return;
+      }
+
+      setOrderView('pending_payment');
+      setOrderInfo({ orderId: body.data.orderId, totalCents: body.data.totalCents });
+      setRevolutToken(body.data.revolutToken);
+      await startRevolutCheckout(body.data.revolutToken, body.data.orderId);
     } catch (err) {
       console.error('[Checkout] submit error', err);
       toast.error('Errore di rete durante il checkout.');
@@ -217,40 +174,7 @@ function CheckoutContent() {
     }
   };
 
-  if (view === 'confirmed' && order) {
-    return (
-      <div
-        className="container"
-        style={{ padding: '2rem 1rem', maxWidth: 640, margin: '0 auto', textAlign: 'center' }}
-      >
-        <h1 style={{ color: '#14532d' }}>Ordine confermato</h1>
-        <p style={{ fontSize: '1.1rem', color: '#0f172a' }}>
-          Il tuo ordine a costo zero è stato confermato automaticamente.
-        </p>
-        <p style={{ color: '#475569' }}>
-          Riceverai una conferma via email all’indirizzo {formState.email.trim()}.
-        </p>
-        <div style={{ marginTop: '2rem' }}>
-          <Link
-            href="/"
-            style={{
-              display: 'inline-block',
-              padding: '0.75rem 1.5rem',
-              borderRadius: 999,
-              backgroundColor: '#0f172a',
-              color: '#fff',
-              textDecoration: 'none',
-              fontWeight: 600,
-            }}
-          >
-            Torna alla home
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (view === 'pending' && order) {
+  if (orderView === 'pending_payment' && orderInfo) {
     return (
       <div
         className="container"
@@ -258,43 +182,25 @@ function CheckoutContent() {
       >
         <h1 style={{ color: '#0f172a', marginBottom: '0.5rem' }}>Completa il pagamento</h1>
         <p style={{ fontSize: '1.05rem', color: '#334155' }}>
-          Ordine <strong>#{order.id}</strong> creato correttamente. Premi il pulsante per aprire il checkout Revolut e
-          finalizzare il pagamento di {formatCurrency(order.totalCents)}.
+          Ordine <strong>#{orderInfo.orderId}</strong> creato correttamente. Premi il pulsante per aprire il checkout Revolut
+          e finalizzare il pagamento di {formatCurrency(orderInfo.totalCents)}.
         </p>
 
         <div style={{ margin: '2rem auto 0', maxWidth: 320, display: 'grid', gap: '0.75rem' }}>
-          {checkoutLoading && (
-            <div className="text-muted" role="status">
-              Preparazione del pagamento in corso…
-            </div>
-          )}
-
-          {warnings.map((warning) => (
-            <div key={warning} className="alert alert-warning" role="status" style={{ margin: 0 }}>
-              {warning}
-            </div>
-          ))}
-
-          {checkoutError && (
+          {paymentError && (
             <div className="alert alert-danger" role="alert" style={{ margin: 0 }}>
-              {checkoutError}
+              {paymentError}
             </div>
           )}
 
-          {checkoutSession ? (
-            <CheckoutButton
-              paymentRef={checkoutSession.paymentRef}
-              token={checkoutSession.checkoutPublicId}
-              hostedPaymentUrl={checkoutSession.hostedPaymentUrl}
-              disabled={checkoutLoading}
-            />
-          ) : (
-            !checkoutLoading && !checkoutError && (
-              <p className="text-muted" style={{ margin: 0 }}>
-                Stiamo preparando il collegamento al pagamento…
-              </p>
-            )
-          )}
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => revolutToken && startRevolutCheckout(revolutToken, orderInfo.orderId)}
+            disabled={!revolutToken || revolutLoading}
+          >
+            {revolutLoading ? 'Apertura pagamento…' : 'Paga con carta / Revolut Pay'}
+          </button>
         </div>
 
         <p style={{ marginTop: '1.5rem', color: '#64748b' }}>

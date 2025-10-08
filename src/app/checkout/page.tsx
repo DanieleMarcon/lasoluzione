@@ -3,21 +3,12 @@
 import Link from 'next/link';
 import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import * as z from 'zod';
+import RevolutCheckout from '@revolut/checkout';
 
 import { ToastProvider, useToast } from '@/components/admin/ui/toast';
 import { useCart } from '@/hooks/useCart';
 import { formatCurrency } from '@/lib/formatCurrency';
-
-export const customerSchema = z.object({
-  name: z.string().min(2, 'Nome obbligatorio'),
-  email: z.string().email('Email non valida'),
-  phone: z
-    .string()
-    .min(6, 'Telefono obbligatorio')
-    .regex(/^[0-9+()\s.-]{7,}$/, 'Telefono non valido'),
-  notes: z.string().optional(),
-});
+import { customerSchema } from './schema';
 
 type FormState = {
   email: string;
@@ -37,7 +28,7 @@ type OrderView = 'idle' | 'pending_payment';
 
 function CheckoutContent() {
   const router = useRouter();
-  const { cart, cartToken, loading, error } = useCart();
+  const { cart, cartToken, loading, error, clearCartToken, refresh } = useCart();
   const toast = useToast();
   const [formState, setFormState] = useState<FormState>(INITIAL_FORM_STATE);
   const [submitting, setSubmitting] = useState(false);
@@ -69,20 +60,69 @@ function CheckoutContent() {
       }
     };
 
+  const clearClientCart = async () => {
+    try {
+      clearCartToken();
+      await refresh();
+    } catch (err) {
+      console.error('[Checkout] unable to refresh cart after payment', err);
+    }
+  };
+
+  const navigateToSuccess = (orderId: string) => {
+    router.push(`/checkout/success?orderId=${encodeURIComponent(orderId)}`);
+  };
+
+  const pollOrderStatus = async (orderId: string) => {
+    const maxAttempts = 8;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const res = await fetch(`/api/payments/order-status?orderId=${encodeURIComponent(orderId)}`, {
+          cache: 'no-store',
+        });
+        const body = (await res.json().catch(() => null)) as
+          | { ok: boolean; data?: { status?: string } }
+          | null;
+        if (body?.ok && body.data?.status) {
+          const status = body.data.status;
+          if (status === 'paid' || status === 'completed') {
+            return 'paid' as const;
+          }
+          if (status === 'failed' || status === 'cancelled' || status === 'declined') {
+            return 'failed' as const;
+          }
+        }
+      } catch (err) {
+        console.error('[Checkout] polling status error', err);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    return 'pending' as const;
+  };
+
   const startRevolutCheckout = async (token: string, orderId: string) => {
     setRevolutLoading(true);
     setPaymentError(null);
     try {
-      const { default: RevolutCheckout } = await import('@revolut/checkout');
-      const sdk = await RevolutCheckout(token, {
-        mode: process.env.NEXT_PUBLIC_REVOLUT_ENV === 'prod' ? 'prod' : 'sandbox',
-        locale: 'it',
-      });
-      await sdk.payWithPopup({
-        onSuccess: () => router.push(`/checkout/return?orderId=${encodeURIComponent(orderId)}`),
-        onError: () => setPaymentError('Pagamento non riuscito. Riprova a breve.'),
-        onCancel: () => router.push('/prenota'),
-      });
+      const publicToken = process.env.NEXT_PUBLIC_REVOLUT_PUBLIC_KEY;
+      if (!publicToken) {
+        throw new Error('Missing Revolut public token');
+      }
+      const mode = process.env.NEXT_PUBLIC_REVOLUT_ENV === 'prod' ? 'prod' : 'sandbox';
+      const sdk = await RevolutCheckout(token, { publicToken, mode, locale: 'it' });
+      await sdk.pay();
+
+      const status = await pollOrderStatus(orderId);
+      if (status === 'paid') {
+        await clearClientCart();
+        navigateToSuccess(orderId);
+        return;
+      }
+      if (status === 'failed') {
+        setPaymentError('Pagamento non completato. Puoi riprovare.');
+        return;
+      }
+      setPaymentError('Pagamento in elaborazione. Controlla la posta o riprova fra poco.');
     } catch (err) {
       console.error('[Checkout] Revolut popup error', err);
       setPaymentError('Impossibile avviare il pagamento. Contatta il supporto o riprova.');
@@ -107,6 +147,12 @@ function CheckoutContent() {
     const trimmedName = formState.name.trim();
     const trimmedPhone = formState.phone.trim();
     const trimmedNotes = formState.notes.trim();
+
+    if (!trimmedPhone) {
+      setPhoneError('Telefono obbligatorio');
+      toast.error('Inserisci un numero di telefono.');
+      return;
+    }
 
     const validated = customerSchema.safeParse({
       email: trimmedEmail,
@@ -158,7 +204,8 @@ function CheckoutContent() {
 
       setPhoneError(null);
       if (body.data.status === 'paid') {
-        router.push(`/checkout/success?orderId=${encodeURIComponent(body.data.orderId)}`);
+        await clearClientCart();
+        navigateToSuccess(body.data.orderId);
         return;
       }
 

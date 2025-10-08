@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 
 export default function CheckoutButton({
   paymentRef,
+  orderId,
   token,
   hostedPaymentUrl,
   disabled,
 }: {
   paymentRef: string;
+  orderId?: string;
   token?: string | null;
   hostedPaymentUrl?: string | null;
   disabled?: boolean;
@@ -21,15 +23,18 @@ export default function CheckoutButton({
 
     try {
       if (token) {
-        const sdk = await RevolutCheckout(token, {
-          mode: process.env.NEXT_PUBLIC_REVOLUT_ENV === 'prod' ? 'prod' : 'sandbox',
-          locale: 'it',
-        });
-        await sdk.payWithPopup({
-          onSuccess: () => router.push(`/checkout/return?ref=${encodeURIComponent(paymentRef)}`),
-          onError: () => alert('Pagamento non riuscito. Riprova.'),
-          onCancel: () => router.push('/prenota'),
-        });
+        const publicToken = process.env.NEXT_PUBLIC_REVOLUT_PUBLIC_KEY;
+        if (!publicToken) {
+          throw new Error('Missing Revolut public token');
+        }
+        const mode = process.env.NEXT_PUBLIC_REVOLUT_ENV === 'prod' ? 'prod' : 'sandbox';
+        const sdk = await RevolutCheckout(token, { publicToken, mode, locale: 'it' });
+        await sdk.pay();
+        if (orderId) {
+          router.push(`/checkout/return?orderId=${encodeURIComponent(orderId)}`);
+        } else {
+          router.push(`/checkout/return?ref=${encodeURIComponent(paymentRef)}`);
+        }
         return;
       }
     } catch (error) {

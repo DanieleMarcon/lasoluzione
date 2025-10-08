@@ -56,35 +56,29 @@ export async function POST(req: Request) {
 
     // Flusso a 0€
     if (totalCents <= 0) {
-      const providerRef = order.providerRef ?? `FREE-${order.id}`;
+      const paymentRef = 'FREE';
       await prisma.order.update({
         where: { id: orderId },
-        data: { status: 'paid', paymentRef: 'FREE', providerRef },
+        data: { status: 'paid', paymentRef },
       });
-      const redirectUrl = `${returnUrl}?ref=${encodeURIComponent(providerRef)}`;
+      const redirectUrl = `${returnUrl}?orderId=${encodeURIComponent(order.id)}`;
       return NextResponse.json({
         ok: true,
-        data: { orderId: order.id, amountCents: totalCents, redirectUrl, paymentRef: providerRef, configWarning },
+        data: { orderId: order.id, amountCents: totalCents, redirectUrl, paymentRef, configWarning },
       });
     }
 
     // Crea ordine su Revolut
     const description = `Prenotazione #${order.id} - Bar La Soluzione`;
 
-    let providerRef = order.providerRef ?? null;
     const parsedRef = parsePaymentRef(order.paymentRef);
-    if (!providerRef && parsedRef.kind === 'revolut') {
-      providerRef = parsedRef.meta.orderId;
-      await prisma.order.update({ where: { id: order.id }, data: { providerRef } });
-    }
-
-    if (providerRef && parsedRef.kind === 'revolut' && parsedRef.meta.checkoutPublicId) {
+    if (parsedRef.kind === 'revolut' && parsedRef.meta.checkoutPublicId) {
       return NextResponse.json({
         ok: true,
         data: {
           orderId: order.id,
           amountCents: totalCents,
-          paymentRef: providerRef,
+          paymentRef: parsedRef.meta.orderId,
           checkoutPublicId: parsedRef.meta.checkoutPublicId,
           hostedPaymentUrl: parsedRef.meta.hostedPaymentUrl,
           email: parsedRef.meta.emailError ? { ok: false, error: parsedRef.meta.emailError } : { ok: true },
@@ -129,7 +123,6 @@ export async function POST(req: Request) {
       data: {
         status: 'pending_payment',
         paymentRef: encodeRevolutPaymentMeta(finalMeta),
-        providerRef: revolutOrder.paymentRef,
       },
     });
 

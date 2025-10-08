@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { type Booking, type Cart, type CartItem, type Order as PrismaOrder } from '@prisma/client';
+import { Prisma, type Booking, type Order as PrismaOrder } from '@prisma/client';
 import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
@@ -40,10 +40,9 @@ export type CreateOrderSuccess =
 
 export type CreateOrderResult = CreateOrderSuccess | { ok: false; error: string };
 
-export type OrderWithCart = PrismaOrder & {
-  cart: Cart & { items: CartItem[] };
-  bookings: Booking[];
-};
+type OrderWithCart = Prisma.OrderGetPayload<{
+  include: { cart: { include: { items: true } }; bookings: true };
+}>;
 
 export class OrderWorkflowError extends Error {
   status: number;
@@ -56,13 +55,13 @@ export class OrderWorkflowError extends Error {
 }
 
 async function getOrderWithCart(orderId: string): Promise<OrderWithCart> {
-  const order = await prisma.order.findUnique({
+  const order = (await prisma.order.findUnique({
     where: { id: orderId },
     include: {
       cart: { include: { items: true } },
       bookings: true,
     },
-  });
+  })) as OrderWithCart | null;
 
   if (!order || !order.cart) {
     throw new OrderWorkflowError('order_not_found', 404);
@@ -71,7 +70,7 @@ async function getOrderWithCart(orderId: string): Promise<OrderWithCart> {
   return order as OrderWithCart;
 }
 
-function mapItemsForMail(cart: Cart & { items: CartItem[] }) {
+function mapItemsForMail(cart: OrderWithCart['cart']) {
   return cart.items.map((item) => ({
     id: item.id,
     productId: item.productId,
@@ -99,11 +98,6 @@ function detectBookingType(order: OrderWithCart): Booking['type'] {
   return hasEventItem ? 'evento' : 'pranzo';
 }
 
-function sumCartPeople(order: OrderWithCart): number {
-  const total = order.cart.items.reduce((acc, item) => acc + (item.qty || 0), 0);
-  return total > 0 ? total : 1;
-}
-
 export async function ensureBookingFromOrder(orderId: string) {
   const order = await getOrderWithCart(orderId);
   return ensureBookingInternal(order);
@@ -115,7 +109,7 @@ export async function findOrderByReference(ref: string) {
     where: {
       OR: [
         { id: ref },
-        { providerRef: ref },
+        { paymentRef: ref },
         { paymentRef: { contains: ref } },
       ],
     },
@@ -129,21 +123,21 @@ async function ensureBookingInternal(order: OrderWithCart) {
 
   const bookingDate = settings?.fixedDate ?? new Date();
   const bookingType = detectBookingType(order);
-  const people = sumCartPeople(order);
-  const totalCents = order.totalCents ?? order.cart.totalCents ?? 0;
   const items = order.cart.items.map((item) => ({
     productId: item.productId,
     name: item.nameSnapshot,
     qty: item.qty,
     priceCents: item.priceCentsSnapshot,
   }));
+  const people = items.reduce((sum, item) => sum + item.qty, 0) || 1;
+  const totalCents = order.totalCents ?? order.cart.totalCents ?? 0;
 
   const data = {
     date: bookingDate,
     people,
     name: order.name,
     email: order.email,
-    phone: order.phone,
+    phone: order.phone ?? '',
     notes: order.notes ?? null,
     type: bookingType,
     status: 'confirmed' as const,
@@ -171,6 +165,7 @@ export async function createOrderFromCart(rawInput: unknown): Promise<CreateOrde
   }
 
   const { cartId, email, name, phone, notes } = parsed.data;
+  const normalizedNotes = typeof notes === 'string' ? notes.trim() : undefined;
 
   const cart = await prisma.cart.findUnique({
     where: { id: cartId },
@@ -194,9 +189,9 @@ export async function createOrderFromCart(rawInput: unknown): Promise<CreateOrde
       email,
       name,
       phone,
-      notes: notes ?? null,
       status,
       totalCents,
+      ...(normalizedNotes ? { notes: normalizedNotes } : {}),
     },
   });
 
@@ -227,7 +222,6 @@ export async function createOrderFromCart(rawInput: unknown): Promise<CreateOrde
       where: { id: order.id },
       data: {
         paymentRef: meta,
-        providerRef: revolutOrder.paymentRef,
         status: 'pending_payment',
       },
     });
@@ -289,12 +283,16 @@ export async function pollOrderStatus(orderId: string) {
   if (order.status === 'failed') return { status: 'failed' as const };
 
   const parsedRef = parsePaymentRef(order.paymentRef);
-  const providerRef = order.providerRef || (parsedRef.kind === 'revolut' ? parsedRef.meta.orderId : null);
-  if (!providerRef) {
+  if (parsedRef.kind !== 'revolut') {
     return { status: 'pending' as const };
   }
 
-  const remote = await retrieveRevolutOrder(providerRef);
+  const revolutOrderId = parsedRef.meta.orderId;
+  if (!revolutOrderId) {
+    return { status: 'pending' as const };
+  }
+
+  const remote = await retrieveRevolutOrder(revolutOrderId);
   if (isRevolutPaid(remote.state)) {
     await finalizePaidOrder(order.id);
     return { status: 'paid' as const };

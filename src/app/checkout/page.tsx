@@ -32,6 +32,7 @@ function CheckoutContent() {
   const [formState, setFormState] = useState<FormState>(INITIAL_FORM_STATE);
   const [submitting, setSubmitting] = useState(false);
   const [order, setOrder] = useState<OrderDTO | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
 
   const items = cart?.items ?? [];
   const hasItems = items.length > 0;
@@ -55,6 +56,9 @@ function CheckoutContent() {
     (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const value = event.target.value;
       setFormState((prev) => ({ ...prev, [field]: value }));
+      if (field === 'phone' && phoneError) {
+        setPhoneError(null);
+      }
     };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -71,9 +75,15 @@ function CheckoutContent() {
 
     const trimmedEmail = formState.email.trim();
     const trimmedName = formState.name.trim();
+    const trimmedPhone = formState.phone.trim();
 
     if (!trimmedEmail || !trimmedName) {
       toast.error('Inserisci nome ed email per completare l’ordine.');
+      return;
+    }
+
+    if (trimmedPhone.length < 8) {
+      setPhoneError('Inserisci un numero di telefono valido.');
       return;
     }
 
@@ -86,7 +96,7 @@ function CheckoutContent() {
           token: cartToken,
           email: trimmedEmail,
           name: trimmedName,
-          phone: formState.phone.trim() || undefined,
+          phone: trimmedPhone,
           notes: formState.notes.trim() || undefined,
         }),
       });
@@ -101,6 +111,7 @@ function CheckoutContent() {
       }
 
       setOrder(body.data);
+      setPhoneError(null);
     } catch (err) {
       console.error('[Checkout] submit error', err);
       toast.error('Errore di rete durante il checkout.');
@@ -295,14 +306,26 @@ function CheckoutContent() {
                 type="tel"
                 value={formState.phone}
                 onChange={handleInputChange('phone')}
-                placeholder="Opzionale"
+                placeholder="Numero di telefono"
+                required
+                aria-invalid={Boolean(phoneError)}
+                aria-describedby="checkout-phone-error"
                 style={{
                   padding: '0.65rem 0.75rem',
                   borderRadius: 12,
-                  border: '1px solid #cbd5f5',
+                  border: phoneError ? '1px solid #dc2626' : '1px solid #cbd5f5',
                   fontSize: '1rem',
                 }}
               />
+              {phoneError && (
+                <span
+                  id="checkout-phone-error"
+                  role="alert"
+                  style={{ color: '#b91c1c', fontSize: '0.9rem' }}
+                >
+                  {phoneError}
+                </span>
+              )}
             </label>
             <label style={{ display: 'grid', gap: '0.25rem', color: '#0f172a', fontWeight: 600 }}>
               Note

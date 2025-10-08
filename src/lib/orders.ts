@@ -62,7 +62,7 @@ export async function createOrderFromCart(input: CheckoutInput): Promise<Order> 
       cartId: ensuredCart.id,
       email,
       name,
-      phone: phone ?? null,
+      phone,
       status,
       totalCents,
       ...(paymentRef ? { paymentRef } : {}),

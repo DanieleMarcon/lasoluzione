@@ -1,14 +1,9 @@
 // next.config.mjs
-import createMDX from '@next/mdx';
-
 /** @type {import('next').NextConfig} */
 const isProd = process.env.NODE_ENV === 'production';
 
 const nextConfig = {
   reactStrictMode: true,
-
-  // 🔧 Disattivo MDX RS per evitare l'import virtuale `next-mdx-import-source-file`
-  experimental: { mdxRs: false },
 
   images: { remotePatterns: [] },
 
@@ -40,8 +35,5 @@ const nextConfig = {
     ];
   },
 
-  pageExtensions: ['tsx', 'ts', 'mdx'],
 };
-
-const withMDX = createMDX({});
-export default withMDX(nextConfig);
+export default nextConfig;

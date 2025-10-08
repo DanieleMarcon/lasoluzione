@@ -147,11 +147,11 @@ pnpm dev                     # http://localhost:3000
 
 - Configura le variabili sandbox in `.env.local` copiandole da `.env.example`: `REVOLUT_SECRET_KEY`, `REVOLUT_API_VERSION`, `REVOLUT_API_BASE`, `PAY_RETURN_URL`, `PAY_CANCEL_URL`, `NEXT_PUBLIC_BASE_URL` (puntano all'ambiente sandbox e all'URL locale).
 - Tutte le chiamate verso l'API Merchant devono includere `Authorization: Bearer …` e `Revolut-Api-Version: 2024-09-01`; gli endpoint vivono sotto `https://sandbox-merchant.revolut.com/api/*` (produzione: `https://merchant.revolut.com/api/*`).
-- Il widget si inizializza con il token dell'ordine: `await RevolutCheckout(orderToken, 'sandbox')` e `instance.payWithPopup({ onSuccess, onError, onCancel })`.
+- Il widget si inizializza con il checkout `public_id`: `const sdk = await RevolutCheckout(publicId, { mode: 'sandbox', publicToken, locale: 'it' }); await sdk.pay();`.
 - Flusso checkout MVP: `/api/payments/checkout` → widget Revolut → `/checkout/return` → `/api/payments/order-status`.
 - Nessun webhook richiesto per l'MVP; si possono aggiungere in seguito per la riconciliazione ordini/pagamenti.
 - Testa i pagamenti con le carte sandbox (successo + errori, importi ≥ €30 per scenari 3DS).
-- Riferimenti utili: [API versioning](https://developer.revolut.com/docs/merchant/api/versioning), [Checkout init](https://developer.revolut.com/docs/merchant/web/overview#initialise-revolutcheckout), [payWithPopup](https://developer.revolut.com/docs/merchant/web/checkout#popup-integration), [test cards](https://developer.revolut.com/docs/merchant/test-cards).
+- Riferimenti utili: [API versioning](https://developer.revolut.com/docs/merchant/api/versioning), [Checkout init](https://developer.revolut.com/docs/merchant/web/overview#initialise-revolutcheckout), [RevolutCheckout SDK](https://developer.revolut.com/docs/revolut-checkout-js/), [test cards](https://developer.revolut.com/docs/merchant/test-cards).
 
 ---
 

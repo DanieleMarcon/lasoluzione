@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { prisma } from '@/lib/prisma';
 import { retrieveRevolutOrder, isRevolutPaid } from '@/lib/revolut';
+import { parsePaymentRef } from '@/lib/paymentRef';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,12 +23,19 @@ export async function GET(req: Request) {
     }
 
     // FREE or API verify
-    if (order.paymentRef === 'FREE') {
+    const parsedRef = parsePaymentRef(order.paymentRef);
+
+    if (parsedRef.kind === 'free') {
       await prisma.order.update({ where: { id: orderId }, data: { status: 'paid' } });
       return NextResponse.json({ ok: true, data: { status: 'paid' } });
     }
 
-    const paymentRef = order.paymentRef || ref;
+    const paymentRef = (() => {
+      if (parsedRef.kind === 'revolut') return parsedRef.meta.orderId;
+      if (parsedRef.kind === 'unknown' && parsedRef.raw) return parsedRef.raw;
+      return ref || undefined;
+    })();
+
     if (!paymentRef) {
       return NextResponse.json({ ok: true, data: { status: 'pending' } });
     }

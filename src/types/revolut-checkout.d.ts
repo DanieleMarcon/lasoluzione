@@ -1,18 +1,18 @@
 declare module '@revolut/checkout' {
   export type RevolutCheckoutMode = 'sandbox' | 'prod';
 
-  export type RevolutCheckoutPopupHandlers = {
-    onSuccess(): void;
-    onError(): void;
-    onCancel(): void;
+  export type RevolutCheckoutOptions = {
+    mode?: RevolutCheckoutMode;
+    locale?: string;
+    publicToken: string;
   };
 
   export type RevolutCheckoutInstance = {
-    payWithPopup(handlers: RevolutCheckoutPopupHandlers): void;
+    pay(): Promise<void>;
   };
 
   export default function RevolutCheckout(
-    token: string,
-    mode?: RevolutCheckoutMode
+    publicId: string,
+    options: RevolutCheckoutOptions
   ): Promise<RevolutCheckoutInstance>;
 }

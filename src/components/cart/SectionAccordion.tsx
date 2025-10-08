@@ -30,15 +30,14 @@ const currencyFormatter = new Intl.NumberFormat('it-IT', {
 });
 
 export default function SectionAccordion() {
-  // dall’hook del carrello
-  const { cartToken, loading: cartLoading, refresh } = useCart();
+  const { loading: cartLoading, addItem, pending } = useCart();
 
   const [sections, setSections] = useState<CatalogSection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openSection, setOpenSection] = useState<CatalogSectionDTO['key'] | null>(null);
   const [openDetails, setOpenDetails] = useState<Record<number, boolean>>({});
-  const [pending, setPending] = useState<Record<number, boolean>>({}); // stato per i bottoni “Aggiungi”
+  const [localPending, setLocalPending] = useState<Record<number, boolean>>({});
 
   // Carica il catalogo
   useEffect(() => {
@@ -90,45 +89,26 @@ export default function SectionAccordion() {
    */
   const handleAddToCart = useCallback(
     async (p: CatalogProduct) => {
-      // assicurati di avere un token
-      let token = cartToken;
-      if (!token) {
-        const created = await refresh(); // l’hook, con token null, crea il carrello
-        token = created?.token ?? null;
-      }
-      if (!token) return;
-
       try {
-        setPending((m) => ({ ...m, [p.id]: true }));
-
-        const res = await fetch(`/api/cart/${encodeURIComponent(token)}/items`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            productId: p.id,
-            qty: 1,
-            nameSnapshot: p.name,
-            priceCentsSnapshot: p.priceCents,       // <-- fondamentale per il totale
-            imageUrlSnapshot: p.imageUrl ?? undefined,
-            // meta: puoi passare un oggetto opzionale se servono dettagli aggiuntivi
-          }),
+        setLocalPending((m) => ({ ...m, [p.id]: true }));
+        await addItem({
+          productId: p.id,
+          qty: 1,
+          nameSnapshot: p.name,
+          priceCentsSnapshot: p.priceCents,
+          imageUrlSnapshot: p.imageUrl ?? undefined,
         });
-
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({} as any));
-          throw new Error(body?.error || `HTTP ${res.status}`);
-        }
-
-        // aggiorna lo stato del carrello (totale, righe, ecc.)
-        await refresh();
       } catch (e) {
         console.error('[SectionAccordion] add item error', e);
-        // opzionale: toast d’errore
       } finally {
-        setPending((m) => ({ ...m, [p.id]: false }));
+        setLocalPending((m) => {
+          const next = { ...m };
+          delete next[p.id];
+          return next;
+        });
       }
     },
-    [cartToken, refresh]
+    [addItem]
   );
 
   const content = useMemo(() => {
@@ -215,14 +195,18 @@ export default function SectionAccordion() {
                               </button>
                             ) : null}
 
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              disabled={cartLoading || !!pending[product.id]}
-                              onClick={() => handleAddToCart(product)}
-                            >
-                              {pending[product.id] ? 'Attendere…' : 'Aggiungi'}
-                            </button>
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            disabled={
+                              cartLoading || !!pending[product.id] || !!localPending[product.id]
+                            }
+                            onClick={() => handleAddToCart(product)}
+                          >
+                            {pending[product.id] || localPending[product.id]
+                              ? 'Attendere…'
+                              : 'Aggiungi'}
+                          </button>
                           </div>
                         </div>
 
@@ -271,6 +255,7 @@ export default function SectionAccordion() {
     openDetails,
     cartLoading,
     pending,
+    localPending,
     handleAddToCart,
     handleToggleDetails,
     handleToggleSection,

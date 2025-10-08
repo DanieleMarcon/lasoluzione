@@ -76,6 +76,11 @@ function persistToken(token: string | null) {
   setState({ cartToken: token });
 }
 
+function clearCartState() {
+  persistToken(null);
+  setState({ cart: null, cartToken: null, pending: {}, error: null });
+}
+
 async function parseResponse(res: Response): Promise<CartResponse> {
   const body = (await res.json().catch(() => null)) as CartResponse | null;
   return body ?? { ok: false, error: 'Invalid response' };
@@ -278,6 +283,7 @@ export type UseCart = {
   updateItem: (productId: number, qty: number) => Promise<void>;
   removeItem: (productId: number) => Promise<void>;
   pending: Record<number, boolean>;
+  clearCartToken: () => void;
 };
 
 export function useCart(): UseCart {
@@ -309,5 +315,6 @@ export function useCart(): UseCart {
     updateItem: updateItemQty,
     removeItem: removeItemFromCart,
     pending: state.pending,
+    clearCartToken: clearCartState,
   };
 }

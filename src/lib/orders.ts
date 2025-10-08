@@ -1,86 +1,309 @@
-// src/lib/orders.ts
-import { Order } from '@prisma/client';
+import 'server-only';
 
-import { prisma } from './prisma';
-import { type CartWithItems, getCartByToken, recalcCartTotal } from '@/lib/cart';
+import { type Booking, type Cart, type CartItem, type Order as PrismaOrder } from '@prisma/client';
+import { z } from 'zod';
 
-import type { CheckoutInput, OrderDTO } from '@/types/order';
+import { prisma } from '@/lib/prisma';
+import { recalcCartTotal } from '@/lib/cart';
+import { createRevolutOrder, isRevolutPaid, retrieveRevolutOrder } from '@/lib/revolut';
+import { encodeRevolutPaymentMeta, parsePaymentRef } from '@/lib/paymentRef';
+import {
+  sendOrderConfirmation,
+  sendOrderFailure,
+  sendOrderNotificationToAdmin,
+} from '@/lib/mailer';
 
-export type ValidateCartResult = {
-  ok: boolean;
-  reason?: string;
+const DEFAULT_BOOKING_SETTINGS_ID = 1;
+
+export const OrderInput = z.object({
+  cartId: z.string().min(1),
+  email: z.string().email(),
+  name: z.string().min(1),
+  phone: z.string().min(6),
+  notes: z.string().max(2000).optional().nullable(),
+});
+
+export type CreateOrderSuccess =
+  | {
+      ok: true;
+      data: { orderId: string; status: 'paid' };
+    }
+  | {
+      ok: true;
+      data: {
+        orderId: string;
+        status: 'pending_payment';
+        totalCents: number;
+        revolutToken: string;
+      };
+    };
+
+export type CreateOrderResult = CreateOrderSuccess | { ok: false; error: string };
+
+export type OrderWithCart = PrismaOrder & {
+  cart: Cart & { items: CartItem[] };
+  bookings: Booking[];
 };
 
-export function validateCartReady(cart: CartWithItems | null): ValidateCartResult {
-  if (!cart) return { ok: false, reason: 'CART_NOT_FOUND' };
-
-  if (cart.status === 'expired') return { ok: false, reason: 'CART_EXPIRED' };
-
-  if (cart.status !== 'open' && cart.status !== 'locked') {
-    return { ok: false, reason: 'CART_NOT_READY' };
-  }
-
-  if (!Array.isArray(cart.items) || cart.items.length === 0) {
-    return { ok: false, reason: 'CART_EMPTY' };
-  }
-
-  return { ok: true };
-}
-
-export class OrderCheckoutError extends Error {
+export class OrderWorkflowError extends Error {
   status: number;
 
   constructor(code: string, status = 400) {
     super(code);
-    this.name = 'OrderCheckoutError';
+    this.name = 'OrderWorkflowError';
     this.status = status;
   }
 }
 
-export async function createOrderFromCart(input: CheckoutInput): Promise<Order> {
-  const { token, email, name, phone, notes } = input;
-
-  if (!token) {
-    throw new OrderCheckoutError('MISSING_CART_TOKEN');
-  }
-
-  const cart = await getCartByToken(token);
-
-  const validation = validateCartReady(cart);
-  if (!validation.ok || !cart) {
-    throw new OrderCheckoutError(validation.reason ?? 'CART_NOT_READY');
-  }
-
-  const ensuredCart = cart;
-
-  const totalCents = await recalcCartTotal(ensuredCart.id);
-  const status = totalCents === 0 ? 'paid' : 'pending_payment';
-  const paymentRef = totalCents === 0 ? 'FREE' : null;
-
-  const order = await prisma.order.create({
-    data: {
-      cartId: ensuredCart.id,
-      email,
-      name,
-      phone,
-      status,
-      totalCents,
-      notes: notes ?? null,
-      ...(paymentRef ? { paymentRef } : {}),
+async function getOrderWithCart(orderId: string): Promise<OrderWithCart> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      cart: { include: { items: true } },
+      bookings: true,
     },
   });
 
+  if (!order || !order.cart) {
+    throw new OrderWorkflowError('order_not_found', 404);
+  }
+
+  return order as OrderWithCart;
+}
+
+function mapItemsForMail(cart: Cart & { items: CartItem[] }) {
+  return cart.items.map((item) => ({
+    id: item.id,
+    productId: item.productId,
+    name: item.nameSnapshot,
+    qty: item.qty,
+    priceCents: item.priceCentsSnapshot,
+    totalCents: item.priceCentsSnapshot * item.qty,
+  }));
+}
+
+function detectBookingType(order: OrderWithCart): Booking['type'] {
+  const hasEventItem = order.cart.items.some((item) => {
+    const meta = item.meta as Record<string, unknown> | null;
+    if (meta && typeof meta === 'object') {
+      const values = Object.values(meta).map((value) =>
+        typeof value === 'string' ? value.toLowerCase() : value
+      );
+      if (values.some((value) => value === 'eventi' || value === 'event' || value === 'evento')) {
+        return true;
+      }
+    }
+    return item.nameSnapshot.toLowerCase().includes('evento');
+  });
+
+  return hasEventItem ? 'evento' : 'pranzo';
+}
+
+function sumCartPeople(order: OrderWithCart): number {
+  const total = order.cart.items.reduce((acc, item) => acc + (item.qty || 0), 0);
+  return total > 0 ? total : 1;
+}
+
+export async function ensureBookingFromOrder(orderId: string) {
+  const order = await getOrderWithCart(orderId);
+  return ensureBookingInternal(order);
+}
+
+export async function findOrderByReference(ref: string) {
+  if (!ref) return null;
+  return prisma.order.findFirst({
+    where: {
+      OR: [
+        { id: ref },
+        { providerRef: ref },
+        { paymentRef: { contains: ref } },
+      ],
+    },
+  });
+}
+
+async function ensureBookingInternal(order: OrderWithCart) {
+  const [settings] = await Promise.all([
+    prisma.bookingSettings.findUnique({ where: { id: DEFAULT_BOOKING_SETTINGS_ID } }),
+  ]);
+
+  const bookingDate = settings?.fixedDate ?? new Date();
+  const bookingType = detectBookingType(order);
+  const people = sumCartPeople(order);
+  const totalCents = order.totalCents ?? order.cart.totalCents ?? 0;
+  const items = order.cart.items.map((item) => ({
+    productId: item.productId,
+    name: item.nameSnapshot,
+    qty: item.qty,
+    priceCents: item.priceCentsSnapshot,
+  }));
+
+  const data = {
+    date: bookingDate,
+    people,
+    name: order.name,
+    email: order.email,
+    phone: order.phone,
+    notes: order.notes ?? null,
+    type: bookingType,
+    status: 'confirmed' as const,
+    orderId: order.id,
+    lunchItemsJson: items,
+    subtotalCents: totalCents,
+    totalCents,
+  } satisfies Parameters<typeof prisma.booking.upsert>[0]['create'];
+
+  const currentBooking = order.bookings[0]
+    ? await prisma.booking.findUnique({ where: { id: order.bookings[0].id } })
+    : null;
+
+  const booking = currentBooking
+    ? await prisma.booking.update({ where: { id: currentBooking.id }, data })
+    : await prisma.booking.create({ data });
+
+  return { booking, order };
+}
+
+export async function createOrderFromCart(rawInput: unknown): Promise<CreateOrderResult> {
+  const parsed = OrderInput.safeParse(rawInput);
+  if (!parsed.success) {
+    return { ok: false, error: 'invalid_payload' };
+  }
+
+  const { cartId, email, name, phone, notes } = parsed.data;
+
+  const cart = await prisma.cart.findUnique({
+    where: { id: cartId },
+    include: { items: true },
+  });
+
+  if (!cart) throw new OrderWorkflowError('cart_not_found', 404);
+  if (!Array.isArray(cart.items) || cart.items.length === 0) {
+    throw new OrderWorkflowError('cart_empty', 400);
+  }
+  if (cart.status !== 'open' && cart.status !== 'locked') {
+    throw new OrderWorkflowError('cart_not_ready', 400);
+  }
+
+  const totalCents = await recalcCartTotal(cartId);
+  const status = totalCents > 0 ? 'pending_payment' : 'paid';
+
+  const order = await prisma.order.create({
+    data: {
+      cartId,
+      email,
+      name,
+      phone,
+      notes: notes ?? null,
+      status,
+      totalCents,
+    },
+  });
+
+  if (totalCents <= 0) {
+    await finalizePaidOrder(order.id);
+    return { ok: true, data: { orderId: order.id, status: 'paid' } };
+  }
+
+  try {
+    const description = `Prenotazione #${order.id} – La Soluzione`;
+    const revolutOrder = await createRevolutOrder({
+      amountMinor: totalCents,
+      currency: 'EUR',
+      merchantOrderId: order.id,
+      customer: { email, name },
+      description,
+      captureMode: 'automatic',
+    });
+
+    const meta = encodeRevolutPaymentMeta({
+      provider: 'revolut',
+      orderId: revolutOrder.paymentRef,
+      checkoutPublicId: revolutOrder.checkoutPublicId,
+      hostedPaymentUrl: revolutOrder.hostedPaymentUrl,
+    });
+
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        paymentRef: meta,
+        providerRef: revolutOrder.paymentRef,
+        status: 'pending_payment',
+      },
+    });
+
+    const revolutToken =
+      revolutOrder.checkoutPublicId ?? revolutOrder.paymentRef ?? order.id;
+
+    return {
+      ok: true,
+      data: { orderId: order.id, status: 'pending_payment', totalCents, revolutToken },
+    };
+  } catch (error) {
+    await prisma.order.update({ where: { id: order.id }, data: { status: 'failed' } });
+    const message = error instanceof Error ? error.message : 'payment_gateway_error';
+    throw new OrderWorkflowError(message, 502);
+  }
+}
+
+export async function finalizePaidOrder(orderId: string): Promise<PrismaOrder> {
+  const order = await getOrderWithCart(orderId);
+
+  await prisma.order.update({
+    where: { id: order.id },
+    data: { status: 'paid' },
+  });
+
+  const itemsForMail = mapItemsForMail(order.cart);
+
+  const { booking } = await ensureBookingInternal(order);
+
+  await prisma.cart.update({
+    where: { id: order.cartId },
+    data: { status: 'completed', totalCents: 0 },
+  });
+  await prisma.cartItem.deleteMany({ where: { cartId: order.cartId } });
+
+  await sendOrderConfirmation({ to: order.email, order, items: itemsForMail });
+  await sendOrderNotificationToAdmin({ order, items: itemsForMail, booking });
+
+  const updated = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+  return updated;
+}
+
+export async function markOrderFailed(orderId: string, reason?: string) {
+  const order = await prisma.order.update({
+    where: { id: orderId },
+    data: { status: 'failed' },
+  });
+
+  await sendOrderFailure({ order, reason });
   return order;
 }
 
-export function toOrderDTO(order: Order): OrderDTO {
-  return {
-    id: order.id,
-    cartId: order.cartId,
-    status: order.status,
-    totalCents: order.totalCents,
-    discountCents: order.discountCents ?? undefined,
-    paymentRef: order.paymentRef ?? undefined,
-    createdAt: order.createdAt.toISOString(),
-  };
+export async function pollOrderStatus(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!order) return { status: 'not_found' as const };
+
+  if (order.status === 'paid') return { status: 'paid' as const };
+  if (order.status === 'failed') return { status: 'failed' as const };
+
+  const parsedRef = parsePaymentRef(order.paymentRef);
+  const providerRef = order.providerRef || (parsedRef.kind === 'revolut' ? parsedRef.meta.orderId : null);
+  if (!providerRef) {
+    return { status: 'pending' as const };
+  }
+
+  const remote = await retrieveRevolutOrder(providerRef);
+  if (isRevolutPaid(remote.state)) {
+    await finalizePaidOrder(order.id);
+    return { status: 'paid' as const };
+  }
+
+  if (remote.state === 'failed' || remote.state === 'cancelled' || remote.state === 'declined') {
+    await markOrderFailed(order.id, remote.state);
+    return { status: 'failed' as const };
+  }
+
+  return { status: 'pending' as const };
 }

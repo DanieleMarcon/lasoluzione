@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 export default function CheckoutReturn() {
   const sp = useSearchParams();
   const router = useRouter();
-  const paymentRef = sp.get('ref') || sp.get('paymentRef') || '';
+  const orderId = sp.get('orderId') || sp.get('id') || '';
 
   const [status, setStatus] = useState<'checking' | 'finalizing' | 'done' | 'error'>('checking');
   const [message, setMessage] = useState<string>('Verifica del pagamento in corso…');
@@ -16,7 +16,9 @@ export default function CheckoutReturn() {
 
     async function check() {
       try {
-        const rs = await fetch(`/api/payments/order-status?ref=${encodeURIComponent(paymentRef)}`, { cache: 'no-store' });
+        const rs = await fetch(`/api/payments/order-status?orderId=${encodeURIComponent(orderId)}`, {
+          cache: 'no-store',
+        });
         const body = await rs.json();
         if (cancelled) return;
 
@@ -24,20 +26,9 @@ export default function CheckoutReturn() {
 
         const currentStatus: string | undefined = body?.data?.status ?? body?.status;
 
-        if (currentStatus === 'completed') {
-          setStatus('finalizing');
-          setMessage('Pagamento confermato. Finalizzo l’ordine…');
-
-          const fr = await fetch('/api/orders/finalize', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paymentRef }),
-          });
-          const fb = await fr.json();
-          if (!fr.ok || !fb?.ok) throw new Error(fb?.error || 'finalize_failed');
-
+        if (currentStatus === 'paid' || currentStatus === 'completed') {
           setStatus('done');
-          router.replace(`/prenota/complete?order=${encodeURIComponent(fb.orderId)}`);
+          router.replace(`/checkout/success?orderId=${encodeURIComponent(orderId)}`);
           return;
         }
 
@@ -55,16 +46,16 @@ export default function CheckoutReturn() {
       }
     }
 
-    if (paymentRef) check();
+    if (orderId) check();
     else {
       setStatus('error');
-      setMessage('Riferimento pagamento mancante.');
+      setMessage('Identificativo ordine mancante.');
     }
 
     return () => {
       cancelled = true;
     };
-  }, [paymentRef, router]);
+  }, [orderId, router]);
 
   return (
     <main className="container py-5">

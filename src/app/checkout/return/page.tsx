@@ -1,78 +1,80 @@
-import Link from 'next/link';
+'use client';
 
-type OrderStatus = 'paid' | 'failed' | 'pending';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-type StatusResponse = { status: OrderStatus };
+export default function CheckoutReturn() {
+  const sp = useSearchParams();
+  const router = useRouter();
+  const paymentRef = sp.get('ref') || sp.get('paymentRef') || '';
 
-async function fetchStatus(orderId: string, ref?: string): Promise<StatusResponse> {
-  const params = new URLSearchParams({ orderId });
-  if (ref) params.set('ref', ref);
+  const [status, setStatus] = useState<'checking' | 'finalizing' | 'done' | 'error'>('checking');
+  const [message, setMessage] = useState<string>('Verifica del pagamento in corso…');
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || '';
-  const res = await fetch(`${baseUrl}/api/payments/order-status?${params.toString()}`, {
-    cache: 'no-store',
-  });
+  useEffect(() => {
+    let cancelled = false;
 
-  const body = (await res.json().catch(() => null)) as { ok: boolean; data?: StatusResponse; error?: string } | null;
+    async function check() {
+      try {
+        const rs = await fetch(`/api/payments/order-status?ref=${encodeURIComponent(paymentRef)}`, { cache: 'no-store' });
+        const body = await rs.json();
+        if (cancelled) return;
 
-  if (!res.ok || !body?.ok || !body.data) {
-    throw new Error(body?.error || 'Status error');
-  }
+        if (!rs.ok) throw new Error(body?.error || 'status_failed');
 
-  return body.data;
-}
+        const currentStatus: string | undefined = body?.data?.status ?? body?.status;
 
-export default async function ReturnPage({ searchParams }: { searchParams: { orderId?: string; ref?: string } }) {
-  const orderId = searchParams?.orderId?.trim();
-  const ref = searchParams?.ref?.trim();
+        if (currentStatus === 'completed') {
+          setStatus('finalizing');
+          setMessage('Pagamento confermato. Finalizzo l’ordine…');
 
-  if (!orderId) {
-    return (
-      <main className="container py-5">
-        <h1 className="mb-3">Esito pagamento</h1>
-        <p className="text-danger">Ordine non valido. Torna al carrello e riprova.</p>
-        <div className="mt-4">
-          <Link href="/prenota" className="btn btn-primary">
-            Torna alle prenotazioni
-          </Link>
-        </div>
-      </main>
-    );
-  }
+          const fr = await fetch('/api/orders/finalize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paymentRef }),
+          });
+          const fb = await fr.json();
+          if (!fr.ok || !fb?.ok) throw new Error(fb?.error || 'finalize_failed');
 
-  let status: OrderStatus | 'error' = 'pending';
+          setStatus('done');
+          router.replace(`/prenota/complete?order=${encodeURIComponent(fb.orderId)}`);
+          return;
+        }
 
-  try {
-    const response = await fetchStatus(orderId, ref);
-    status = response.status;
-  } catch (error) {
-    console.error('[checkout][return] status error', error);
-    status = 'error';
-  }
+        if (currentStatus === 'failed' || currentStatus === 'cancelled' || currentStatus === 'declined') {
+          setStatus('error');
+          setMessage('Pagamento non completato. Puoi riprovare dal carrello.');
+          return;
+        }
+
+        setTimeout(check, 1500);
+      } catch (e: any) {
+        if (cancelled) return;
+        setStatus('error');
+        setMessage(e?.message || 'Errore durante la verifica.');
+      }
+    }
+
+    if (paymentRef) check();
+    else {
+      setStatus('error');
+      setMessage('Riferimento pagamento mancante.');
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [paymentRef, router]);
 
   return (
     <main className="container py-5">
-      <h1 className="mb-3">Esito pagamento</h1>
-      {status === 'paid' && (
-        <p className="text-success">
-          Pagamento confermato! Ti abbiamo inviato una conferma via email. Ordine #{orderId}.
-        </p>
-      )}
-      {status === 'failed' && <p className="text-danger">Pagamento non riuscito o annullato.</p>}
-      {status === 'pending' && (
-        <p className="text-muted">
-          Pagamento in elaborazione… ricarica tra qualche secondo oppure controlla l’email per aggiornamenti.
-        </p>
-      )}
+      <h1 className="h3 mb-3">Completamento ordine</h1>
+      <p className="text-muted">{message}</p>
       {status === 'error' && (
-        <p className="text-danger">Impossibile verificare lo stato del pagamento. Riprova più tardi.</p>
+        <a className="btn btn-primary mt-3" href="/prenota">
+          Torna al carrello
+        </a>
       )}
-
-      <div className="mt-4">
-        <Link href="/prenota" className="btn btn-primary">
-          Torna alle prenotazioni
-        </Link>
-      </div>
     </main>
   );
 }

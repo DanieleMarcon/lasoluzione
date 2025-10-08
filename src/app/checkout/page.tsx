@@ -2,12 +2,23 @@
 
 import Link from 'next/link';
 import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import * as z from 'zod';
 
 import { ToastProvider, useToast } from '@/components/admin/ui/toast';
 import CheckoutButton from '@/components/cart/CheckoutButton';
 import { useCart } from '@/hooks/useCart';
 import { formatCurrency } from '@/lib/formatCurrency';
 import type { OrderDTO } from '@/types/order';
+
+export const customerSchema = z.object({
+  name: z.string().min(2, 'Nome obbligatorio'),
+  email: z.string().email('Email non valida'),
+  phone: z
+    .string()
+    .min(7, 'Telefono obbligatorio')
+    .regex(/^[0-9+()\s.-]{7,}$/, 'Telefono non valido'),
+  notes: z.string().optional(),
+});
 
 type FormState = {
   email: string;
@@ -25,21 +36,30 @@ const INITIAL_FORM_STATE: FormState = {
 
 type OrderView = 'idle' | 'confirmed' | 'pending';
 
+type CheckoutSession = {
+  paymentRef: string;
+  checkoutPublicId?: string | null;
+  hostedPaymentUrl?: string | null;
+};
+
 function CheckoutContent() {
   const { cart, cartToken, loading, error } = useCart();
   const toast = useToast();
-
   const [formState, setFormState] = useState<FormState>(INITIAL_FORM_STATE);
   const [submitting, setSubmitting] = useState(false);
   const [order, setOrder] = useState<OrderDTO | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [checkoutSession, setCheckoutSession] = useState<CheckoutSession | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   const items = cart?.items ?? [];
   const hasItems = items.length > 0;
   const totalCents = cart?.totalCents ?? 0;
 
   const view: OrderView = order
-    ? order.status === 'confirmed'
+    ? order.status === 'confirmed' || order.status === 'paid'
       ? 'confirmed'
       : 'pending'
     : 'idle';
@@ -61,6 +81,72 @@ function CheckoutContent() {
       }
     };
 
+  const prepareCheckout = async (nextOrderId: string) => {
+    setCheckoutSession(null);
+    setCheckoutLoading(true);
+    setCheckoutError(null);
+    setWarnings([]);
+
+    try {
+      const res = await fetch('/api/payments/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: nextOrderId }),
+      });
+
+      const body = (await res.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            data?: {
+              paymentRef?: string;
+              checkoutPublicId?: string | null;
+              hostedPaymentUrl?: string | null;
+              redirectUrl?: string | null;
+              email?: { ok: boolean; skipped?: boolean; error?: string } | null;
+              configWarning?: string | null;
+            };
+            error?: string;
+          }
+        | null;
+
+      if (!res.ok || !body?.ok || !body.data) {
+        throw new Error(body?.error || 'Impossibile avviare il pagamento.');
+      }
+
+      if (body.data.redirectUrl) {
+        window.location.href = body.data.redirectUrl;
+        return;
+      }
+
+      if (!body.data.paymentRef) {
+        throw new Error('Riferimento pagamento non disponibile.');
+      }
+
+      const nextWarnings: string[] = [];
+      const emailResult = body.data.email;
+      if (emailResult && (!emailResult.ok || emailResult.skipped)) {
+        nextWarnings.push(
+          'Non siamo riusciti a inviare l’email automatica. Puoi completare il pagamento direttamente da qui.'
+        );
+      }
+      if (body.data.configWarning) {
+        nextWarnings.push(body.data.configWarning);
+      }
+      setWarnings(nextWarnings);
+
+      setCheckoutSession({
+        paymentRef: body.data.paymentRef,
+        checkoutPublicId: body.data.checkoutPublicId ?? null,
+        hostedPaymentUrl: body.data.hostedPaymentUrl ?? null,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Impossibile avviare il pagamento. Riprova più tardi.';
+      setCheckoutError(message);
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -76,14 +162,24 @@ function CheckoutContent() {
     const trimmedEmail = formState.email.trim();
     const trimmedName = formState.name.trim();
     const trimmedPhone = formState.phone.trim();
+    const trimmedNotes = formState.notes.trim();
 
-    if (!trimmedEmail || !trimmedName) {
-      toast.error('Inserisci nome ed email per completare l’ordine.');
-      return;
-    }
+    const validated = customerSchema.safeParse({
+      email: trimmedEmail,
+      name: trimmedName,
+      phone: trimmedPhone,
+      notes: trimmedNotes ? trimmedNotes : undefined,
+    });
 
-    if (trimmedPhone.length < 8) {
-      setPhoneError('Inserisci un numero di telefono valido.');
+    if (!validated.success) {
+      const flat = validated.error.flatten();
+      const phoneIssue = flat.fieldErrors.phone?.[0];
+      if (phoneIssue) {
+        setPhoneError(phoneIssue);
+      }
+      const generalError =
+        phoneIssue || flat.fieldErrors.email?.[0] || flat.fieldErrors.name?.[0] || flat.formErrors[0] || 'Dati non validi.';
+      toast.error(generalError);
       return;
     }
 
@@ -94,10 +190,10 @@ function CheckoutContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: cartToken,
-          email: trimmedEmail,
-          name: trimmedName,
-          phone: trimmedPhone,
-          notes: formState.notes.trim() || undefined,
+          email: validated.data.email,
+          name: validated.data.name,
+          phone: validated.data.phone,
+          notes: validated.data.notes,
         }),
       });
 
@@ -112,6 +208,7 @@ function CheckoutContent() {
 
       setOrder(body.data);
       setPhoneError(null);
+      await prepareCheckout(body.data.id);
     } catch (err) {
       console.error('[Checkout] submit error', err);
       toast.error('Errore di rete durante il checkout.');
@@ -165,8 +262,39 @@ function CheckoutContent() {
           finalizzare il pagamento di {formatCurrency(order.totalCents)}.
         </p>
 
-        <div style={{ margin: '2rem auto 0', maxWidth: 320 }}>
-          <CheckoutButton orderId={order.id} />
+        <div style={{ margin: '2rem auto 0', maxWidth: 320, display: 'grid', gap: '0.75rem' }}>
+          {checkoutLoading && (
+            <div className="text-muted" role="status">
+              Preparazione del pagamento in corso…
+            </div>
+          )}
+
+          {warnings.map((warning) => (
+            <div key={warning} className="alert alert-warning" role="status" style={{ margin: 0 }}>
+              {warning}
+            </div>
+          ))}
+
+          {checkoutError && (
+            <div className="alert alert-danger" role="alert" style={{ margin: 0 }}>
+              {checkoutError}
+            </div>
+          )}
+
+          {checkoutSession ? (
+            <CheckoutButton
+              paymentRef={checkoutSession.paymentRef}
+              token={checkoutSession.checkoutPublicId}
+              hostedPaymentUrl={checkoutSession.hostedPaymentUrl}
+              disabled={checkoutLoading}
+            />
+          ) : (
+            !checkoutLoading && !checkoutError && (
+              <p className="text-muted" style={{ margin: 0 }}>
+                Stiamo preparando il collegamento al pagamento…
+              </p>
+            )
+          )}
         </div>
 
         <p style={{ marginTop: '1.5rem', color: '#64748b' }}>

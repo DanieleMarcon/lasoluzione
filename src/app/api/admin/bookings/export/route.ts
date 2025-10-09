@@ -106,12 +106,12 @@ export async function GET(req: Request) {
     csvRows.push('# truncated');
   }
 
+  const csv = csvRows.join('\n');
+
   const headers = new Headers({
-    'Content-Type': 'text/csv; charset=utf-8',
+    'Content-Type': 'text/csv',
     'Content-Disposition': 'attachment; filename="bookings.csv"',
   });
 
-  const csvContent = `\uFEFF${csvRows.join('\n')}`;
-
-  return new Response(csvContent, { headers });
+  return new Response(csv, { status: 200, headers });
 }

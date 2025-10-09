@@ -21,6 +21,9 @@ const CSV_HEADERS = [
   'createdAt',
 ] as const;
 
+const CONTENT_TYPE_HEADER = 'Content-Type: text/csv';
+const CONTENT_DISPOSITION_HEADER = 'Content-Disposition: attachment; filename="bookings.csv"';
+
 type CsvHeader = (typeof CSV_HEADERS)[number];
 
 type BookingExportRow = Record<CsvHeader, unknown>;
@@ -109,8 +112,10 @@ export async function GET(req: Request) {
   const csv = csvRows.join('\n');
 
   const headers = new Headers();
-  headers.set('Content-Type', 'text/csv');
-  headers.set('Content-Disposition', 'attachment; filename="bookings.csv"');
+  const [contentTypeName, contentTypeValue] = CONTENT_TYPE_HEADER.split(': ');
+  const [contentDispositionName, contentDispositionValue] = CONTENT_DISPOSITION_HEADER.split(': ');
+  headers.set(contentTypeName, contentTypeValue);
+  headers.set(contentDispositionName, contentDispositionValue);
 
   return new Response(csv, { status: 200, headers });
 }

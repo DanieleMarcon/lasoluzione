@@ -35,6 +35,7 @@ export default async function EventPage({ params }: EventPageProps) {
       startAt: true,
       endAt: true,
       active: true,
+      allowEmailOnlyBooking: true,
     },
   });
 

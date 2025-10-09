@@ -40,6 +40,8 @@ model Booking {
 
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+
+  verifications BookingVerification[]
 }
 
 model Product {
@@ -111,10 +113,27 @@ model EventInstance {
   showOnHome  Boolean  @default(false)
   active      Boolean  @default(true)
   capacity    Int?
+  allowEmailOnlyBooking Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([productId, startAt])
+}
+
+model BookingVerification {
+  id        Int      @id @default(autoincrement())
+  bookingId Int
+  email     String
+  token     String   @unique
+  nonce     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  Booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([expiresAt])
 }
 
 model Cart {

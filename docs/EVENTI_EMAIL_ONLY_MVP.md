@@ -106,6 +106,11 @@ pnpm dev
 # Verifica sessione admin e env in dev
 open http://localhost:3000/api/admin/_whoami
 
+## Pacchetti nel form
+- Le istanze evento possono avere pacchetti dedicati (`Product` con `sourceType = 'event_instance_tier'`) gestiti dalla pagina `/admin/events/{id}`. L’elenco mostra solo i pacchetti **attivi** ordinati per `order` crescente.
+- Se esiste almeno un pacchetto attivo, il form pubblico mostra una select opzionale “Pacchetto” con etichetta e prezzo formattato; il valore inviato corrisponde all’`id` del prodotto.
+- Il campo resta facoltativo: gli utenti possono completare la prenotazione anche senza selezionare alcun pacchetto, preservando il flusso email-only originario.
+
 Troubleshooting
 
 Nessuna istanza evento in admin: eseguire seed.

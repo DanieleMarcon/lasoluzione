@@ -5,6 +5,10 @@
 - Avvia `pnpm dev`, visita `/admin/signin`, inserisci un indirizzo autorizzato e conferma il magic link ricevuto.
 - In locale è disponibile `/api/admin/_whoami` per verificare la sessione (solo dev).
 
+## Sommario rapido Eventi & Contatti
+- **Eventi** → `/admin/events`: crea/modifica istanze `EventInstance`, abilita la prenotazione “email-only” e gestisci i pacchetti collegati.
+- **Contatti** → `/admin/contacts`: vista CRM deduplicata con esportazione CSV, filtri su consensi privacy/newsletter e stampa rapida per il personale di sala.
+
 ## Indice sezioni admin
 | Percorso | Stato | Descrizione sintetica |
 | --- | --- | --- |
@@ -15,6 +19,8 @@
 | `/admin/settings` | legacy | Configurazioni `BookingSettings` (coperti, prepay, tipi attivi). |
 | `/admin/catalog/products` | nuovo | Catalogo prodotti unificato: create/edit, flag nutrizionali, toggle attivo, slug auto. |
 | `/admin/catalog/sections` | nuovo | Attiva/disattiva sezione, `enableDateTime` **solo** per `pranzo`/`cena`, displayOrder e assegnazioni prodotto (featured/home). |
+| `/admin/events` | nuovo | Lista Eventi con form creazione, toggle visibilità/home/email-only e gestione pacchetti collegati. |
+| `/admin/contacts` | nuovo | CRM contatti deduplicati per email, consensi, storico prenotazioni, esport CSV. |
 
 ### Voci legacy
 
@@ -33,6 +39,11 @@ Le voci “Piatti pranzo (Legacy)” e “Opzioni evento/aperitivo (Legacy)” s
 - Bottone “Rimuovi” richiede conferma browser prima di chiamare l’API DELETE.
 
 ## Eventi
+- **Quick start**
+  1. Visita `/admin/events` per ottenere la lista paginata filtrabile (stato + ricerca su titolo/slug).
+  2. Compila il form in cima alla pagina con titolo, slug e date; spunta **Prenotazione email-only** se vuoi esporre il form pubblico senza pagamento.
+  3. Dopo la creazione clicca sul titolo per accedere al dettaglio e gestire i **Pacchetti** (etichetta, prezzo, stato attivo). I pacchetti attivi appaiono automaticamente nel form pubblico come select opzionale.
+  4. Usa i toggle **Attivo**/**Mostra in home** per controllare visibilità e promozione; elimina o sospendi gli eventi obsoleti.
 - Percorso: `/admin/events` (voce nel menu Catalogo).
 - Form in cima alla pagina per creare una nuova `EventInstance` con i campi obbligatori: **Titolo**, **Slug** (minuscolo/kebab-case, validato), **Data inizio** (`startAt` ISO) e flag booleani **Attivo**, **Mostra in home**, **Prenotazione email-only**. Campi opzionali: **Data fine** (`endAt`, deve essere successiva all'inizio), **Descrizione** (max 2000 caratteri) e **Capacità** (intero ≥ 1 oppure vuoto per `null`).
 - Le richieste client usano `fetch(..., { cache: 'no-store' })`; il backend valida tutto con Zod e blocca slug duplicati o range data incoerenti.
@@ -84,6 +95,10 @@ Le voci “Piatti pranzo (Legacy)” e “Opzioni evento/aperitivo (Legacy)” s
 - Le colonne “Privacy” e “News” mostrano i consensi salvati (`TRUE`/`FALSE` nell'export, badge ✅/— nella UI).
 
 ## Contatti
+- **Quick start**
+  1. Accedi a `/admin/contacts` per la lista deduplicata (una riga per email normalizzata) con colonne su consensi e numero prenotazioni.
+  2. Applica i filtri `Privacy`, `Newsletter`, intervallo data e testo libero per segmentare; i risultati vengono ricalcolati lato server.
+  3. Stampa la vista dedicata con **Stampa** oppure scarica l’elenco filtrato con **Esporta CSV** per importarlo in altri sistemi CRM/marketing.
 - Percorso: `/admin/contacts` (voce "CRM" nella sidebar).
 - Elenco deduplicato per email (normalizzate `trim` + lowercase); mostra nome, email, telefono, ultimo consenso privacy/newsletter e numero totale di prenotazioni per quell'indirizzo.
 - Filtri disponibili: ricerca full-text (nome/email/telefono), selettori Privacy e Newsletter (tutti/solo sì/solo no), intervallo data creazione (`from`/`to`). Paginazione server-side (20 elementi per pagina).

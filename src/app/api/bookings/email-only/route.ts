@@ -107,6 +107,17 @@ export async function POST(req: Request) {
       event = await prisma.eventInstance.findUnique({
         where: { id: parsed.eventInstanceId! },
       });
+
+      if (event && !event.active) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'event_not_active',
+            message: 'Evento non trovato o non attivo.',
+          },
+          { status: 400 },
+        );
+      }
     }
 
     if (!event) {
@@ -122,19 +133,27 @@ export async function POST(req: Request) {
       : null;
 
     const notesValue = typeof parsed.notes === 'string' ? parsed.notes : undefined;
+    const peopleValue = parsed.people;
+
+    if (typeof peopleValue !== 'number') {
+      return NextResponse.json(
+        { ok: false, error: 'invalid_people', message: 'Numero di persone non valido.' },
+        { status: 400 },
+      );
+    }
 
     const booking = await prisma.booking.create({
       data: {
         date: event.startAt,
-        people: 1,
+        people: peopleValue,
         type: 'evento',
         status: 'pending',
         name: customer.name,
         email: customer.email,
         phone: customer.phone,
         notes: notesValue && notesValue.length ? notesValue : null,
-        agreePrivacy: true,
-        agreeMarketing: parsed.agreeMarketing ?? false,
+        agreePrivacy: parsed.agreePrivacy,
+        agreeMarketing: parsed.agreeMarketing,
         prepayToken: null,
         tierType: 'evento',
         tierLabel: event.title ?? null,

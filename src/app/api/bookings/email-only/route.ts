@@ -8,6 +8,7 @@ import {
   sendBookingPendingNotificationEmail,
   sendBookingRequestConfirmationEmail,
 } from '@/lib/mailer';
+import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -98,6 +99,15 @@ export async function POST(req: Request) {
 
     await sendBookingPendingNotificationEmail({ booking, event: eventInfo });
 
+    logger.info('booking.create', {
+      action: 'booking.create',
+      bookingId: booking.id,
+      eventInstanceId: event.id,
+      email: booking.email,
+      tokenId: verification.id,
+      outcome: 'ok',
+    });
+
     return NextResponse.json(
       {
         ok: true,
@@ -109,7 +119,11 @@ export async function POST(req: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ ok: false, error: 'invalid_payload', details: error.flatten() }, { status: 400 });
     }
-    console.error('[bookings][email-only] error', error);
+    logger.error('booking.create', {
+      action: 'booking.create',
+      outcome: 'error',
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
     return NextResponse.json({ ok: false, error: 'internal_error' }, { status: 500 });
   }
 }

@@ -16,6 +16,10 @@
 | `/admin/catalog/products` | nuovo | Catalogo prodotti unificato: create/edit, flag nutrizionali, toggle attivo, slug auto. |
 | `/admin/catalog/sections` | nuovo | Attiva/disattiva sezione, `enableDateTime` **solo** per `pranzo`/`cena`, displayOrder e assegnazioni prodotto (featured/home). |
 
+### Voci legacy
+
+Le voci “Piatti pranzo (Legacy)” e “Opzioni evento/aperitivo (Legacy)” sono nascoste di default. Per riabilitarle in ambienti di migrazione impostare `NEXT_PUBLIC_ADMIN_SHOW_LEGACY=true`.
+
 ## Catalogo prodotti
 - Lista paginata con ricerca full-text e filtri per categoria/stato.
 - Form creazione/modifica: campi descrittivi, prezzo in centesimi, flag nutrizionali (`isVegan`, `containsAlcohol`, ecc.).

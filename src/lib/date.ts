@@ -17,6 +17,13 @@ const DATE_FORMATTER = new Intl.DateTimeFormat('it-IT', {
   year: 'numeric',
 });
 
+const DATE_FORMATTER_SHORT = new Intl.DateTimeFormat('it-IT', {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
+
 const TIME_FORMATTER = new Intl.DateTimeFormat('it-IT', {
   hour: '2-digit',
   minute: '2-digit',
@@ -28,31 +35,28 @@ export function formatEventSchedule(start: Date | string, end?: Date | string): 
     return '';
   }
 
-  const startDateLabel = capitalize(DATE_FORMATTER.format(startDate));
   const startTimeLabel = TIME_FORMATTER.format(startDate);
 
-  if (!end) {
-    return `${startDateLabel}, ${startTimeLabel}`;
-  }
-
+  const startDateLabel = capitalize(DATE_FORMATTER.format(startDate));
   const endDate = parseDate(end);
   if (!endDate) {
     return `${startDateLabel}, ${startTimeLabel}`;
   }
 
+  const endTimeLabel = TIME_FORMATTER.format(endDate);
   const sameDay =
     startDate.getFullYear() === endDate.getFullYear() &&
     startDate.getMonth() === endDate.getMonth() &&
     startDate.getDate() === endDate.getDate();
 
-  const endDateLabel = capitalize(DATE_FORMATTER.format(endDate));
-  const endTimeLabel = TIME_FORMATTER.format(endDate);
-
   if (sameDay) {
     return `${startDateLabel}, ${startTimeLabel}–${endTimeLabel}`;
   }
 
-  return `${startDateLabel}, ${startTimeLabel} – ${endDateLabel}, ${endTimeLabel}`;
+  const startDateShortLabel = capitalize(DATE_FORMATTER_SHORT.format(startDate));
+  const endDateShortLabel = capitalize(DATE_FORMATTER_SHORT.format(endDate));
+
+  return `${startDateShortLabel}, ${startTimeLabel} → ${endDateShortLabel}, ${endTimeLabel}`;
 }
 
 export function formatEventDateRange(

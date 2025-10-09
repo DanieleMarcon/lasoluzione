@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { consumeBookingToken } from '@/lib/bookingVerification';
 import { sendBookingEmails } from '@/lib/mailer';
+import { logger } from '@/lib/logger';
 import { normalizeStoredDinnerItems, normalizeStoredLunchItems } from '@/lib/lunchOrder';
 
 export const runtime = 'nodejs';
@@ -21,6 +22,10 @@ export async function GET(req: Request) {
   const result = await consumeBookingToken(token);
 
   if (result.status !== 'ok') {
+    logger.warn('booking.confirm', {
+      action: 'booking.confirm',
+      outcome: result.status,
+    });
     return NextResponse.json(
       { ok: false, state: result.status },
       { status: mapErrorStatus(result.status) },
@@ -75,8 +80,21 @@ export async function GET(req: Request) {
       tierPriceCents: updated.tierPriceCents ?? undefined,
     });
   } catch (error) {
-    console.error('[bookings][confirm] email error', error);
+    logger.error('booking.confirm', {
+      action: 'booking.confirm',
+      outcome: 'email_error',
+      bookingId: updated.id,
+      email: updated.email,
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
   }
+
+  logger.info('booking.confirm', {
+    action: 'booking.confirm',
+    outcome: 'ok',
+    bookingId: updated.id,
+    email: updated.email,
+  });
 
   return NextResponse.json({ ok: true, state: 'confirmed' as const });
 }

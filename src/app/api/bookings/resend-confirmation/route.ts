@@ -4,12 +4,11 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { issueBookingToken } from '@/lib/bookingVerification';
 import { sendBookingRequestConfirmationEmail } from '@/lib/mailer';
+import { logger } from '@/lib/logger';
+import { assertCooldownOrThrow } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const RATE_LIMIT_WINDOW_MS = 90_000;
-const resendRateLimit = new Map<string, number>();
 
 const payloadSchema = z.object({
   bookingId: z.number().int().positive(),
@@ -34,31 +33,60 @@ function extractClientIp(req: Request): string {
   }
   const realIp = req.headers.get('x-real-ip');
   if (realIp) return realIp.trim();
-  return 'unknown';
+  return 'local';
 }
 
 export async function POST(req: Request) {
+  let booking: Awaited<ReturnType<typeof prisma.booking.findUnique>> | null = null;
   try {
     const body = await req.json();
     const parsed = payloadSchema.parse(body);
 
-    const booking = await prisma.booking.findUnique({ where: { id: parsed.bookingId } });
+    booking = await prisma.booking.findUnique({ where: { id: parsed.bookingId } });
 
     if (!booking) {
       return NextResponse.json({ ok: false, error: 'booking_not_found' }, { status: 404 });
     }
 
     if (booking.status !== 'pending') {
-      return NextResponse.json({ ok: false, error: 'booking_not_pending' }, { status: 400 });
+      logger.warn('booking.resend', {
+        action: 'booking.resend',
+        bookingId: booking.id,
+        eventInstanceId: (booking as any).eventInstanceId ?? null,
+        email: booking.email,
+        outcome: 'not_pending',
+      });
+      return NextResponse.json({ ok: false, error: 'not_pending' }, { status: 400 });
     }
 
-    const emailKey = booking.email.trim().toLowerCase();
     const ip = extractClientIp(req);
-    const key = `${ip}|${emailKey}`;
-    const now = Date.now();
-    const lastAttempt = resendRateLimit.get(key);
-    if (lastAttempt && now - lastAttempt < RATE_LIMIT_WINDOW_MS) {
-      return NextResponse.json({ ok: false, error: 'rate_limited' }, { status: 429 });
+    const emailKey = booking.email.trim().toLowerCase();
+    const key = `${emailKey}|${ip}`;
+
+    try {
+      assertCooldownOrThrow({ key });
+    } catch (error) {
+      if ((error as any)?.status === 429) {
+        const retryAfter = Number((error as any)?.retryAfter) || 0;
+        const message = error instanceof Error ? error.message : 'rate_limited';
+        logger.warn('booking.resend', {
+          action: 'booking.resend',
+          bookingId: booking.id,
+          eventInstanceId: (booking as any).eventInstanceId ?? null,
+          email: booking.email,
+          outcome: 'rate_limited',
+          retryAfter,
+        });
+        const response = NextResponse.json(
+          { ok: false, error: message },
+          { status: 429 },
+        );
+        if (retryAfter > 0) {
+          response.headers.set('Retry-After', String(retryAfter));
+        }
+        return response;
+      }
+      throw error;
     }
 
     const nowDate = new Date();
@@ -82,14 +110,28 @@ export async function POST(req: Request) {
       confirmUrl,
     });
 
-    resendRateLimit.set(key, now);
+    logger.info('booking.resend', {
+      action: 'booking.resend',
+      bookingId: booking.id,
+      eventInstanceId: (booking as any).eventInstanceId ?? null,
+      email: booking.email,
+      tokenId: verification.id,
+      outcome: 'ok',
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ ok: false, error: 'invalid_payload', details: error.flatten() }, { status: 400 });
     }
-    console.error('[bookings][resend-confirmation] error', error);
+    logger.error('booking.resend', {
+      action: 'booking.resend',
+      bookingId: booking?.id ?? null,
+      eventInstanceId: (booking as any)?.eventInstanceId ?? null,
+      email: booking?.email ?? null,
+      outcome: 'error',
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
     return NextResponse.json({ ok: false, error: 'internal_error' }, { status: 500 });
   }
 }

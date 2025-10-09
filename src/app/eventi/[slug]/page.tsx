@@ -43,6 +43,21 @@ export default async function EventPage({ params }: EventPageProps) {
     notFound();
   }
 
+  const tiers = await prisma.product.findMany({
+    where: {
+      sourceType: 'event_instance_tier',
+      sourceId: String(event.id),
+      active: true,
+    },
+    select: {
+      id: true,
+      name: true,
+      priceCents: true,
+      order: true,
+    },
+    orderBy: [{ order: 'asc' }, { id: 'asc' }],
+  });
+
   const scheduleLabel = formatEventSchedule(event.startAt, event.endAt);
 
   return (
@@ -62,7 +77,18 @@ export default async function EventPage({ params }: EventPageProps) {
           Compila il modulo per ricevere la mail di conferma della tua prenotazione.
         </p>
         <div className="mt-6">
-          <EventForm eventSlug={slug} />
+          <EventForm
+            eventSlug={slug}
+            tiers={
+              tiers.length
+                ? tiers.map((tier) => ({
+                    id: tier.id,
+                    label: tier.name,
+                    priceCents: tier.priceCents,
+                  }))
+                : undefined
+            }
+          />
         </div>
       </section>
     </div>

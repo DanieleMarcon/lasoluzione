@@ -185,14 +185,7 @@ export async function POST(req: Request) {
       outcome: 'ok',
     });
 
-    return NextResponse.json(
-      {
-        ok: true,
-        bookingId: booking.id,
-        nextUrl: `/checkout/email-sent?bookingId=${booking.id}`,
-      },
-      { status: 201 },
-    );
+    return NextResponse.json({ ok: true, bookingId: booking.id }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ ok: false, error: 'invalid_payload', details: error.flatten() }, { status: 400 });

@@ -181,3 +181,7 @@ Errori comuni:
 - Esito atteso:
   - DB: `Booking.agreePrivacy = true`, `Booking.agreeMarketing` coerente con input.
   - Admin → Prenotazioni: compaiono le colonne “Privacy” e “News”.
+
+### Nota post-audit
+- La rotta `POST /api/bookings/email-only` legge ora i valori `people`, `agreePrivacy` e `agreeMarketing` direttamente dal payload (nessun fallback server-side), quindi i test devono verificarne la persistenza in DB/Admin.
+- Anche passando `eventInstanceId` senza slug, la validazione restituisce 400 se l'istanza evento risulta inattiva (`active = false`).

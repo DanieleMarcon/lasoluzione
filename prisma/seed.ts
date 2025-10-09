@@ -398,12 +398,91 @@ async function seedEventTiers() {
   console.log('[seed] Event tiers aggiornati');
 }
 
+async function seedSingleEventInstance() {
+  const product = await prisma.product.upsert({
+    where: { slug: 'serata-capodanno' },
+    update: {
+      name: 'Serata di Capodanno',
+      description: null,
+      ingredients: null,
+      allergens: null,
+      category: 'evento',
+      priceCents: 0,
+      unitCostCents: 0,
+      supplierName: null,
+      stockQty: 0,
+      imageUrl: null,
+      order: 10,
+      active: true,
+      sourceType: null,
+      sourceId: null,
+      isVegan: false,
+      isVegetarian: false,
+      isGlutenFree: false,
+      isLactoseFree: false,
+      isOrganic: false,
+    },
+    create: {
+      slug: 'serata-capodanno',
+      name: 'Serata di Capodanno',
+      description: null,
+      ingredients: null,
+      allergens: null,
+      priceCents: 0,
+      unitCostCents: 0,
+      supplierName: null,
+      stockQty: 0,
+      imageUrl: null,
+      category: 'evento',
+      order: 10,
+      active: true,
+      sourceType: null,
+      sourceId: null,
+      isVegan: false,
+      isVegetarian: false,
+      isGlutenFree: false,
+      isLactoseFree: false,
+      isOrganic: false,
+    },
+  });
+
+  await prisma.eventInstance.upsert({
+    where: { slug: 'capodanno-2025' },
+    update: {
+      title: 'Capodanno 2025',
+      description: 'Festeggia con noi la notte di Capodanno con musica e brindisi di mezzanotte.',
+      startAt: new Date('2024-12-31T20:00:00.000Z'),
+      endAt: new Date('2025-01-01T01:00:00.000Z'),
+      active: true,
+      showOnHome: true,
+      capacity: null,
+      allowEmailOnlyBooking: true,
+      productId: product.id,
+    },
+    create: {
+      slug: 'capodanno-2025',
+      title: 'Capodanno 2025',
+      description: 'Festeggia con noi la notte di Capodanno con musica e brindisi di mezzanotte.',
+      startAt: new Date('2024-12-31T20:00:00.000Z'),
+      endAt: new Date('2025-01-01T01:00:00.000Z'),
+      active: true,
+      showOnHome: true,
+      capacity: null,
+      allowEmailOnlyBooking: true,
+      productId: product.id,
+    },
+  });
+
+  console.log('[seed] EventInstance singolo Capodanno pronto');
+}
+
 async function main() {
   await seedAdminUsers();
   await seedMenuDishes();
   await seedBookingSettings();
   await seedEventTiers();
   await seedCatalogSections();
+  await seedSingleEventInstance();
   const menuDishCount = await bridgeMenuDishesToProducts();
   const tierCount = await bridgeEventTiersToProducts();
   console.log(`[seed] Products bridged from MenuDish: ${menuDishCount}`);

@@ -95,3 +95,8 @@ Verificare end-to-end il percorso di prenotazione senza pagamento, assicurandosi
 - Estratti log JSON (uno per `booking.create`, `booking.resend`, `booking.confirm`).
 - Output `curl -i` della risposta 429 con `Retry-After`.
 - Screenshot Admin con badge `pending` → `confirmed`.
+
+## Seed rapido evento
+- Prodotto: slug `serata-capodanno` (creato/aggiornato dal seed).
+- Istanza evento: slug `capodanno-2025` con `allowEmailOnlyBooking` già attivo e visibile in home.
+- Comando: `pnpm seed:single-event` (richiede dipendenza `tsx`).

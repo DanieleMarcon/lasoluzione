@@ -5,25 +5,26 @@ Verificare end-to-end il percorso di prenotazione senza pagamento, assicurandosi
 
 ## Pagina evento pubblica
 - Percorso: `/eventi/[slug]` (esempio: `/eventi/capodanno-2025`).
-- Campi obbligatori: nome, email, telefono, numero persone (minimo 1), consenso privacy.
-- Campi opzionali: note, consenso newsletter.
-- Submit del form verso `POST /api/bookings/email-only` con payload JSON:
+- Dati mostrati: titolo evento, data/ora formattata, descrizione (se presente).
+- Form "Prenota senza pagare":
+  - Campi obbligatori: nome, email, telefono, numero persone (almeno 1), consenso privacy.
+  - Campi opzionali: note, consenso marketing/newsletter.
+  - Validazioni client: email con pattern base, checkbox privacy obbligatoria.
+- Richiesta `POST /api/bookings/email-only` con payload:
   ```json
   {
     "eventSlug": "capodanno-2025",
-    "eventInstanceId": 1,
+    "name": "Mario Rossi",
+    "email": "mario@example.com",
+    "phone": "3331234567",
     "people": 2,
-    "notes": "Allergico alle noci",
+    "notes": "Tavolo vicino finestra",
     "agreePrivacy": true,
-    "agreeMarketing": false,
-    "customer": {
-      "name": "Mario Rossi",
-      "email": "mario.rossi@example.com",
-      "phone": "+39 333 1234567"
-    }
+    "agreeMarketing": false
   }
   ```
-- Esito atteso: redirect a `/checkout/email-sent?bookingId=<id>` in caso di successo.
+- Esito atteso: redirect a `/checkout/email-sent?bookingId=<id>` con l'identificativo restituito dalla API.
+- Nota dev: se `DATABASE_URL` è assente la pagina mostra un messaggio di setup (nessuna query Prisma eseguita).
 
 ## Prerequisiti
 - Server di sviluppo avviato con `pnpm dev` (verificare che venga caricato `.env.local`).

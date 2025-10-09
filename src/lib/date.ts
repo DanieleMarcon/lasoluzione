@@ -22,6 +22,39 @@ const TIME_FORMATTER = new Intl.DateTimeFormat('it-IT', {
   minute: '2-digit',
 });
 
+export function formatEventSchedule(start: Date | string, end?: Date | string): string {
+  const startDate = parseDate(start);
+  if (!startDate) {
+    return '';
+  }
+
+  const startDateLabel = capitalize(DATE_FORMATTER.format(startDate));
+  const startTimeLabel = TIME_FORMATTER.format(startDate);
+
+  if (!end) {
+    return `${startDateLabel}, ${startTimeLabel}`;
+  }
+
+  const endDate = parseDate(end);
+  if (!endDate) {
+    return `${startDateLabel}, ${startTimeLabel}`;
+  }
+
+  const sameDay =
+    startDate.getFullYear() === endDate.getFullYear() &&
+    startDate.getMonth() === endDate.getMonth() &&
+    startDate.getDate() === endDate.getDate();
+
+  const endDateLabel = capitalize(DATE_FORMATTER.format(endDate));
+  const endTimeLabel = TIME_FORMATTER.format(endDate);
+
+  if (sameDay) {
+    return `${startDateLabel}, ${startTimeLabel}–${endTimeLabel}`;
+  }
+
+  return `${startDateLabel}, ${startTimeLabel} – ${endDateLabel}, ${endTimeLabel}`;
+}
+
 export function formatEventDateRange(
   startAt: Date | string | null | undefined,
   endAt?: Date | string | null,

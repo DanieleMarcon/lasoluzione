@@ -9,6 +9,7 @@ Verificare end-to-end il percorso di prenotazione senza pagamento, assicurandosi
 - Form "Prenota senza pagare":
   - Campi obbligatori: nome, email, telefono, numero persone (almeno 1), consenso privacy.
   - Campi opzionali: note, consenso marketing/newsletter.
+  - Campo facoltativo pacchetto.
   - Validazioni client: email con pattern base, checkbox privacy obbligatoria.
 - Richiesta `POST /api/bookings/email-only` con payload:
   ```json

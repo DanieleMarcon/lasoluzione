@@ -123,3 +123,9 @@ Flussi di pagamento (Revolut) e carrello restano invariati.
 Catalogo Prodotti/Sezioni invariati.
 
 Auth e Middleware invariati.
+
+## Fix post-audit (F1–F4)
+- **F1** — L'API `POST /api/bookings/email-only` persiste correttamente il campo `people` dal payload, evitando default errati sul totale partecipanti.
+- **F2** — I consensi `agreePrivacy` e `agreeMarketing` vengono salvati e propagati fino alla vista Admin (colonne “Privacy”/“News”).
+- **F3** — La validazione blocca prenotazioni su istanze evento inattive anche se chiamate tramite `eventInstanceId`.
+- **F4** — L'esportazione Prenotazioni produce `bookings.csv` con le nuove colonne consensi, allineando naming e contenuto.

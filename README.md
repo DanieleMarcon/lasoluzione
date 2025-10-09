@@ -249,3 +249,6 @@ Per testare rapidamente il flusso “prenota senza pagare” con conferma via em
 Apri /eventi/capodanno-2025, invia il form (privacy obbligatoria), conferma dal link email.
 
 → Dettagli passo-passo in docs/EVENTI_EMAIL_ONLY_MVP.md.
+
+> [!IMPORTANT]
+> 🚀 **MVP Prenotazione via email (singolo evento)** — Consulta la guida dedicata in [`docs/EVENTI_EMAIL_ONLY_MVP.md`](docs/EVENTI_EMAIL_ONLY_MVP.md) per setup, flusso e fix post-audit.

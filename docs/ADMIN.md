@@ -58,3 +58,7 @@
 - Parametri supportati (`query`): `search`, `type`, `status`, `from`, `to` (identici ai filtri della lista).
 - Colonne esportate in ordine: `id`, `date`, `type`, `status`, `people`, `name`, `email`, `phone`, `notes`, `agreePrivacy`, `agreeMarketing`, `createdAt`.
 - Formato: date in ISO 8601 (`toISOString()`), booleani come `TRUE`/`FALSE`, valori testuali sanitizzati (virgolette raddoppiate, newline rimossi).
+
+### Aggiornamenti export Prenotazioni (post-audit)
+- Il download genera ora il file `bookings.csv`, coerente con il contenuto esportato.
+- Le colonne “Privacy” e “News” mostrano i consensi salvati (`TRUE`/`FALSE` nell'export, badge ✅/— nella UI).

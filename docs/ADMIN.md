@@ -32,6 +32,14 @@ Le voci “Piatti pranzo (Legacy)” e “Opzioni evento/aperitivo (Legacy)” s
 - Modale assegnazioni: ricerca prodotto, impostazione `featured`, `showInHome`, `order` pivot.
 - Bottone “Rimuovi” richiede conferma browser prima di chiamare l’API DELETE.
 
+## Eventi
+- Percorso: `/admin/events` (voce nel menu Catalogo).
+- Form in cima alla pagina per creare una nuova `EventInstance` con i campi obbligatori: **Titolo**, **Slug** (minuscolo/kebab-case, validato), **Data inizio** (`startAt` ISO) e flag booleani **Attivo**, **Mostra in home**, **Prenotazione email-only**. Campi opzionali: **Data fine** (`endAt`, deve essere successiva all'inizio), **Descrizione** (max 2000 caratteri) e **Capacità** (intero ≥ 1 oppure vuoto per `null`).
+- Le richieste client usano `fetch(..., { cache: 'no-store' })`; il backend valida tutto con Zod e blocca slug duplicati o range data incoerenti.
+- Tabella paginata (ordinamento cronologico crescente) con colonne **Titolo**, **Data**, **Slug**, **Attivo**, **Home**, **Email-only** e **Azioni**. Il bottone **Modifica** apre l’editor inline con tutti i campi; **Salva** invia `PATCH /api/admin/events/{id}` e mostra toast di successo/errore.
+- Filtri: barra di ricerca (slug/titolo), select per stato (`tutti` / `solo attivi` / `solo sospesi`) e paginazione lato server (`page`, `size`). I risultati vengono ricaricati via API con toast in caso di problemi.
+- Azione **Elimina** chiama `DELETE /api/admin/events/{id}`. In caso di vincoli FK l’API effettua fallback soft (set `active=false`) e mostra toast "Evento disattivato".
+
 ## Flow Toast Provider
 - Provider comune: `src/components/admin/ui/toast.tsx` esporta `<ToastProvider>` e hook `useToast()`.
 - Le pagine server-side montano il provider attorno ai client component (`ProductsPageClient`, `SectionsPageClient`).

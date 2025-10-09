@@ -3,6 +3,28 @@
 ## Obiettivo
 Verificare end-to-end il percorso di prenotazione senza pagamento, assicurandosi che la creazione pending, l'invio mail, la conferma via link, il resend con rate-limit, l'idempotenza e la visibilità in admin funzionino correttamente.
 
+## Pagina evento pubblica
+- Percorso: `/eventi/[slug]` (esempio: `/eventi/capodanno-2025`).
+- Campi obbligatori: nome, email, telefono, numero persone (minimo 1), consenso privacy.
+- Campi opzionali: note, consenso newsletter.
+- Submit del form verso `POST /api/bookings/email-only` con payload JSON:
+  ```json
+  {
+    "eventSlug": "capodanno-2025",
+    "eventInstanceId": 1,
+    "people": 2,
+    "notes": "Allergico alle noci",
+    "agreePrivacy": true,
+    "agreeMarketing": false,
+    "customer": {
+      "name": "Mario Rossi",
+      "email": "mario.rossi@example.com",
+      "phone": "+39 333 1234567"
+    }
+  }
+  ```
+- Esito atteso: redirect a `/checkout/email-sent?bookingId=<id>` in caso di successo.
+
 ## Prerequisiti
 - Server di sviluppo avviato con `pnpm dev` (verificare che venga caricato `.env.local`).
 - Configurazione NEXT Auth corretta (`NEXTAUTH_URL`, `NEXTAUTH_SECRET`).

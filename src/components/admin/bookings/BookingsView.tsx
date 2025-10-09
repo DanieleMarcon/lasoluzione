@@ -25,6 +25,15 @@ type AlertState = {
   message: string;
 };
 
+type AdminBookingWithConsents = AdminBooking & {
+  agreePrivacy: boolean;
+  agreeMarketing: boolean;
+};
+
+type BookingListResponseWithConsents = BookingListResponse & {
+  data: AdminBookingWithConsents[];
+};
+
 const defaultFilters: Filters = {
   search: '',
   type: '',
@@ -38,7 +47,7 @@ export default function BookingsView({ settings }: Props) {
   const [filters, setFilters] = useState<Filters>({ ...defaultFilters });
   const [page, setPage] = useState(1);
   const [reloadToken, setReloadToken] = useState(0);
-  const [bookings, setBookings] = useState<AdminBooking[]>([]);
+  const [bookings, setBookings] = useState<AdminBookingWithConsents[]>([]);
   const [meta, setMeta] = useState<BookingListResponse['meta']>({
     page: 1,
     pageSize: PAGE_SIZE,
@@ -50,7 +59,7 @@ export default function BookingsView({ settings }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [alert, setAlert] = useState<AlertState | null>(null);
-  const [editing, setEditing] = useState<AdminBooking | null>(null);
+  const [editing, setEditing] = useState<AdminBookingWithConsents | null>(null);
   const [editForm, setEditForm] = useState({
     name: '',
     people: 1,
@@ -105,7 +114,7 @@ export default function BookingsView({ settings }: Props) {
           throw new Error(payload.error || 'Errore durante il caricamento');
         }
 
-        const payload = (await res.json()) as BookingListResponse;
+        const payload = (await res.json()) as BookingListResponseWithConsents;
         if (page > payload.meta.totalPages && payload.meta.totalPages >= 1) {
           setPage(payload.meta.totalPages);
           return;
@@ -363,6 +372,8 @@ export default function BookingsView({ settings }: Props) {
               <th style={thStyle}>Persone</th>
               <th style={thStyle}>Email</th>
               <th style={thStyle}>Telefono</th>
+              <th style={consentThStyle}>Privacy</th>
+              <th style={consentThStyle}>News</th>
               <th style={thStyle}>Stato</th>
               <th style={thStyle}>Creato</th>
               <th style={thStyle}>Azioni</th>
@@ -371,19 +382,19 @@ export default function BookingsView({ settings }: Props) {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
+                <td colSpan={11} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
                   Caricamento…
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan={9} style={{ padding: '1.5rem', textAlign: 'center', color: '#b91c1c' }}>
+                <td colSpan={11} style={{ padding: '1.5rem', textAlign: 'center', color: '#b91c1c' }}>
                   {error}
                 </td>
               </tr>
             ) : bookings.length === 0 ? (
               <tr>
-                <td colSpan={9} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
+                <td colSpan={11} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
                   Nessuna prenotazione trovata.
                 </td>
               </tr>
@@ -398,6 +409,12 @@ export default function BookingsView({ settings }: Props) {
                     <td style={tdStyle}>{booking.people}</td>
                     <td style={tdStyle}>{booking.email}</td>
                     <td style={tdStyle}>{booking.phone}</td>
+                    <td style={consentTdStyle} aria-label={booking.agreePrivacy ? 'Consenso privacy confermato' : 'Consenso privacy assente'}>
+                      {booking.agreePrivacy ? '✅' : '—'}
+                    </td>
+                    <td style={consentTdStyle} aria-label={booking.agreeMarketing ? 'Iscrizione newsletter confermata' : 'Iscrizione newsletter assente'}>
+                      {booking.agreeMarketing ? '✅' : '—'}
+                    </td>
                     <td style={tdStyle}>{booking.status}</td>
                     <td style={tdStyle}>{new Date(booking.createdAt).toLocaleDateString('it-IT')}</td>
                     <td style={{ ...tdStyle, display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -644,9 +661,21 @@ const thStyle: CSSProperties = {
   letterSpacing: '0.05em',
 };
 
+const consentThStyle: CSSProperties = {
+  ...thStyle,
+  width: '4rem',
+  textAlign: 'center',
+};
+
 const tdStyle: CSSProperties = {
   padding: '0.85rem 1rem',
   fontSize: '0.95rem',
+};
+
+const consentTdStyle: CSSProperties = {
+  ...tdStyle,
+  textAlign: 'center',
+  whiteSpace: 'nowrap',
 };
 
 const modalOverlayStyle: CSSProperties = {

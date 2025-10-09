@@ -23,5 +23,7 @@ export function toAdminBookingDTO(booking: Booking) {
     dinnerSubtotalCents: booking.dinnerSubtotalCents ?? null,
     dinnerCoverCents: booking.dinnerCoverCents ?? null,
     dinnerTotalCents: booking.dinnerTotalCents ?? null,
+    agreePrivacy: booking.agreePrivacy,
+    agreeMarketing: booking.agreeMarketing,
   };
 }

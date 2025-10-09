@@ -40,6 +40,14 @@ Le voci “Piatti pranzo (Legacy)” e “Opzioni evento/aperitivo (Legacy)” s
 - Filtri: barra di ricerca (slug/titolo), select per stato (`tutti` / `solo attivi` / `solo sospesi`) e paginazione lato server (`page`, `size`). I risultati vengono ricaricati via API con toast in caso di problemi.
 - Azione **Elimina** chiama `DELETE /api/admin/events/{id}`. In caso di vincoli FK l’API effettua fallback soft (set `active=false`) e mostra toast "Evento disattivato".
 
+### Pacchetti evento
+- Dalla lista eventi clicca su un elemento per aprire la pagina dettaglio `/admin/events/{id}`.
+- Header con titolo, slug, data e pulsante “Apri pubblico” che apre `/eventi/{slug}` in nuova scheda.
+- Sezione **Pacchetti**: form “Nuovo pacchetto” con campi etichetta (min 2 caratteri), descrizione opzionale, prezzo in euro, ordine numerico e checkbox attivo.
+- L’elenco sottostante mostra i pacchetti esistenti in ordine crescente, con campi editabili inline, prezzo formattato in euro, toggle attivo e azioni **Salva**/**Elimina**.
+- Le chiamate usano le rotte: `GET/POST /api/admin/events/{id}/tiers`, `PATCH/DELETE /api/admin/events/tiers/{tierId}` (richiedono `eventId` nel payload per verificare l’appartenenza).
+- Tutte le azioni mostrano toast di successo/errore e il salvataggio ricarica la lista corrente.
+
 ## Flow Toast Provider
 - Provider comune: `src/components/admin/ui/toast.tsx` esporta `<ToastProvider>` e hook `useToast()`.
 - Le pagine server-side montano il provider attorno ai client component (`ProductsPageClient`, `SectionsPageClient`).

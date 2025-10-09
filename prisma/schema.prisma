@@ -8,6 +8,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/* -------------------- BOOKING & LEGACY -------------------- */
+
 model Booking {
   id             Int            @id @default(autoincrement())
   date           DateTime
@@ -17,7 +19,7 @@ model Booking {
   phone          String
   notes          String?
 
-  // 👇 aggiunte
+  // Estensioni
   type           BookingType
   agreePrivacy   Boolean        @default(false)
   agreeMarketing Boolean        @default(false)
@@ -35,89 +37,14 @@ model Booking {
   tierType            String?
   tierLabel           String?
   tierPriceCents      Int?
-  orderId             String?
-  order               Order?        @relation(fields: [orderId], references: [id])
+
+  orderId        String?
+  order          Order?         @relation(fields: [orderId], references: [id])
 
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  verifications BookingVerification[]
-}
-
-model Product {
-  id             Int      @id @default(autoincrement())
-  slug           String   @unique
-  name           String
-  description    String?
-  ingredients    String?
-  allergens      String?
-  priceCents     Int      @default(0)
-  unitCostCents  Int      @default(0)
-  supplierName   String?
-  stockQty       Int      @default(0)
-  imageUrl       String?
-  category       String?
-  order          Int      @default(0)
-  active         Boolean  @default(true)
-  sourceType     String?
-  sourceId       String?
-
-  // Flag nutrizionali
-  isVegan        Boolean  @default(false)
-  isVegetarian   Boolean  @default(false)
-  isGlutenFree   Boolean  @default(false)
-  isLactoseFree  Boolean  @default(false)
-  isOrganic      Boolean  @default(false)
-
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  // RELAZIONI
-  cartItems      CartItem[]
-
-  @@index([active, order])
-  @@index([category, order])
-}
-
-model CatalogSection {
-  id             Int      @id @default(autoincrement())
-  key            String   @unique   // 'eventi' | 'aperitivo' | 'pranzo' | 'cena' | 'colazione'
-  title          String
-  description    String?
-  enableDateTime Boolean  @default(false)
-  active         Boolean  @default(true)
-  displayOrder   Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-}
-
-model SectionProduct {
-  sectionId  Int
-  productId  Int
-  order      Int     @default(0)
-  featured   Boolean @default(false)
-  showInHome Boolean @default(false)
-
-  @@id([sectionId, productId])
-  @@index([sectionId, order])
-}
-
-model EventInstance {
-  id          Int      @id @default(autoincrement())
-  productId   Int
-  slug        String   @unique
-  title       String
-  description String?
-  startAt     DateTime
-  endAt       DateTime?
-  showOnHome  Boolean  @default(false)
-  active      Boolean  @default(true)
-  capacity    Int?
-  allowEmailOnlyBooking Boolean @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([productId, startAt])
+  verifications  BookingVerification[]
 }
 
 model BookingVerification {
@@ -130,64 +57,10 @@ model BookingVerification {
   usedAt    DateTime?
   createdAt DateTime @default(now())
 
-  Booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  Booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([bookingId])
   @@index([expiresAt])
-}
-
-model Cart {
-  id         String     @id @default(cuid())
-  status     String     @default("open")
-  totalCents Int        @default(0)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-
-  // RELAZIONI
-  items      CartItem[]
-  order      Order?
-}
-
-model CartItem {
-  id                 Int      @id @default(autoincrement())
-  cartId             String
-  productId          Int
-  // snapshot per stabilità storica
-  nameSnapshot       String
-  priceCentsSnapshot Int
-  qty                Int
-  imageUrlSnapshot   String?
-  meta               Json?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  // RELAZIONI
-  cart     Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id])
-
-  @@index([cartId])
-  @@index([productId])
-}
-
-model Order {
-  id            String   @id @default(cuid())
-  cartId        String   @unique
-  email         String
-  name          String
-  phone         String?
-  status        String   @default("pending")
-  totalCents    Int
-  discountCents Int?
-  paymentRef    String?
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  cart     Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  bookings Booking[]
-
-  @@index([cartId, status])
-  @@index([paymentRef])
 }
 
 model BookingSettings {
@@ -223,6 +96,155 @@ enum BookingStatus {
   cancelled
 }
 
+/* -------------------- CATALOGO / CARRELLO -------------------- */
+
+model Product {
+  id             Int       @id @default(autoincrement())
+  slug           String    @unique
+  name           String
+  description    String?
+  ingredients    String?
+  allergens      String?
+  priceCents     Int       @default(0)
+  unitCostCents  Int       @default(0)
+  supplierName   String?
+  stockQty       Int       @default(0)
+  imageUrl       String?
+  category       String?
+  order          Int       @default(0)
+  active         Boolean   @default(true)
+  sourceType     String?
+  sourceId       String?
+
+  // Flag nutrizionali
+  isVegan        Boolean   @default(false)
+  isVegetarian   Boolean   @default(false)
+  isGlutenFree   Boolean   @default(false)
+  isLactoseFree  Boolean   @default(false)
+  isOrganic      Boolean   @default(false)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // RELAZIONI
+  cartItems      CartItem[]
+  sections       SectionProduct[]
+  eventInstances EventInstance[]
+
+  @@index([active, order])
+  @@index([category, order])
+}
+
+model CatalogSection {
+  id             Int              @id @default(autoincrement())
+  key            String           @unique   // 'eventi' | 'aperitivo' | 'pranzo' | 'cena' | 'colazione'
+  title          String
+  description    String?
+  enableDateTime Boolean          @default(false)
+  active         Boolean          @default(true)
+  displayOrder   Int              @default(0)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  // RELAZIONI
+  products       SectionProduct[]
+}
+
+model SectionProduct {
+  sectionId  Int
+  productId  Int
+  order      Int     @default(0)
+  featured   Boolean @default(false)
+  showInHome Boolean @default(false)
+
+  // RELAZIONI
+  section CatalogSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id])
+
+  @@id([sectionId, productId])
+  @@index([sectionId, order])
+}
+
+model EventInstance {
+  id                     Int      @id @default(autoincrement())
+  productId              Int
+  slug                   String   @unique
+  title                  String
+  description            String?
+  startAt                DateTime
+  endAt                  DateTime?
+  showOnHome             Boolean  @default(false)
+  active                 Boolean  @default(true)
+  capacity               Int?
+  allowEmailOnlyBooking  Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  // RELAZIONI
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([productId, startAt])
+}
+
+/* -------------------- CARRELLO / ORDINI -------------------- */
+
+model Cart {
+  id         String     @id @default(cuid())
+  status     String     @default("open")
+  totalCents Int        @default(0)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  // RELAZIONI
+  items      CartItem[]
+  order      Order?
+}
+
+model CartItem {
+  id                 Int      @id @default(autoincrement())
+  cartId             String
+  productId          Int
+
+  // snapshot per stabilità storica
+  nameSnapshot       String
+  priceCentsSnapshot Int
+  qty                Int
+  imageUrlSnapshot   String?
+  meta               Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // RELAZIONI
+  cart     Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@index([cartId])
+  @@index([productId])
+}
+
+model Order {
+  id            String   @id @default(cuid())
+  cartId        String   @unique
+  email         String
+  name          String
+  phone         String?
+  status        String   @default("pending")
+  totalCents    Int
+  discountCents Int?
+  paymentRef    String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  cart      Cart      @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  bookings  Booking[]
+
+  @@index([cartId, status])
+  @@index([paymentRef])
+}
+
+/* -------------------- LEGACY MENU / EVENT TIERS -------------------- */
+
 model MenuDish {
   id          Int      @id @default(autoincrement())
   name        String
@@ -251,6 +273,8 @@ model EventTier {
   @@index([type, active, order])
 }
 
+/* -------------------- AUTH.JS -------------------- */
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -261,6 +285,10 @@ model User {
 
   accounts Account[]
   sessions Session[]
+}
+
+enum UserRole {
+  admin
 }
 
 model Account {
@@ -297,8 +325,4 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
-}
-
-enum UserRole {
-  admin
 }

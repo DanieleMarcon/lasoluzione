@@ -108,10 +108,9 @@ export async function GET(req: Request) {
 
   const csv = csvRows.join('\n');
 
-  const headers = new Headers({
-    'Content-Type': 'text/csv',
-    'Content-Disposition': 'attachment; filename="bookings.csv"',
-  });
+  const headers = new Headers();
+  headers.set('Content-Type', 'text/csv');
+  headers.set('Content-Disposition', 'attachment; filename="bookings.csv"');
 
   return new Response(csv, { status: 200, headers });
 }

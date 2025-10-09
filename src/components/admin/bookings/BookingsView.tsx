@@ -401,6 +401,8 @@ export default function BookingsView({ settings }: Props) {
             ) : (
               bookings.map((booking) => {
                 const actionsDisabled = actionBookingId === booking.id;
+                const hasPrivacyConsent = booking.agreePrivacy === true;
+                const hasMarketingConsent = booking.agreeMarketing === true;
                 return (
                   <tr key={booking.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                     <td style={tdStyle}>{formatDateTime(booking.date)}</td>
@@ -409,11 +411,19 @@ export default function BookingsView({ settings }: Props) {
                     <td style={tdStyle}>{booking.people}</td>
                     <td style={tdStyle}>{booking.email}</td>
                     <td style={tdStyle}>{booking.phone}</td>
-                    <td style={consentTdStyle} aria-label={booking.agreePrivacy ? 'Consenso privacy confermato' : 'Consenso privacy assente'}>
-                      {booking.agreePrivacy ? '✅' : '—'}
+                    <td
+                      style={consentTdStyle}
+                      aria-label={hasPrivacyConsent ? 'Consenso privacy confermato' : 'Consenso privacy assente'}
+                      title={hasPrivacyConsent ? 'Consenso privacy confermato' : 'Consenso privacy assente'}
+                    >
+                      {hasPrivacyConsent ? '✅' : '—'}
                     </td>
-                    <td style={consentTdStyle} aria-label={booking.agreeMarketing ? 'Iscrizione newsletter confermata' : 'Iscrizione newsletter assente'}>
-                      {booking.agreeMarketing ? '✅' : '—'}
+                    <td
+                      style={consentTdStyle}
+                      aria-label={hasMarketingConsent ? 'Iscrizione newsletter confermata' : 'Iscrizione newsletter assente'}
+                      title={hasMarketingConsent ? 'Iscrizione newsletter confermata' : 'Iscrizione newsletter assente'}
+                    >
+                      {hasMarketingConsent ? '✅' : '—'}
                     </td>
                     <td style={tdStyle}>{booking.status}</td>
                     <td style={tdStyle}>{new Date(booking.createdAt).toLocaleDateString('it-IT')}</td>
@@ -663,7 +673,7 @@ const thStyle: CSSProperties = {
 
 const consentThStyle: CSSProperties = {
   ...thStyle,
-  width: '4rem',
+  width: '3.25rem',
   textAlign: 'center',
 };
 

@@ -36,6 +36,21 @@
 ## Sicurezza
 - Tutte le rotte `/admin/*` e `/api/admin/*` passano dal middleware Auth.js; utenti non autorizzati vengono reindirizzati a `/admin/signin`.
 - Le chiamate fetch dal client admin impostano `cache: 'no-store'` per evitare dati obsoleti.
+---
+
+## [P6] Aggiornamenti area Admin
+
+### Prenotazioni
+- **Esporta CSV**: pulsante “Esporta CSV” scarica un file con gli stessi filtri correnti.  
+  Endpoint: `GET /api/admin/bookings/export?search=...&type=...&status=...&from=...&to=...`
+  Colonne incluse: `id,date,type,status,people,name,email,phone,notes,agreePrivacy,agreeMarketing,createdAt`.
+- **Nuove colonne**:
+  - **Privacy**: ✅ se il cliente ha accettato i termini, altrimenti —.
+  - **News**: ✅ se il cliente ha scelto l’iscrizione newsletter, altrimenti —.
+
+### Impostazioni
+- **Eventi – prenotazione via email**: elenco istanze evento; il seed crea `capodanno-2025` con toggle ON.
+=======
 
 ## Prenotazioni
 - In `/admin/prenotazioni` è disponibile il bottone **Esporta CSV** accanto a “Stampa elenco”; applica i filtri correnti.

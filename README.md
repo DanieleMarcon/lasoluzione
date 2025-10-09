@@ -234,3 +234,18 @@ Legenda: ✅ fatto · 🟨 parziale · ⛔️ da fare
 Questo progetto è **proprietario**. Non è consentito copiare, modificare,
 distribuire o riutilizzare il codice e i contenuti, in tutto o in parte,
 senza autorizzazione scritta del titolare. Per informazioni: info@lasoluzione.eu.
+---
+
+## 🚀 MVP — Prenotazione via email (singolo evento)
+
+Per testare rapidamente il flusso “prenota senza pagare” con conferma via email:
+1. Configura le variabili d’ambiente (DB + SMTP + NEXTAuth).
+2. Applica migrazioni e avvia il seed non distruttivo dell’evento:
+   ```bash
+   pnpm prisma migrate dev
+   pnpm tsx prisma/seed.ts   # oppure: pnpm run seed:single-event
+   ```
+
+Apri /eventi/capodanno-2025, invia il form (privacy obbligatoria), conferma dal link email.
+
+→ Dettagli passo-passo in docs/EVENTI_EMAIL_ONLY_MVP.md.

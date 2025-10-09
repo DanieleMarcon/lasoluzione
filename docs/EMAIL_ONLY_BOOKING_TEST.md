@@ -171,3 +171,13 @@ Errori comuni:
 - `event_not_found`: ID evento inesistente.
 - `email_only_not_allowed`: l'evento non consente la prenotazione solo email.
 - `invalid_payload`: validazione Zod fallita (es. `agreePrivacy` mancante o `false`).
+---
+
+## [P6] Aggiornamenti test — consensi e pagina evento
+- Il form pubblico in `/eventi/[slug]` raccoglie ora:
+  - `agreePrivacy` (**obbligatorio**, deve essere `true`)
+  - `agreeMarketing` (facoltativo, `false` di default)
+- Il payload di esempio per `POST /api/bookings/email-only` è aggiornato con i due campi (vedi anche `docs/EVENTI_EMAIL_ONLY_MVP.md`).
+- Esito atteso:
+  - DB: `Booking.agreePrivacy = true`, `Booking.agreeMarketing` coerente con input.
+  - Admin → Prenotazioni: compaiono le colonne “Privacy” e “News”.

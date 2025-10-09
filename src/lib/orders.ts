@@ -52,7 +52,13 @@ export type CreateOrderSuccess =
   | { ok: true; data: { orderId: string; status: 'paid' } }
   | {
       ok: true
-      data: { orderId: string; status: 'pending_payment'; totalCents: number; revolutToken: string }
+      data: {
+        orderId: string
+        status: 'pending_payment'
+        totalCents: number
+        revolutToken: string
+        hostedPaymentUrl?: string
+      }
     }
 
 export type CreateOrderResult = CreateOrderSuccess | { ok: false; error: string }
@@ -116,7 +122,7 @@ async function ensureBookingInternal(order: OrderWithCart) {
   const people = items.reduce((sum: number, item: MappedItem) => sum + item.qty, 0) || 1
   const totalCents = order.totalCents ?? order.cart.totalCents ?? 0
 
-  // niente tipi Prisma -> usiamo un payload compatibile e castiamo solo dove serve
+  // niente tipi Prisma -> payload compatibile
   const data = {
     date: bookingDate,
     people,
@@ -143,7 +149,7 @@ async function ensureBookingInternal(order: OrderWithCart) {
   return { booking, order }
 }
 
-// ---- Ordine
+// ---- Ordine (idempotente su cartId)
 
 export async function createOrderFromCart(rawInput: unknown): Promise<CreateOrderResult> {
   const parsed = OrderInput.safeParse(rawInput)
@@ -152,6 +158,7 @@ export async function createOrderFromCart(rawInput: unknown): Promise<CreateOrde
   const { cartId, email, name, phone, notes } = parsed.data
   const normalizedNotes = typeof notes === 'string' ? notes.trim() : undefined
 
+  // Carrello e validazioni
   const cart = await prisma.cart.findUnique({ where: { id: cartId }, include: { items: true } })
   if (!cart) throw new OrderWorkflowError('cart_not_found', 404)
   if (!Array.isArray(cart.items) || cart.items.length === 0)
@@ -160,25 +167,76 @@ export async function createOrderFromCart(rawInput: unknown): Promise<CreateOrde
     throw new OrderWorkflowError('cart_not_ready', 400)
 
   const totalCents = await recalcCartTotal(cartId)
-  const status: 'pending_payment' | 'paid' = totalCents > 0 ? 'pending_payment' : 'paid'
+  const nextStatus: 'pending_payment' | 'paid' = totalCents > 0 ? 'pending_payment' : 'paid'
 
-  const order = await prisma.order.create({
-    data: {
-      cartId,
-      email,
-      name,
-      phone,
-      status,
-      totalCents,
-      ...(normalizedNotes ? { notes: normalizedNotes } : {}),
-    },
-  })
+  // Se esiste già un ordine per questo carrello, riusalo. Altrimenti creane uno.
+  let order = await prisma.order.findUnique({ where: { cartId } })
 
+  if (!order) {
+    try {
+      order = await prisma.order.create({
+        data: {
+          cartId,
+          email,
+          name,
+          phone,
+          status: nextStatus,
+          totalCents,
+          ...(normalizedNotes ? { notes: normalizedNotes } : {}),
+        },
+      })
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        order = await prisma.order.findUnique({ where: { cartId } })
+        if (!order) throw e
+      } else {
+        throw e
+      }
+    }
+  } else {
+    if (order.status === 'paid') {
+      return { ok: true, data: { orderId: order.id, status: 'paid' } }
+    }
+    order = await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        email,
+        name,
+        phone,
+        totalCents,
+        status: nextStatus,
+        ...(normalizedNotes !== undefined ? { notes: normalizedNotes } : {}),
+      },
+    })
+  }
+
+  // Ordine a costo zero -> finalizza subito
   if (totalCents <= 0) {
     await finalizePaidOrder(order.id)
     return { ok: true, data: { orderId: order.id, status: 'paid' } }
   }
 
+  // Se abbiamo già un paymentRef Revolut valido, riusa token + hosted url
+  const existingRef = parsePaymentRef(order.paymentRef)
+  if (existingRef.kind === 'revolut') {
+    const reuseToken =
+      existingRef.meta.checkoutPublicId ?? existingRef.meta.orderId ?? null
+    const hostedPaymentUrl = existingRef.meta.hostedPaymentUrl ?? undefined
+    if (reuseToken) {
+      return {
+        ok: true,
+        data: {
+          orderId: order.id,
+          status: 'pending_payment',
+          totalCents,
+          revolutToken: reuseToken,
+          hostedPaymentUrl,
+        },
+      }
+    }
+  }
+
+  // Crea/rigenera ordine Revolut e salva paymentRef
   try {
     const description = `Prenotazione #${order.id} – La Soluzione`
     const revolutOrder = await createRevolutOrder({
@@ -207,9 +265,36 @@ export async function createOrderFromCart(rawInput: unknown): Promise<CreateOrde
 
     return {
       ok: true,
-      data: { orderId: order.id, status: 'pending_payment', totalCents, revolutToken },
+      data: {
+        orderId: order.id,
+        status: 'pending_payment',
+        totalCents,
+        revolutToken,
+        hostedPaymentUrl: revolutOrder.hostedPaymentUrl ?? undefined,
+      },
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 'P2002') {
+      const again = await prisma.order.findUnique({ where: { cartId } })
+      if (again) {
+        const ref = parsePaymentRef(again.paymentRef)
+        const token =
+          ref.kind === 'revolut'
+            ? ref.meta.checkoutPublicId ?? ref.meta.orderId ?? again.id
+            : again.id
+        return {
+          ok: true,
+          data: {
+            orderId: again.id,
+            status: 'pending_payment',
+            totalCents,
+            revolutToken: token,
+            hostedPaymentUrl:
+              ref.kind === 'revolut' ? ref.meta.hostedPaymentUrl ?? undefined : undefined,
+          },
+        }
+      }
+    }
     await prisma.order.update({ where: { id: order.id }, data: { status: 'failed' } })
     const message = err instanceof Error ? err.message : 'payment_gateway_error'
     throw new OrderWorkflowError(message, 502)

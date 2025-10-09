@@ -28,8 +28,8 @@ export default function CheckoutButton({
           throw new Error('Missing Revolut public token');
         }
         const mode = process.env.NEXT_PUBLIC_REVOLUT_ENV === 'prod' ? 'prod' : 'sandbox';
-        const sdk = await RevolutCheckout(token, { publicToken, mode, locale: 'it' });
-        await sdk.pay();
+        const sdk = await RevolutCheckout(publicToken, { mode, locale: 'it' });
+        await sdk.pay(token);
         if (orderId) {
           router.push(`/checkout/return?orderId=${encodeURIComponent(orderId)}`);
         } else {

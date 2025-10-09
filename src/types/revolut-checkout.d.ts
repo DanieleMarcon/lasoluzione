@@ -1,18 +1,24 @@
 declare module '@revolut/checkout' {
-  export type RevolutCheckoutMode = 'sandbox' | 'prod';
+  export interface RevolutCheckoutInstance {
+    /**
+     * Apre il popup del checkout per il publicId passato in fase di init.
+     */
+    payWithPopup(options?: { name?: string }): Promise<void>;
 
-  export type RevolutCheckoutOptions = {
-    mode?: RevolutCheckoutMode;
-    locale?: string;
-    publicToken: string;
-  };
+    /**
+     * API legacy per il campo carta (non usata, ma la lasciamo tipizzata per compatibilità).
+     */
+    createCardField(config: {
+      target: string | HTMLElement;
+      onSuccess?: (res: unknown) => void;
+      onError?: (err: unknown) => void;
+    }): unknown;
+  }
 
-  export type RevolutCheckoutInstance = {
-    pay(): Promise<void>;
-  };
+  /**
+   * Inizializza il widget usando il token/publicId dell’ordine (es. `checkoutPublicId`).
+   */
+  const RevolutCheckout: (publicId: string) => Promise<RevolutCheckoutInstance>;
 
-  export default function RevolutCheckout(
-    publicId: string,
-    options: RevolutCheckoutOptions
-  ): Promise<RevolutCheckoutInstance>;
+  export default RevolutCheckout;
 }

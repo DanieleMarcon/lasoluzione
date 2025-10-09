@@ -36,3 +36,10 @@
 ## Sicurezza
 - Tutte le rotte `/admin/*` e `/api/admin/*` passano dal middleware Auth.js; utenti non autorizzati vengono reindirizzati a `/admin/signin`.
 - Le chiamate fetch dal client admin impostano `cache: 'no-store'` per evitare dati obsoleti.
+
+## Prenotazioni
+- In `/admin/prenotazioni` è disponibile il bottone **Esporta CSV** accanto a “Stampa elenco”; applica i filtri correnti.
+- Rotta tecnica: `GET /api/admin/bookings/export`.
+- Parametri supportati (`query`): `search`, `type`, `status`, `from`, `to` (identici ai filtri della lista).
+- Colonne esportate in ordine: `id`, `date`, `type`, `status`, `people`, `name`, `email`, `phone`, `notes`, `agreePrivacy`, `agreeMarketing`, `createdAt`.
+- Formato: date in ISO 8601 (`toISOString()`), booleani come `TRUE`/`FALSE`, valori testuali sanitizzati (virgolette raddoppiate, newline rimossi).

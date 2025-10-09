@@ -160,8 +160,9 @@ pnpm dev                     # http://localhost:3000
 **Pubblico (legacy)**  
 `GET /api/booking-config` · `POST /api/bookings` · `POST /api/bookings/prepay`
 
-**Pubblico (nuovo)**  
+**Pubblico (nuovo)**
 `GET /api/catalog`
+[`GET /api/events`](docs/EVENTS_PUBLIC_API.md)
 
 **Admin (legacy)**  
 Menu dishes, tiers, settings…

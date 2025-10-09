@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import RevolutCheckout from '@revolut/checkout';
 
@@ -26,6 +26,68 @@ const INITIAL_FORM_STATE: FormState = {
 
 type OrderView = 'idle' | 'pending_payment';
 
+type EmailOnlyEventMeta = {
+  eventInstanceId: number;
+  allowEmailOnlyBooking: boolean;
+  title?: string;
+};
+
+function extractEmailOnlyMeta(value: unknown): EmailOnlyEventMeta | null {
+  if (!value || typeof value !== 'object') return null;
+  const base = value as Record<string, unknown>;
+
+  const nested =
+    (base.eventInstance && typeof base.eventInstance === 'object'
+      ? (base.eventInstance as Record<string, unknown>)
+      : null) ||
+    (base.event && typeof base.event === 'object' ? (base.event as Record<string, unknown>) : null);
+
+  const idSource =
+    typeof base.eventInstanceId === 'number'
+      ? base.eventInstanceId
+      : typeof base.id === 'number'
+      ? base.id
+      : typeof base.eventId === 'number'
+      ? base.eventId
+      : typeof nested?.eventInstanceId === 'number'
+      ? nested.eventInstanceId
+      : typeof nested?.id === 'number'
+      ? nested.id
+      : typeof nested?.eventId === 'number'
+      ? nested.eventId
+      : null;
+
+  if (!idSource) return null;
+
+  const allow =
+    typeof base.allowEmailOnlyBooking === 'boolean'
+      ? base.allowEmailOnlyBooking
+      : typeof nested?.allowEmailOnlyBooking === 'boolean'
+      ? nested.allowEmailOnlyBooking
+      : false;
+
+  return {
+    eventInstanceId: idSource,
+    allowEmailOnlyBooking: allow,
+    title: typeof base.title === 'string' ? base.title : typeof nested?.title === 'string' ? nested.title : undefined,
+  };
+}
+
+function mapEmailOnlyError(code?: string | null): string {
+  switch (code) {
+    case 'event_not_found':
+      return 'Evento non trovato. Aggiorna la pagina e riprova.';
+    case 'email_only_not_allowed':
+      return 'Per questo evento non è disponibile la prenotazione via email.';
+    case 'invalid_payload':
+      return 'Dati non validi. Controlla le informazioni inserite.';
+    case 'rate_limited':
+      return 'Richieste troppo ravvicinate. Attendi qualche istante e riprova.';
+    default:
+      return 'Impossibile completare la prenotazione senza pagamento. Riprova più tardi.';
+  }
+}
+
 function CheckoutContent() {
   const router = useRouter();
   const { cart, cartToken, loading, error, clearCartToken, refresh } = useCart();
@@ -39,10 +101,29 @@ function CheckoutContent() {
   const [hostedUrl, setHostedUrl] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [revolutLoading, setRevolutLoading] = useState(false);
+  const [emailOnlyStatus, setEmailOnlyStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [emailOnlyMessage, setEmailOnlyMessage] = useState<string | null>(null);
+  const emailOnlyMessageRef = useRef<HTMLDivElement | null>(null);
 
-  const items = cart?.items ?? [];
+  const cartItems = cart?.items;
+  const items = cartItems ?? [];
   const hasItems = items.length > 0;
   const totalCents = cart?.totalCents ?? 0;
+
+  const emailOnlyEvent = useMemo(() => {
+    const source = cartItems ?? [];
+    for (const item of source) {
+      const meta = item.meta;
+      const extracted = extractEmailOnlyMeta(meta ?? undefined);
+      if (extracted) {
+        return {
+          ...extracted,
+          title: extracted.title ?? item.nameSnapshot,
+        };
+      }
+    }
+    return null;
+  }, [cartItems]);
 
   const summaryDescription = useMemo(() => {
     if (loading) return 'Caricamento del carrello in corso…';
@@ -50,6 +131,12 @@ function CheckoutContent() {
     if (!hasItems) return 'Il carrello è vuoto. Torna al catalogo per aggiungere prodotti.';
     return 'Controlla i dettagli dell’ordine prima di completare il checkout.';
   }, [loading, error, hasItems]);
+
+  useEffect(() => {
+    if (emailOnlyMessage && emailOnlyStatus !== 'loading') {
+      emailOnlyMessageRef.current?.focus();
+    }
+  }, [emailOnlyMessage, emailOnlyStatus]);
 
   const handleInputChange =
     (field: keyof FormState) =>
@@ -261,6 +348,86 @@ function CheckoutContent() {
       toast.error('Errore di rete durante il checkout.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleEmailOnlyBooking = async () => {
+    if (!emailOnlyEvent?.allowEmailOnlyBooking || !emailOnlyEvent.eventInstanceId) {
+      return;
+    }
+
+    const trimmedEmail = formState.email.trim();
+    const trimmedName = formState.name.trim();
+    const trimmedPhone = formState.phone.trim();
+    const trimmedNotes = formState.notes.trim();
+
+    if (!trimmedPhone) {
+      setPhoneError('Telefono obbligatorio');
+      toast.error('Inserisci un numero di telefono.');
+      return;
+    }
+
+    const validated = customerSchema.safeParse({
+      email: trimmedEmail,
+      name: trimmedName,
+      phone: trimmedPhone,
+      notes: trimmedNotes ? trimmedNotes : undefined,
+    });
+
+    if (!validated.success) {
+      const flat = validated.error.flatten();
+      const phoneIssue = flat.fieldErrors.phone?.[0];
+      if (phoneIssue) setPhoneError(phoneIssue);
+      const generalError =
+        phoneIssue || flat.fieldErrors.email?.[0] || flat.fieldErrors.name?.[0] || flat.formErrors[0] || 'Dati non validi.';
+      toast.error(generalError);
+      return;
+    }
+
+    setEmailOnlyStatus('loading');
+    setEmailOnlyMessage('Invio della richiesta in corso…');
+
+    try {
+      const res = await fetch('/api/bookings/email-only', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventInstanceId: emailOnlyEvent.eventInstanceId,
+          customer: {
+            email: validated.data.email,
+            name: validated.data.name,
+            phone: validated.data.phone,
+          },
+          notes: validated.data.notes ?? undefined,
+        }),
+      });
+
+      const body = (await res.json().catch(() => null)) as
+        | {
+            ok: boolean;
+            nextUrl?: string;
+            error?: string;
+          }
+        | null;
+
+      if (res.ok && body?.ok && body.nextUrl) {
+        setEmailOnlyMessage(null);
+        setEmailOnlyStatus('idle');
+        try {
+          await clearClientCart();
+        } catch (err) {
+          console.error('[Checkout] unable to clear cart after email-only booking', err);
+        }
+        router.push(body.nextUrl);
+        return;
+      }
+
+      setEmailOnlyStatus('error');
+      setEmailOnlyMessage(mapEmailOnlyError(body?.error));
+    } catch (err) {
+      console.error('[Checkout] email-only booking error', err);
+      setEmailOnlyStatus('error');
+      setEmailOnlyMessage('Errore di rete durante l’invio della richiesta. Riprova.');
     }
   };
 
@@ -504,6 +671,37 @@ function CheckoutContent() {
             >
               {submitting ? 'Invio in corso…' : 'Completa l’ordine'}
             </button>
+            {emailOnlyEvent?.allowEmailOnlyBooking ? (
+              <div style={{ display: 'grid', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={handleEmailOnlyBooking}
+                  disabled={emailOnlyStatus === 'loading'}
+                  className="btn btn-outline-secondary"
+                  style={{
+                    borderRadius: 999,
+                    fontWeight: 600,
+                    padding: '0.75rem 1.25rem',
+                  }}
+                >
+                  {emailOnlyStatus === 'loading' ? 'Invio richiesta…' : 'Prenota senza pagare'}
+                </button>
+                <div
+                  ref={emailOnlyMessageRef}
+                  aria-live={emailOnlyStatus === 'error' ? 'assertive' : 'polite'}
+                  role="status"
+                  tabIndex={emailOnlyMessage ? -1 : undefined}
+                  style={{
+                    minHeight: emailOnlyMessage ? 'auto' : 0,
+                    outline: 'none',
+                    color: emailOnlyStatus === 'error' ? '#b91c1c' : '#475569',
+                    fontSize: '0.95rem',
+                  }}
+                >
+                  {emailOnlyMessage}
+                </div>
+              </div>
+            ) : null}
           </form>
         </section>
       </div>

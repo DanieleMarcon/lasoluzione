@@ -8,14 +8,12 @@ type FieldErrors = Partial<{
   email: string;
   phone: string;
   people: string;
-  notes: string;
   agreePrivacy: string;
   submit: string;
 }>;
 
 interface EventFormProps {
   eventSlug: string;
-  eventInstanceId?: number;
 }
 
 interface FormState {
@@ -38,19 +36,6 @@ const INITIAL_STATE: FormState = {
   agreeMarketing: false,
 };
 
-function mapApiError(code: string | undefined): string {
-  switch (code) {
-    case 'event_not_found':
-      return 'Evento non trovato. Riprova più tardi.';
-    case 'email_only_not_allowed':
-      return 'Per questo evento non è disponibile la prenotazione via email.';
-    case 'invalid_payload':
-      return 'Dati non validi. Controlla le informazioni inserite.';
-    default:
-      return 'Impossibile inviare la richiesta di prenotazione. Riprova tra qualche istante.';
-  }
-}
-
 function validateEmail(value: string): boolean {
   return /.+@.+\..+/.test(value);
 }
@@ -61,7 +46,7 @@ function parsePeople(value: string): number {
   return parsed;
 }
 
-export default function EventForm({ eventSlug, eventInstanceId }: EventFormProps) {
+export default function EventForm({ eventSlug }: EventFormProps) {
   const router = useRouter();
   const [formState, setFormState] = useState<FormState>(INITIAL_STATE);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -90,7 +75,7 @@ export default function EventForm({ eventSlug, eventInstanceId }: EventFormProps
     const trimmedPhone = formState.phone.trim();
     const trimmedNotes = formState.notes.trim();
 
-    if (trimmedName.length < 2) {
+    if (!trimmedName) {
       nextErrors.name = 'Inserisci il tuo nome e cognome.';
     }
 
@@ -98,7 +83,7 @@ export default function EventForm({ eventSlug, eventInstanceId }: EventFormProps
       nextErrors.email = 'Inserisci un indirizzo email valido.';
     }
 
-    if (trimmedPhone.length < 6) {
+    if (!trimmedPhone) {
       nextErrors.phone = 'Inserisci un numero di telefono valido.';
     }
 
@@ -108,10 +93,6 @@ export default function EventForm({ eventSlug, eventInstanceId }: EventFormProps
 
     if (!formState.agreePrivacy) {
       nextErrors.agreePrivacy = 'Devi accettare la privacy per inviare la richiesta.';
-    }
-
-    if (!eventInstanceId) {
-      nextErrors.submit = 'Questo evento non è al momento disponibile.';
     }
 
     setErrors(nextErrors);
@@ -130,34 +111,31 @@ export default function EventForm({ eventSlug, eventInstanceId }: EventFormProps
         },
         body: JSON.stringify({
           eventSlug,
-          eventInstanceId,
+          name: trimmedName,
+          email: trimmedEmail,
+          phone: trimmedPhone,
           people: peopleValue,
           notes: trimmedNotes.length ? trimmedNotes : undefined,
           agreePrivacy: formState.agreePrivacy,
           agreeMarketing: formState.agreeMarketing,
-          customer: {
-            name: trimmedName,
-            email: trimmedEmail,
-            phone: trimmedPhone,
-          },
         }),
       });
 
-      const body = (await response.json().catch(() => null)) as
+      const data = (await response.json().catch(() => null)) as
         | {
-            ok?: boolean;
-            nextUrl?: string;
-            error?: string;
+            bookingId?: string;
           }
         | null;
 
-      if (response.ok && body?.ok && body.nextUrl) {
-        router.push(body.nextUrl);
+      if (response.ok && data?.bookingId) {
+        router.push(`/checkout/email-sent?bookingId=${encodeURIComponent(data.bookingId)}`);
         return;
       }
 
-      const message = mapApiError(body?.error);
-      setErrors({ submit: message });
+      setErrors({
+        submit:
+          'Impossibile inviare la richiesta di prenotazione. Controlla i dati o riprova tra qualche istante.',
+      });
     } catch (error) {
       console.error('[EventForm] submit error', error);
       setErrors({ submit: 'Errore di rete durante l’invio. Riprova tra poco.' });
@@ -167,7 +145,7 @@ export default function EventForm({ eventSlug, eventInstanceId }: EventFormProps
   };
 
   return (
-    <form className="space-y-6" onSubmit={handleSubmit}>
+    <form className="space-y-6" onSubmit={handleSubmit} noValidate>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="block text-sm font-medium text-gray-700" htmlFor="event-name">
@@ -252,11 +230,10 @@ export default function EventForm({ eventSlug, eventInstanceId }: EventFormProps
           onChange={handleChange('notes')}
           disabled={submitting}
         />
-        {errors.notes ? <p className="mt-1 text-sm text-red-600">{errors.notes}</p> : null}
       </div>
 
       <div className="space-y-3">
-        <label className="flex items-start gap-2 text-sm text-gray-700">
+        <label className="flex items-start gap-2 text-sm text-gray-700" htmlFor="event-privacy">
           <input
             id="event-privacy"
             name="agreePrivacy"
@@ -265,14 +242,13 @@ export default function EventForm({ eventSlug, eventInstanceId }: EventFormProps
             checked={formState.agreePrivacy}
             onChange={handleChange('agreePrivacy')}
             disabled={submitting}
+            required
           />
-          <span>
-            Ho letto e accetto l’informativa sulla privacy*
-          </span>
+          <span>Ho letto e accetto l’informativa sulla privacy*</span>
         </label>
         {errors.agreePrivacy ? <p className="text-sm text-red-600">{errors.agreePrivacy}</p> : null}
 
-        <label className="flex items-start gap-2 text-sm text-gray-700">
+        <label className="flex items-start gap-2 text-sm text-gray-700" htmlFor="event-marketing">
           <input
             id="event-marketing"
             name="agreeMarketing"

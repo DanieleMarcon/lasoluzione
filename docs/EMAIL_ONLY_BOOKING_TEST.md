@@ -123,3 +123,51 @@ Verificare end-to-end il percorso di prenotazione senza pagamento, assicurandosi
 - Prodotto: slug `serata-capodanno` (creato/aggiornato dal seed).
 - Istanza evento: slug `capodanno-2025` con `allowEmailOnlyBooking` già attivo e visibile in home.
 - Comando: `pnpm seed:single-event` (richiede dipendenza `tsx`).
+
+## API consensi — email-only
+
+- Endpoint: `POST /api/bookings/email-only`
+- Campi richiesti:
+  - `eventSlug` (oppure `eventInstanceId`, ma lo slug ha precedenza se entrambi presenti)
+  - `name`
+  - `email`
+  - `phone`
+  - `people`
+  - `agreePrivacy` (deve essere `true`, altrimenti risposta 400)
+- Campi opzionali:
+  - `notes`
+  - `agreeMarketing` (`false` se omesso)
+- Regole:
+  - `agreePrivacy` è obbligatorio e deve essere `true`.
+  - `agreeMarketing` può essere `true`/`false`; se assente viene salvato come `false`.
+  - Se viene fornito sia `eventSlug` sia `eventInstanceId` viene usato lo slug.
+  - Se lo slug non esiste o l'evento non è attivo la risposta è 400 con errore `event_slug_not_found`.
+  - Se l'evento esiste ma `allowEmailOnlyBooking=false` la risposta è 400 con errore `email_only_not_allowed`.
+
+Esempio request:
+
+```json
+{
+  "eventSlug": "capodanno-2025",
+  "name": "Mario Rossi",
+  "email": "mario@example.com",
+  "phone": "3331234567",
+  "people": 2,
+  "notes": "Tavolo finestra",
+  "agreePrivacy": true,
+  "agreeMarketing": false
+}
+```
+
+Esempio response:
+
+```json
+{ "ok": true, "bookingId": 123 }
+```
+
+Errori comuni:
+
+- `event_slug_not_found`: slug inesistente o evento non attivo.
+- `event_not_found`: ID evento inesistente.
+- `email_only_not_allowed`: l'evento non consente la prenotazione solo email.
+- `invalid_payload`: validazione Zod fallita (es. `agreePrivacy` mancante o `false`).

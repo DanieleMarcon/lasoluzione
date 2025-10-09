@@ -161,6 +161,18 @@ export default function BookingsView({ settings }: Props) {
     window.open(`/admin/bookings/print?${params.toString()}`, '_blank');
   }
 
+  function handleExportCsv() {
+    const qs = new URLSearchParams();
+    if (filters.search) qs.set('search', filters.search);
+    if (filters.type) qs.set('type', filters.type);
+    if (filters.status) qs.set('status', filters.status);
+    if (filters.from) qs.set('from', filters.from);
+    if (filters.to) qs.set('to', filters.to);
+    const queryString = qs.toString();
+    const url = queryString ? `/api/admin/bookings/export?${queryString}` : '/api/admin/bookings/export';
+    window.location.href = url;
+  }
+
   async function triggerAction(
     bookingId: number,
     endpoint: string,
@@ -304,6 +316,9 @@ export default function BookingsView({ settings }: Props) {
           </label>
         </div>
         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button type="button" onClick={handleExportCsv} style={secondaryButtonStyle}>
+            Esporta CSV
+          </button>
           <button type="button" onClick={handlePrint} style={secondaryButtonStyle}>
             Stampa elenco
           </button>

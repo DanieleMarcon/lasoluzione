@@ -106,14 +106,9 @@ export async function GET(req: Request) {
     csvRows.push('# truncated');
   }
 
-  const today = new Date();
-  const formattedDate = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(
-    today.getDate()
-  ).padStart(2, '0')}`;
-
   const headers = new Headers({
     'Content-Type': 'text/csv; charset=utf-8',
-    'Content-Disposition': `attachment; filename="bookings_${formattedDate}.csv"`,
+    'Content-Disposition': 'attachment; filename="bookings.csv"',
   });
 
   const csvContent = `\uFEFF${csvRows.join('\n')}`;

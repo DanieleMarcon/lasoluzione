@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 
+const SHOW_LEGACY = process.env.NEXT_PUBLIC_ADMIN_SHOW_LEGACY === 'true';
+
 const navStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -61,8 +63,10 @@ export default function AdminNav({ links, userEmail }: Props) {
   const pathname = usePathname();
 
   const legacyHrefs = new Set(['/admin/menu/dishes', '/admin/tiers']);
-  const enhancedLinks = links.map((link) => {
-    const shouldMarkLegacy = legacyHrefs.has(link.href) && !link.label.includes('(Legacy)');
+  const visibleLinks = SHOW_LEGACY ? links : links.filter((link) => !legacyHrefs.has(link.href));
+  const enhancedLinks = visibleLinks.map((link) => {
+    const shouldMarkLegacy =
+      SHOW_LEGACY && legacyHrefs.has(link.href) && !link.label.includes('(Legacy)');
     return {
       ...link,
       label: shouldMarkLegacy ? `${link.label} (Legacy)` : link.label,
@@ -71,7 +75,7 @@ export default function AdminNav({ links, userEmail }: Props) {
 
   const catalogLinks: NavLink[] = [
     { href: '/admin/catalog/products', label: 'Prodotti' },
-    { href: '/admin/catalog/sections', label: 'Sezioni (placeholder)' },
+    { href: '/admin/catalog/sections', label: 'Sezioni' },
   ];
 
   const sections: Array<{ key: string; title: string | null; items: NavLink[]; depth: 0 | 1 }> = [

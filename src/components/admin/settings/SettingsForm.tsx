@@ -3,12 +3,13 @@
 import { useMemo, useState } from 'react';
 import type { ChangeEvent, CSSProperties, FormEvent } from 'react';
 
-import type { AdminSettingsDTO } from '@/types/admin';
+import type { AdminEventInstance, AdminSettingsDTO } from '@/types/admin';
 import { ToastProvider, useToast } from '@/components/admin/ui/toast';
 
 type Props = {
   settings: AdminSettingsDTO;
   allTypes: string[];
+  eventInstances: AdminEventInstance[];
 };
 
 type AlertState = {
@@ -16,7 +17,7 @@ type AlertState = {
   message: string;
 };
 
-function SettingsFormInner({ settings, allTypes }: Props) {
+function SettingsFormInner({ settings, allTypes, eventInstances: initialEventInstances }: Props) {
   const [enableDateStep, setEnableDateStep] = useState(settings.enableDateTimeStep);
   const [fixedDate, setFixedDate] = useState(settings.fixedDate ?? '');
   const [fixedTime, setFixedTime] = useState(settings.fixedTime ?? '');
@@ -32,9 +33,92 @@ function SettingsFormInner({ settings, allTypes }: Props) {
   const [dinnerRequirePrepay, setDinnerRequirePrepay] = useState(settings.dinnerRequirePrepay);
   const [saving, setSaving] = useState(false);
   const [alert, setAlert] = useState<AlertState | null>(null);
+  const [eventInstances, setEventInstances] = useState(() =>
+    initialEventInstances.map((event) => ({ ...event }))
+  );
+  const [eventSaving, setEventSaving] = useState<Record<number, boolean>>({});
+  const [eventErrors, setEventErrors] = useState<Record<number, string | null>>({});
   const toast = useToast();
 
   const typeOptions = useMemo(() => allTypes.sort(), [allTypes]);
+
+  function formatEventDateTime(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString('it-IT', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  async function updateEventAllowEmailOnly(eventId: number, nextValue: boolean) {
+    if (eventSaving[eventId]) {
+      return;
+    }
+
+    const target = eventInstances.find((event) => event.id === eventId);
+    if (!target) {
+      return;
+    }
+
+    const previousValue = target.allowEmailOnlyBooking;
+    if (previousValue === nextValue) {
+      return;
+    }
+
+    setEventInstances((prev) =>
+      prev.map((event) => (event.id === eventId ? { ...event, allowEmailOnlyBooking: nextValue } : event))
+    );
+    setEventSaving((prev) => ({ ...prev, [eventId]: true }));
+    setEventErrors((prev) => ({ ...prev, [eventId]: null }));
+
+    try {
+      const response = await fetch(`/api/admin/event-instances/${eventId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allowEmailOnlyBooking: nextValue }),
+      });
+
+      const body = (await response.json().catch(() => null)) as
+        | { error?: string; data?: { allowEmailOnlyBooking?: boolean } | null }
+        | null;
+
+      if (!response.ok) {
+        const message = body?.error || "Impossibile aggiornare l'evento";
+        throw new Error(message);
+      }
+
+      const confirmedValue =
+        typeof body?.data?.allowEmailOnlyBooking === 'boolean'
+          ? body.data.allowEmailOnlyBooking
+          : nextValue;
+
+      setEventInstances((prev) =>
+        prev.map((event) =>
+          event.id === eventId ? { ...event, allowEmailOnlyBooking: confirmedValue } : event
+        )
+      );
+      toast.success('Evento aggiornato');
+    } catch (error: unknown) {
+      console.error('[SettingsForm] update allowEmailOnlyBooking error', error);
+      const message = error instanceof Error ? error.message : "Impossibile aggiornare l'evento";
+      setEventErrors((prev) => ({ ...prev, [eventId]: message }));
+      setEventInstances((prev) =>
+        prev.map((event) =>
+          event.id === eventId ? { ...event, allowEmailOnlyBooking: previousValue } : event
+        )
+      );
+      toast.error(message);
+    } finally {
+      setEventSaving((prev) => ({ ...prev, [eventId]: false }));
+    }
+  }
 
   function toggleEnabledType(event: ChangeEvent<HTMLInputElement>) {
     const { value, checked } = event.target;
@@ -302,6 +386,81 @@ function SettingsFormInner({ settings, allTypes }: Props) {
           Le prenotazioni serali useranno questa configurazione per calcolare coperti e flusso di
           pagamento.
         </p>
+      </section>
+
+      <section style={{ display: 'grid', gap: '1rem' }}>
+        <h3 style={sectionTitleStyle}>Eventi – prenotazione via email</h3>
+        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>
+          Usa il toggle per abilitare la richiesta senza pagamento per le singole istanze evento.
+        </p>
+        {eventInstances.length === 0 ? (
+          <p style={{ margin: 0, color: '#9ca3af', fontSize: '0.9rem' }}>
+            Nessuna istanza evento disponibile.
+          </p>
+        ) : (
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            {eventInstances.map((event) => {
+              const savingEvent = eventSaving[event.id] ?? false;
+              const errorMessage = eventErrors[event.id];
+              return (
+                <div
+                  key={event.id}
+                  style={{
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 12,
+                    padding: '1rem',
+                    backgroundColor: '#f9fafb',
+                    display: 'grid',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '0.5rem',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <strong style={{ fontSize: '1rem' }}>{event.title}</strong>
+                    <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                      {formatEventDateTime(event.startAt)}
+                    </span>
+                    <span style={{ fontSize: '0.85rem', color: '#9ca3af' }}>#{event.slug}</span>
+                    {!event.active && (
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          color: '#b45309',
+                          backgroundColor: '#fef3c7',
+                          padding: '0.1rem 0.5rem',
+                          borderRadius: 999,
+                        }}
+                      >
+                        Disattivato
+                      </span>
+                    )}
+                  </div>
+                  <label style={toggleStyle}>
+                    <input
+                      type="checkbox"
+                      checked={event.allowEmailOnlyBooking}
+                      onChange={(evt) => updateEventAllowEmailOnly(event.id, evt.target.checked)}
+                      disabled={savingEvent}
+                    />
+                    Consenti prenotazione solo via email (senza pagamento)
+                  </label>
+                  {savingEvent && (
+                    <span style={{ fontSize: '0.85rem', color: '#2563eb' }}>Salvataggio…</span>
+                  )}
+                  {errorMessage && (
+                    <span style={{ fontSize: '0.85rem', color: '#b91c1c' }}>{errorMessage}</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>

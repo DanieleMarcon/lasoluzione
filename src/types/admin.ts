@@ -47,3 +47,12 @@ export type AdminSettingsDTO = {
   dinnerCoverCents: number;
   dinnerRequirePrepay: boolean;
 };
+
+export type AdminEventInstance = {
+  id: number;
+  title: string;
+  slug: string;
+  startAt: string;
+  allowEmailOnlyBooking: boolean;
+  active: boolean;
+};

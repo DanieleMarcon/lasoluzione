@@ -82,3 +82,10 @@ Le voci “Piatti pranzo (Legacy)” e “Opzioni evento/aperitivo (Legacy)” s
 ### Aggiornamenti export Prenotazioni (post-audit)
 - Il download genera ora il file `bookings.csv`, coerente con il contenuto esportato.
 - Le colonne “Privacy” e “News” mostrano i consensi salvati (`TRUE`/`FALSE` nell'export, badge ✅/— nella UI).
+
+## Contatti
+- Percorso: `/admin/contacts` (voce "CRM" nella sidebar).
+- Elenco deduplicato per email (normalizzate `trim` + lowercase); mostra nome, email, telefono, ultimo consenso privacy/newsletter e numero totale di prenotazioni per quell'indirizzo.
+- Filtri disponibili: ricerca full-text (nome/email/telefono), selettori Privacy e Newsletter (tutti/solo sì/solo no), intervallo data creazione (`from`/`to`). Paginazione server-side (20 elementi per pagina).
+- Azioni principali: **Stampa** apre `/admin/contacts/print` con layout tipografico, **Esporta CSV** scarica `contacts.csv` mantenendo gli stessi filtri.
+- Endpoint esportazione: `GET /api/admin/contacts/export` con query `search`, `newsletter`, `privacy`, `from`, `to`. Colonne in ordine: `name,email,phone,createdAt,agreePrivacy,agreeMarketing,totalBookings` (ISO 8601 per date, booleani `TRUE`/`FALSE`, valori testuali sanitizzati).

@@ -1,5 +1,6 @@
 // src/lib/mailer.ts
 import nodemailer from 'nodemailer';
+import type { Booking } from '@prisma/client';
 
 const {
   SMTP_HOST,
@@ -56,6 +57,41 @@ type BookingEmailInput = {
   tierLabel?: string;
   tierPriceCents?: number;
 };
+
+type BookingForNotification = Pick<
+  Booking,
+  'id' | 'name' | 'email' | 'phone' | 'notes' | 'date' | 'people' | 'tierLabel'
+>;
+
+type BookingEventDetails = {
+  title?: string | null;
+  startAt?: Date | string | null;
+};
+
+function normalizeDateInput(value: Date | string | null | undefined): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatBookingDateTime(value: Date | string | null | undefined): string | null {
+  const date = normalizeDateInput(value);
+  if (!date) return null;
+  try {
+    return date.toLocaleString('it-IT', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return null;
+  }
+}
 
 export async function sendBookingEmails(data: BookingEmailInput) {
   const transporter = getTransport();
@@ -218,6 +254,137 @@ ${data.phone ? `Telefono: ${data.phone}\n` : ''}${data.notes ? `Note: ${data.not
   if (process.env.NODE_ENV !== 'production') {
     console.warn('[mailer] email admin sent', r2.messageId);
   }
+}
+
+export async function sendBookingRequestConfirmationEmail({
+  booking,
+  event,
+  confirmUrl,
+}: {
+  booking: BookingForNotification;
+  event?: BookingEventDetails;
+  confirmUrl: string;
+}) {
+  const recipient = booking.email?.trim();
+  if (!recipient) {
+    console.warn('[mailer] richiesta conferma non inviata: email mancante', { bookingId: booking.id });
+    return;
+  }
+
+  if (!hasSmtpConfig() || !MAIL_FROM) {
+    console.info('[mailer] sendBookingRequestConfirmationEmail skipped (SMTP non configurato)', {
+      bookingId: booking.id,
+      to: recipient,
+    });
+    return;
+  }
+
+  const transporter = await ensureTransport();
+  const eventTitle = event?.title?.trim() || booking.tierLabel?.trim() || 'La Soluzione';
+  const when = formatBookingDateTime(event?.startAt ?? booking.date);
+  const subject = eventTitle
+    ? `Conferma prenotazione – ${eventTitle}`
+    : 'Conferma prenotazione – La Soluzione';
+
+  const phoneLine = booking.phone ? `<li><strong>Telefono:</strong> ${booking.phone}</li>` : '';
+  const notesLine = booking.notes ? `<li><strong>Note:</strong> ${booking.notes}</li>` : '';
+  const whenLine = when ? `<li><strong>Quando:</strong> ${when}</li>` : '';
+
+  const html = `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; color: #0f172a;">
+      <h1 style="font-size: 1.35rem; margin-bottom: 0.5rem;">Quasi fatto!</h1>
+      <p style="margin: 0 0 1rem;">Conferma la prenotazione #${booking.id} per completare la richiesta.</p>
+      <ul style="padding-left: 1.25rem;">
+        ${whenLine}
+        <li><strong>Nome:</strong> ${booking.name}</li>
+        ${phoneLine}
+        ${notesLine}
+      </ul>
+      <p style="margin: 1.5rem 0;"><a href="${confirmUrl}" style="background:#2563eb;color:#fff;padding:0.75rem 1.25rem;border-radius:999px;text-decoration:none;font-weight:600;">Conferma prenotazione</a></p>
+      <p style="color:#475569;">Se non hai richiesto questa prenotazione puoi ignorare questo messaggio.</p>
+    </div>
+  `;
+
+  const textLines = [
+    `Conferma la prenotazione #${booking.id}.`,
+    when ? `Quando: ${when}` : '',
+    `Nome: ${booking.name}`,
+    booking.phone ? `Telefono: ${booking.phone}` : '',
+    booking.notes ? `Note: ${booking.notes}` : '',
+    `Conferma: ${confirmUrl}`,
+    'Se non hai richiesto questa prenotazione ignora questo messaggio.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  await transporter.sendMail({
+    from: MAIL_FROM,
+    to: recipient,
+    subject,
+    html,
+    text: textLines,
+  });
+}
+
+export async function sendBookingPendingNotificationEmail({
+  booking,
+  event,
+}: {
+  booking: BookingForNotification;
+  event?: BookingEventDetails;
+}) {
+  const recipients = adminRecipients();
+  if (!recipients.length) {
+    console.warn('[mailer] notifica prenotazione pending non inviata: nessun destinatario', {
+      bookingId: booking.id,
+    });
+    return;
+  }
+
+  if (!hasSmtpConfig() || !MAIL_FROM) {
+    console.info('[mailer] sendBookingPendingNotificationEmail skipped (SMTP non configurato)', {
+      bookingId: booking.id,
+      to: recipients,
+    });
+    return;
+  }
+
+  const transporter = await ensureTransport();
+  const eventTitle = event?.title?.trim() || booking.tierLabel?.trim();
+  const when = formatBookingDateTime(event?.startAt ?? booking.date);
+  const subject = `Prenotazione da confermare #${booking.id}`;
+
+  const html = `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; color: #0f172a;">
+      <h1 style="font-size: 1.1rem; margin-bottom: 0.5rem;">Nuova prenotazione in attesa</h1>
+      <p style="margin:0 0 0.5rem;"><strong>#${booking.id}</strong> – ${booking.name} (${booking.email}${
+        booking.phone ? `, ${booking.phone}` : ''
+      })</p>
+      ${eventTitle ? `<p style="margin:0 0 0.25rem;"><strong>Evento:</strong> ${eventTitle}</p>` : ''}
+      ${when ? `<p style="margin:0 0 0.25rem;"><strong>Quando:</strong> ${when}</p>` : ''}
+      <p style="margin:0;">Persone: ${typeof booking.people === 'number' ? booking.people : 1}</p>
+      ${booking.notes ? `<p style="margin-top:0.75rem;"><strong>Note:</strong> ${booking.notes}</p>` : ''}
+    </div>
+  `;
+
+  const textLines = [
+    `Prenotazione pending #${booking.id}`,
+    `Cliente: ${booking.name} (${booking.email}${booking.phone ? `, ${booking.phone}` : ''})`,
+    eventTitle ? `Evento: ${eventTitle}` : '',
+    when ? `Quando: ${when}` : '',
+    `Persone: ${typeof booking.people === 'number' ? booking.people : 1}`,
+    booking.notes ? `Note: ${booking.notes}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  await transporter.sendMail({
+    from: MAIL_FROM,
+    to: recipients,
+    subject,
+    html,
+    text: textLines,
+  });
 }
 
 function parseBookingItems(value: unknown): Array<{ name: string; qty: number; priceCents: number }> {

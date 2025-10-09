@@ -95,9 +95,13 @@ export async function issueBookingToken(
   throw new Error('Unable to generate a unique booking verification token');
 }
 
-export async function consumeBookingToken(token: string): Promise<Booking | null> {
+export type ConsumeBookingTokenResult =
+  | { status: 'ok'; booking: Booking }
+  | { status: 'invalid' | 'expired' | 'used'; booking: null };
+
+export async function consumeBookingToken(token: string): Promise<ConsumeBookingTokenResult> {
   if (!token) {
-    return null;
+    return { status: 'invalid', booking: null };
   }
 
   await cleanupExpiredTokens();
@@ -110,15 +114,19 @@ export async function consumeBookingToken(token: string): Promise<Booking | null
     });
 
     if (!verification) {
-      return null;
+      return { status: 'invalid', booking: null };
     }
 
     if (!timingSafeEqualString(token, verification.token)) {
-      return null;
+      return { status: 'invalid', booking: null };
     }
 
-    if (verification.usedAt || verification.expiresAt <= now) {
-      return null;
+    if (verification.usedAt) {
+      return { status: 'used', booking: null };
+    }
+
+    if (verification.expiresAt <= now) {
+      return { status: 'expired', booking: null };
     }
 
     const updateResult = await tx.bookingVerification.updateMany({
@@ -133,11 +141,24 @@ export async function consumeBookingToken(token: string): Promise<Booking | null
     });
 
     if (updateResult.count !== 1) {
-      return null;
+      const fresh = await tx.bookingVerification.findUnique({ where: { id: verification.id } });
+      if (fresh?.usedAt) {
+        return { status: 'used', booking: null };
+      }
+      if (fresh && fresh.expiresAt <= now) {
+        return { status: 'expired', booking: null };
+      }
+      return { status: 'invalid', booking: null };
     }
 
-    return tx.booking.findUnique({
+    const booking = await tx.booking.findUnique({
       where: { id: verification.bookingId },
     });
+
+    if (!booking) {
+      return { status: 'invalid', booking: null };
+    }
+
+    return { status: 'ok', booking };
   });
 }

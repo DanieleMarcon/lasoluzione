@@ -34,6 +34,11 @@ type EventInfo = {
   endAt?: Date | null;
 };
 
+type CartWithItems = {
+  id: string;
+  items: CartItemRow[];
+};
+
 function resolveBaseUrl(): string {
   const raw =
     process.env.NEXT_PUBLIC_BASE_URL ??
@@ -168,6 +173,163 @@ function sumPeople(items: CartItemRow[]): number {
   return total > 0 ? total : 1;
 }
 
+type EmailOnlyScanResult = {
+  hasEmailOnlyFlag: boolean;
+  eventInstanceIds: Set<number>;
+  eventSlugs: Set<string>;
+  productIds: Set<number>;
+};
+
+function toPositiveInt(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const normalized = Math.trunc(value);
+    return normalized > 0 ? normalized : null;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (!/^\d+$/.test(trimmed)) return null;
+    const parsed = Number.parseInt(trimmed, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
+function analyzeMetaPrimitive(value: unknown, path: string[], result: EmailOnlyScanResult) {
+  if (value === null || value === undefined) return;
+
+  const normalizedPath = path.map((segment) => segment.toLowerCase());
+  const hasEmail = normalizedPath.some((segment) => segment.includes('email'));
+  const hasOnly = normalizedPath.some((segment) => segment.includes('only'));
+  const hasAllow = normalizedPath.some((segment) => segment.includes('allow'));
+  const hasEvent = normalizedPath.some((segment) => segment.includes('event') || segment.includes('instance'));
+  const hasProduct = normalizedPath.some((segment) => segment.includes('product'));
+  const hasId = normalizedPath.some((segment) => segment.includes('id'));
+  const hasSlug = normalizedPath.some((segment) => segment.includes('slug'));
+
+  if (!result.hasEmailOnlyFlag) {
+    if (typeof value === 'boolean') {
+      if ((hasEmail && hasOnly && value) || (hasAllow && hasEmail && hasOnly && value)) {
+        result.hasEmailOnlyFlag = true;
+      }
+    } else if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized) {
+        if (
+          (normalized === 'true' || normalized === '1' || normalized === 'yes') &&
+          hasEmail &&
+          hasOnly
+        ) {
+          result.hasEmailOnlyFlag = true;
+        }
+      }
+    }
+  }
+
+  const numeric = toPositiveInt(value);
+  if (numeric && hasId) {
+    if (hasEvent) {
+      result.eventInstanceIds.add(numeric);
+    }
+    if (hasProduct) {
+      result.productIds.add(numeric);
+    }
+  }
+
+  if (typeof value === 'string' && hasEvent && hasSlug) {
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed) {
+      result.eventSlugs.add(trimmed);
+    }
+  }
+}
+
+function traverseMeta(value: unknown, path: string[], seen: Set<object>, result: EmailOnlyScanResult) {
+  if (value === null || value === undefined) return;
+
+  if (typeof value !== 'object') {
+    analyzeMetaPrimitive(value, path, result);
+    return;
+  }
+
+  if (seen.has(value as object)) return;
+  seen.add(value as object);
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      traverseMeta(entry, path, seen, result);
+    }
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const [key, entry] of Object.entries(record)) {
+    const nextPath = [...path, key.toLowerCase()];
+    if (entry && typeof entry === 'object') {
+      traverseMeta(entry, nextPath, seen, result);
+    } else {
+      analyzeMetaPrimitive(entry, nextPath, result);
+    }
+  }
+}
+
+function collectMetaHints(meta: unknown, result: EmailOnlyScanResult) {
+  traverseMeta(meta, [], new Set<object>(), result);
+}
+
+async function isEmailOnlyForCart(cart: CartWithItems): Promise<boolean> {
+  if (!cart.items || cart.items.length === 0) {
+    return false;
+  }
+
+  const scan: EmailOnlyScanResult = {
+    hasEmailOnlyFlag: false,
+    eventInstanceIds: new Set<number>(),
+    eventSlugs: new Set<string>(),
+    productIds: new Set<number>(),
+  };
+
+  for (const item of cart.items) {
+    const productId = toPositiveInt(item.productId);
+    if (productId) {
+      scan.productIds.add(productId);
+    }
+    if (item.meta != null) {
+      collectMetaHints(item.meta, scan);
+    }
+  }
+
+  if (scan.hasEmailOnlyFlag) {
+    return true;
+  }
+
+  const filters: Array<Record<string, unknown>> = [];
+
+  if (scan.eventInstanceIds.size > 0) {
+    filters.push({ id: { in: Array.from(scan.eventInstanceIds) } });
+  }
+  if (scan.productIds.size > 0) {
+    filters.push({ productId: { in: Array.from(scan.productIds) } });
+  }
+  if (scan.eventSlugs.size > 0) {
+    filters.push({ slug: { in: Array.from(scan.eventSlugs) } });
+  }
+
+  if (!filters.length) {
+    return false;
+  }
+
+  const matched = await prisma.eventInstance.findFirst({
+    where: {
+      allowEmailOnlyBooking: true,
+      OR: filters,
+    },
+    select: { id: true },
+  });
+
+  return Boolean(matched);
+}
+
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
@@ -207,21 +369,25 @@ export async function GET(request: Request) {
       return new NextResponse('Token non valido o scaduto', { status: 400 });
     }
 
+    const cart = await prisma.cart.findUnique({
+      where: { id: order.cartId },
+      include: { items: true },
+    });
+
+    const cartItems = cart?.items ? (cart.items as CartItemRow[]) : [];
+    const emailOnly = cart && cartItems.length ? await isEmailOnlyForCart({ id: cart.id, items: cartItems }) : false;
+
+    logger.info('email_verify.email_only', { cartId: order.cartId, orderId: order.id, emailOnly });
+
     let bookingId: number | null = null;
 
-    if (order.totalCents <= 0 && order.status !== 'confirmed') {
-      const cart = await prisma.cart.findUnique({
-        where: { id: order.cartId },
-        include: { items: true },
-      });
-
-      if (!cart || !Array.isArray(cart.items) || cart.items.length === 0) {
-        console.error('[payments][email-verify] cart not found or empty during confirmation', {
+    if (emailOnly) {
+      if (!cart || cartItems.length === 0) {
+        console.error('[payments][email-verify] cart not found or empty during email-only confirmation', {
           orderId: order.id,
           cartId: order.cartId,
         });
-      } else {
-        const cartItems = cart.items as CartItemRow[];
+      } else if (order.status !== 'confirmed') {
         const mappedItems = mapItems(cartItems);
         const people = sumPeople(cartItems);
         const eventInfo = extractEventInfo(cartItems);
@@ -323,13 +489,32 @@ export async function GET(request: Request) {
           bookingId: result.id,
           email: order.email,
         });
+      } else {
+        const existingConfirmedBooking = await prisma.booking.findFirst({
+          where: { orderId: order.id },
+          orderBy: { id: 'desc' },
+        });
+        bookingId = existingConfirmedBooking?.id ?? null;
       }
-    } else if (order.totalCents <= 0) {
-      const existingConfirmedBooking = await prisma.booking.findFirst({
-        where: { orderId: order.id },
-        orderBy: { id: 'desc' },
+
+      const baseUrl = resolveBaseUrl();
+      const params = new URLSearchParams({ orderId: order.id });
+      if (bookingId) {
+        params.append('bookingId', String(bookingId));
+      }
+      const successUrl = `${baseUrl}/checkout/success?${params.toString()}`;
+
+      const response = NextResponse.redirect(successUrl);
+      response.cookies.delete(VERIFY_COOKIE);
+
+      logger.info('order.verify.ok', {
+        action: 'order.verify.ok',
+        email,
+        orderId: order.id,
+        bookingId,
       });
-      bookingId = existingConfirmedBooking?.id ?? null;
+
+      return response;
     }
 
     const baseUrl = resolveBaseUrl();

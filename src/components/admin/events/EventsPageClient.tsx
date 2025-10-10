@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, CSSProperties, FormEvent } from 'react';
+import { Fragment, useCallback, useMemo, useRef, useState, type FormEvent } from 'react';
 
-import { ToastProvider, useToast } from '@/components/admin/ui/toast';
+import EventForm, { type EventFormState } from '@/components/admin/events/EventForm';
+import { useToast } from '@/components/admin/ui/toast';
 
 export type AdminEvent = {
-  id: number;
+  id: string;
   slug: string;
   title: string;
   description: string | null;
@@ -14,8 +14,9 @@ export type AdminEvent = {
   endAt: string | null;
   active: boolean;
   showOnHome: boolean;
-  allowEmailOnlyBooking: boolean;
+  emailOnly: boolean;
   capacity: number | null;
+  priceCents: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -35,84 +36,46 @@ type QueryState = {
   page: number;
 };
 
-type EventDraft = {
-  title: string;
-  slug: string;
-  description: string;
-  startAt: string;
-  endAt: string;
-  active: boolean;
-  showOnHome: boolean;
-  allowEmailOnlyBooking: boolean;
-  capacity: string;
-};
-
 type Props = {
   initialEvents: AdminEvent[];
   initialMeta: PaginationMeta;
   initialQuery: QueryState;
 };
 
-const containerStyle: CSSProperties = {
+const containerStyle = {
   padding: '2rem 3rem',
   display: 'grid',
   gap: '2rem',
   maxWidth: 1200,
-};
+  margin: '0 auto',
+} as const;
 
-const sectionStyle: CSSProperties = {
+const sectionStyle = {
   backgroundColor: '#1f2937',
-  borderRadius: 16,
-  padding: '1.5rem',
+  borderRadius: 18,
+  padding: '1.75rem',
   color: '#f9fafb',
-  boxShadow: '0 12px 30px rgba(15,23,42,0.25)',
-};
-
-const sectionTitleStyle: CSSProperties = {
-  margin: '0 0 1rem',
-  fontSize: '1.25rem',
-  fontWeight: 600,
-};
-
-const labelStyle: CSSProperties = {
+  boxShadow: '0 14px 34px rgba(15,23,42,0.3)',
   display: 'grid',
-  gap: '0.35rem',
-  fontSize: '0.95rem',
-};
+  gap: '1.5rem',
+} as const;
 
-const inputStyle: CSSProperties = {
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: '1.35rem',
+  fontWeight: 600,
+} as const;
+
+const inputStyle = {
   padding: '0.6rem 0.75rem',
   borderRadius: 10,
   border: '1px solid rgba(148,163,184,0.35)',
   backgroundColor: '#111827',
   color: '#f9fafb',
-};
+} as const;
 
-const tableStyle: CSSProperties = {
-  width: '100%',
-  borderCollapse: 'collapse',
-};
-
-const thStyle: CSSProperties = {
-  textAlign: 'left',
-  padding: '0.75rem',
-  borderBottom: '1px solid rgba(148,163,184,0.3)',
-  fontSize: '0.85rem',
-  textTransform: 'uppercase',
-  letterSpacing: '0.08em',
-  color: '#94a3b8',
-};
-
-const tdStyle: CSSProperties = {
-  padding: '0.75rem',
-  borderBottom: '1px solid rgba(148,163,184,0.1)',
-  verticalAlign: 'top',
-  fontSize: '0.95rem',
-  color: '#e2e8f0',
-};
-
-const actionButtonStyle: CSSProperties = {
-  padding: '0.5rem 0.75rem',
+const actionButtonStyle = {
+  padding: '0.5rem 0.9rem',
   borderRadius: 10,
   border: '1px solid rgba(148,163,184,0.4)',
   backgroundColor: 'transparent',
@@ -120,18 +83,54 @@ const actionButtonStyle: CSSProperties = {
   cursor: 'pointer',
   fontWeight: 600,
   fontSize: '0.9rem',
-};
+} as const;
 
-const dangerButtonStyle: CSSProperties = {
-  ...actionButtonStyle,
-  borderColor: 'rgba(239,68,68,0.5)',
-  color: '#fca5a5',
-};
-
-const primaryButtonStyle: CSSProperties = {
+const primaryButtonStyle = {
   ...actionButtonStyle,
   backgroundColor: '#2563eb',
   borderColor: '#2563eb',
+} as const;
+
+const dangerButtonStyle = {
+  ...actionButtonStyle,
+  borderColor: 'rgba(239,68,68,0.5)',
+  color: '#fca5a5',
+} as const;
+
+const tableStyle = {
+  width: '100%',
+  borderCollapse: 'collapse',
+} as const;
+
+const thStyle = {
+  textAlign: 'left',
+  padding: '0.75rem',
+  borderBottom: '1px solid rgba(148,163,184,0.3)',
+  fontSize: '0.85rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: '#94a3b8',
+} as const;
+
+const tdStyle = {
+  padding: '0.75rem',
+  borderBottom: '1px solid rgba(148,163,184,0.1)',
+  verticalAlign: 'top',
+  fontSize: '0.95rem',
+  color: '#e2e8f0',
+} as const;
+
+const DEFAULT_FORM_STATE: EventFormState = {
+  title: '',
+  slug: '',
+  startAt: '',
+  endAt: '',
+  priceEuro: '0,00',
+  description: '',
+  capacity: '',
+  active: true,
+  showOnHome: false,
+  emailOnly: false,
 };
 
 function slugify(value: string) {
@@ -175,63 +174,75 @@ function parseDateTimeInput(value: string): string | null {
   return date.toISOString();
 }
 
-function formatDateTimeDisplay(iso: string | null) {
-  if (!iso) return '—';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString('it-IT', {
-    dateStyle: 'short',
-    timeStyle: 'short',
+function formatDateTimeDisplay(startIso: string, endIso: string | null) {
+  const start = new Date(startIso);
+  if (Number.isNaN(start.getTime())) return '—';
+  const startLabel = start.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
+  if (!endIso) return startLabel;
+  const end = new Date(endIso);
+  if (Number.isNaN(end.getTime())) return startLabel;
+  const sameDay =
+    start.getFullYear() === end.getFullYear() &&
+    start.getMonth() === end.getMonth() &&
+    start.getDate() === end.getDate();
+  const endLabel = end.toLocaleString('it-IT', { dateStyle: sameDay ? undefined : 'short', timeStyle: 'short' });
+  return sameDay ? `${startLabel} → ${end.toLocaleTimeString('it-IT', { timeStyle: 'short' })}` : `${startLabel} → ${endLabel}`;
+}
+
+function formatMoney(cents: number) {
+  return (cents / 100).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+}
+
+function formatPriceInput(cents: number) {
+  return (cents / 100).toLocaleString('it-IT', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 }
 
-function buildDraft(event: AdminEvent): EventDraft {
+function parsePriceInput(value: string) {
+  const normalized = value.replace(/\s+/g, '').replace(',', '.');
+  if (!normalized) return null;
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+  return Math.round(parsed * 100);
+}
+
+function buildFormState(event: AdminEvent): EventFormState {
   return {
     title: event.title,
     slug: event.slug,
-    description: event.description ?? '',
     startAt: formatDateTimeForInput(event.startAt),
     endAt: formatDateTimeForInput(event.endAt),
+    priceEuro: formatPriceInput(event.priceCents),
+    description: event.description ?? '',
+    capacity: event.capacity != null ? String(event.capacity) : '',
     active: event.active,
     showOnHome: event.showOnHome,
-    allowEmailOnlyBooking: event.allowEmailOnlyBooking,
-    capacity: event.capacity != null ? String(event.capacity) : '',
+    emailOnly: event.emailOnly,
   };
 }
 
-function EventsPageInner({ initialEvents, initialMeta, initialQuery }: Props) {
+export default function EventsPageClient({ initialEvents, initialMeta, initialQuery }: Props) {
   const toast = useToast();
 
   const [events, setEvents] = useState<AdminEvent[]>(initialEvents);
   const [meta, setMeta] = useState<PaginationMeta>(initialMeta);
   const [query, setQuery] = useState<QueryState>(initialQuery);
   const queryRef = useRef<QueryState>(initialQuery);
-  useEffect(() => {
-    queryRef.current = query;
-  }, [query]);
-
+  const [searchInput, setSearchInput] = useState(initialQuery.search);
   const [loading, setLoading] = useState(false);
 
-  const [searchInput, setSearchInput] = useState(initialQuery.search);
-
-  const [createForm, setCreateForm] = useState<EventDraft>(() => ({
-    title: '',
-    slug: '',
-    description: '',
-    startAt: '',
-    endAt: '',
-    active: true,
-    showOnHome: false,
-    allowEmailOnlyBooking: false,
-    capacity: '',
-  }));
+  const [createForm, setCreateForm] = useState<EventFormState>(DEFAULT_FORM_STATE);
   const [createSlugEdited, setCreateSlugEdited] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [drafts, setDrafts] = useState<Record<number, EventDraft>>({});
-  const [rowSaving, setRowSaving] = useState<Record<number, boolean>>({});
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, EventFormState>>({});
+  const [rowSaving, setRowSaving] = useState<Record<string, boolean>>({});
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchEvents = useCallback(
     async (params: QueryState) => {
@@ -243,16 +254,14 @@ function EventsPageInner({ initialEvents, initialMeta, initialQuery }: Props) {
         searchParams.set('page', String(params.page));
         searchParams.set('size', String(meta.pageSize));
 
-        const res = await fetch(`/api/admin/events?${searchParams.toString()}`, {
-          cache: 'no-store',
-        });
+        const res = await fetch(`/api/admin/events?${searchParams.toString()}`, { cache: 'no-store' });
         const body = await res.json().catch(() => null);
         if (!res.ok || !body?.ok) {
           toast.error('Impossibile caricare gli eventi');
           return;
         }
-        setEvents(body.data);
-        setMeta(body.meta);
+        setEvents(body.data as AdminEvent[]);
+        setMeta(body.meta as PaginationMeta);
       } catch (error) {
         console.error('[admin][events] fetch error', error);
         toast.error('Errore di rete durante il caricamento');
@@ -277,98 +286,91 @@ function EventsPageInner({ initialEvents, initialMeta, initialQuery }: Props) {
     await fetchEvents(queryRef.current);
   }, [fetchEvents]);
 
-  const handleSearchSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    await applyQuery({ search: searchInput, page: 1 });
-  };
-
-  const handleActiveFilterChange = async (event: ChangeEvent<HTMLSelectElement>) => {
-    const value = event.target.value as QueryState['active'];
-    await applyQuery({ active: value, page: 1 });
-  };
-
-  const handlePageChange = async (nextPage: number) => {
-    await applyQuery({ page: nextPage });
-  };
-
-  const handleCreateFieldChange = (field: keyof EventDraft, value: string | boolean) => {
-    setCreateForm((prev) => {
-      if (field === 'active' || field === 'showOnHome' || field === 'allowEmailOnlyBooking') {
-        return { ...prev, [field]: Boolean(value) } as EventDraft;
-      }
-      return { ...prev, [field]: value as string } as EventDraft;
-    });
-  };
-
-  const handleCreateTitleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    setCreateForm((prev) => {
-      const next = { ...prev, title: value };
-      if (!createSlugEdited) {
-        next.slug = slugify(value);
-      }
-      return next;
-    });
-  };
-
-  const handleCreateSlugChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    setCreateForm((prev) => ({ ...prev, slug: value }));
-    setCreateSlugEdited(Boolean(value.trim()));
-  };
-
   const resetCreateForm = () => {
-    setCreateForm({
-      title: '',
-      slug: '',
-      description: '',
-      startAt: '',
-      endAt: '',
-      active: true,
-      showOnHome: false,
-      allowEmailOnlyBooking: false,
-      capacity: '',
-    });
+    setCreateForm(DEFAULT_FORM_STATE);
     setCreateSlugEdited(false);
   };
 
-  const handleCreateSubmit = async (event: FormEvent) => {
-    event.preventDefault();
+  const handleCreateChange = <K extends keyof EventFormState>(field: K, value: EventFormState[K]) => {
+    setCreateForm((prev) => {
+      if (field === 'title') {
+        const typedValue = String(value);
+        const next = { ...prev, title: typedValue };
+        if (!createSlugEdited) {
+          next.slug = slugify(typedValue);
+        }
+        return next;
+      }
+      if (field === 'slug') {
+        const typedValue = String(value);
+        setCreateSlugEdited(Boolean(typedValue.trim()));
+        return { ...prev, slug: typedValue };
+      }
+      return { ...prev, [field]: value };
+    });
+  };
+
+  const handleCreateSlugBlur = () => {
+    setCreateForm((prev) => ({ ...prev, slug: prev.slug.trim() || slugify(prev.title) }));
+  };
+
+  const handleCreateSubmit = async (eventObj: FormEvent<HTMLFormElement>) => {
+    eventObj.preventDefault();
     if (creating) return;
 
-    const payload: Record<string, unknown> = {
-      title: createForm.title.trim(),
-      slug: createForm.slug.trim(),
-      description: createForm.description.trim() || null,
-      active: createForm.active,
-      showOnHome: createForm.showOnHome,
-      allowEmailOnlyBooking: createForm.allowEmailOnlyBooking,
-    };
+    const title = createForm.title.trim();
+    const slug = createForm.slug.trim();
+    const description = createForm.description.trim();
+
+    if (title.length < 3) {
+      toast.error('Il titolo deve contenere almeno 3 caratteri');
+      return;
+    }
+    if (slug.length < 3) {
+      toast.error('Slug troppo corto');
+      return;
+    }
 
     const startAtIso = parseDateTimeInput(createForm.startAt);
     if (!startAtIso) {
       toast.error('Specifica una data di inizio valida');
       return;
     }
-    payload.startAt = startAtIso;
 
     const endAtIso = parseDateTimeInput(createForm.endAt);
     if (createForm.endAt && !endAtIso) {
       toast.error('Specifica una data di fine valida');
       return;
     }
-    if (endAtIso) payload.endAt = endAtIso;
 
+    const priceCents = parsePriceInput(createForm.priceEuro);
+    if (priceCents == null) {
+      toast.error('Prezzo non valido');
+      return;
+    }
+
+    let capacity: number | null = null;
     if (createForm.capacity.trim()) {
       const parsedCapacity = Number.parseInt(createForm.capacity, 10);
       if (!Number.isFinite(parsedCapacity) || parsedCapacity < 1) {
         toast.error('Capacità non valida');
         return;
       }
-      payload.capacity = parsedCapacity;
-    } else {
-      payload.capacity = null;
+      capacity = parsedCapacity;
     }
+
+    const payload = {
+      title,
+      slug,
+      description: description || null,
+      startAt: startAtIso,
+      endAt: endAtIso ?? undefined,
+      active: createForm.active,
+      showOnHome: createForm.showOnHome,
+      emailOnly: createForm.emailOnly,
+      capacity,
+      priceCents,
+    };
 
     setCreating(true);
     try {
@@ -380,7 +382,7 @@ function EventsPageInner({ initialEvents, initialMeta, initialQuery }: Props) {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok || !body?.ok) {
-        toast.error(body?.message ?? 'Impossibile creare l\'evento');
+        toast.error(body?.message ?? "Impossibile creare l'evento");
         return;
       }
       toast.success('Evento creato');
@@ -396,10 +398,10 @@ function EventsPageInner({ initialEvents, initialMeta, initialQuery }: Props) {
 
   const startEditing = (event: AdminEvent) => {
     setEditingId(event.id);
-    setDrafts((prev) => ({ ...prev, [event.id]: buildDraft(event) }));
+    setDrafts((prev) => ({ ...prev, [event.id]: buildFormState(event) }));
   };
 
-  const cancelEditing = (eventId: number) => {
+  const cancelEditing = (eventId: string) => {
     setEditingId((prev) => (prev === eventId ? null : prev));
     setDrafts((prev) => {
       const next = { ...prev };
@@ -408,58 +410,90 @@ function EventsPageInner({ initialEvents, initialMeta, initialQuery }: Props) {
     });
   };
 
-  const updateDraft = (eventId: number, patch: Partial<EventDraft>) => {
+  const updateDraft = <K extends keyof EventFormState>(eventId: string, field: K, value: EventFormState[K]) => {
     setDrafts((prev) => {
       const base = prev[eventId] ?? (() => {
-        const event = events.find((e) => e.id === eventId);
-        return event ? buildDraft(event) : null;
+        const event = events.find((item) => item.id === eventId);
+        return event ? buildFormState(event) : DEFAULT_FORM_STATE;
       })();
-      if (!base) return prev;
-      return { ...prev, [eventId]: { ...base, ...patch } };
+      let next: EventFormState = base;
+      if (field === 'title') {
+        next = { ...base, title: String(value) };
+      } else if (field === 'slug') {
+        next = { ...base, slug: String(value) };
+      } else {
+        next = { ...base, [field]: value };
+      }
+      return { ...prev, [eventId]: next };
     });
   };
 
-  const saveDraft = async (eventId: number) => {
-    const draft = drafts[eventId];
-    if (!draft) return;
+  const handleDraftSlugBlur = (eventId: string) => {
+    setDrafts((prev) => {
+      const current = prev[eventId];
+      if (!current) return prev;
+      return { ...prev, [eventId]: { ...current, slug: current.slug.trim() || slugify(current.title) } };
+    });
+  };
 
-    const payload: Record<string, unknown> = {
-      title: draft.title.trim(),
-      slug: draft.slug.trim(),
-      description: draft.description.trim() || null,
-      active: draft.active,
-      showOnHome: draft.showOnHome,
-      allowEmailOnlyBooking: draft.allowEmailOnlyBooking,
-    };
+  const saveDraft = async (eventId: string) => {
+    const draft = drafts[eventId];
+    const event = events.find((item) => item.id === eventId);
+    if (!draft || !event) return;
+
+    const title = draft.title.trim();
+    const slug = draft.slug.trim();
+    const description = draft.description.trim();
+
+    if (title.length < 3) {
+      toast.error('Il titolo deve contenere almeno 3 caratteri');
+      return;
+    }
+    if (slug.length < 3) {
+      toast.error('Slug troppo corto');
+      return;
+    }
 
     const startAtIso = parseDateTimeInput(draft.startAt);
     if (!startAtIso) {
       toast.error('Specifica una data di inizio valida');
       return;
     }
-    payload.startAt = startAtIso;
 
-    if (draft.endAt) {
-      const endAtIso = parseDateTimeInput(draft.endAt);
-      if (!endAtIso) {
-        toast.error('Specifica una data di fine valida');
-        return;
-      }
-      payload.endAt = endAtIso;
-    } else {
-      payload.endAt = null;
+    const endAtIso = parseDateTimeInput(draft.endAt);
+    if (draft.endAt && !endAtIso) {
+      toast.error('Specifica una data di fine valida');
+      return;
     }
 
+    const priceCents = parsePriceInput(draft.priceEuro);
+    if (priceCents == null) {
+      toast.error('Prezzo non valido');
+      return;
+    }
+
+    let capacity: number | null = null;
     if (draft.capacity.trim()) {
       const parsedCapacity = Number.parseInt(draft.capacity, 10);
       if (!Number.isFinite(parsedCapacity) || parsedCapacity < 1) {
         toast.error('Capacità non valida');
         return;
       }
-      payload.capacity = parsedCapacity;
-    } else {
-      payload.capacity = null;
+      capacity = parsedCapacity;
     }
+
+    const payload = {
+      title,
+      slug,
+      description: description || null,
+      startAt: startAtIso,
+      endAt: draft.endAt ? endAtIso : null,
+      active: draft.active,
+      showOnHome: draft.showOnHome,
+      emailOnly: draft.emailOnly,
+      capacity,
+      priceCents,
+    };
 
     setRowSaving((prev) => ({ ...prev, [eventId]: true }));
     try {
@@ -471,7 +505,7 @@ function EventsPageInner({ initialEvents, initialMeta, initialQuery }: Props) {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok || !body?.ok) {
-        toast.error(body?.message ?? 'Impossibile aggiornare l\'evento');
+        toast.error(body?.message ?? "Impossibile aggiornare l'evento");
         return;
       }
       toast.success('Evento aggiornato');
@@ -485,7 +519,7 @@ function EventsPageInner({ initialEvents, initialMeta, initialQuery }: Props) {
     }
   };
 
-  const deleteEvent = async (eventId: number) => {
+  const deleteEvent = async (eventId: string) => {
     if (!window.confirm('Eliminare definitivamente questo evento?')) {
       return;
     }
@@ -497,18 +531,14 @@ function EventsPageInner({ initialEvents, initialMeta, initialQuery }: Props) {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok || !body?.ok) {
-        toast.error(body?.message ?? 'Impossibile eliminare l\'evento');
+        toast.error(body?.message ?? "Impossibile eliminare l'evento");
         return;
       }
-      if (body.softDeleted) {
-        toast.success('Evento disattivato');
-      } else {
-        toast.success('Evento eliminato');
-      }
+      toast.success('Evento eliminato');
       await refresh();
     } catch (error) {
       console.error('[admin][events] delete error', error);
-      toast.error('Errore di rete durante l\'eliminazione');
+      toast.error("Errore di rete durante l'eliminazione");
     } finally {
       setDeletingId(null);
     }
@@ -521,248 +551,107 @@ function EventsPageInner({ initialEvents, initialMeta, initialQuery }: Props) {
 
   const renderRow = (event: AdminEvent) => {
     const isEditing = editingId === event.id;
-    const draft = isEditing ? drafts[event.id] : null;
+    const draft = drafts[event.id] ?? (isEditing ? buildFormState(event) : undefined);
+
     return (
-      <>
-        <tr key={event.id}>
+      <Fragment key={event.id}>
+        <tr>
           <td style={tdStyle}>
-            <strong>{event.title}</strong>
-            {event.description ? (
-              <p style={{ margin: '0.35rem 0 0', fontSize: '0.85rem', color: '#cbd5f5' }}>{event.description}</p>
-            ) : null}
+            <div style={{ display: 'grid', gap: '0.25rem' }}>
+              <strong style={{ fontSize: '1rem' }}>{event.title}</strong>
+              <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{event.slug}</span>
+              {event.description ? (
+                <span style={{ fontSize: '0.85rem', color: '#cbd5f5' }}>{event.description}</span>
+              ) : null}
+            </div>
           </td>
-          <td style={tdStyle}>{formatDateTimeDisplay(event.startAt)}</td>
+          <td style={tdStyle}>{formatDateTimeDisplay(event.startAt, event.endAt)}</td>
+          <td style={tdStyle}>{formatMoney(event.priceCents)}</td>
+          <td style={tdStyle}>{event.emailOnly ? 'Email' : 'Checkout'}</td>
+          <td style={tdStyle}>{event.active ? 'Sì' : 'No'}</td>
+          <td style={tdStyle}>{event.showOnHome ? 'Sì' : 'No'}</td>
           <td style={tdStyle}>
-            <code>{event.slug}</code>
-          </td>
-          <td style={tdStyle}>{event.active ? '✅' : '⛔️'}</td>
-          <td style={tdStyle}>{event.showOnHome ? '✅' : '—'}</td>
-          <td style={tdStyle}>{event.allowEmailOnlyBooking ? '✅' : '—'}</td>
-          <td style={{ ...tdStyle, display: 'flex', gap: '0.5rem' }}>
-            {isEditing ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => saveDraft(event.id)}
-                  style={primaryButtonStyle}
-                  disabled={rowSaving[event.id]}
-                >
-                  {rowSaving[event.id] ? 'Salvataggio…' : 'Salva'}
-                </button>
-                <button type="button" onClick={() => cancelEditing(event.id)} style={actionButtonStyle}>
-                  Annulla
-                </button>
-              </>
-            ) : (
-              <>
-                <button type="button" onClick={() => startEditing(event)} style={actionButtonStyle}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {isEditing ? (
+                <>
+                  <button
+                    type="button"
+                    style={primaryButtonStyle}
+                    onClick={() => saveDraft(event.id)}
+                    disabled={rowSaving[event.id]}
+                  >
+                    {rowSaving[event.id] ? 'Salvataggio…' : 'Salva'}
+                  </button>
+                  <button type="button" style={actionButtonStyle} onClick={() => cancelEditing(event.id)}>
+                    Annulla
+                  </button>
+                </>
+              ) : (
+                <button type="button" style={actionButtonStyle} onClick={() => startEditing(event)}>
                   Modifica
                 </button>
-                <button
-                  type="button"
-                  onClick={() => deleteEvent(event.id)}
-                  style={dangerButtonStyle}
-                  disabled={deletingId === event.id}
-                >
-                  {deletingId === event.id ? 'Eliminazione…' : 'Elimina'}
-                </button>
-              </>
-            )}
+              )}
+              <button
+                type="button"
+                style={dangerButtonStyle}
+                onClick={() => deleteEvent(event.id)}
+                disabled={deletingId === event.id}
+              >
+                {deletingId === event.id ? 'Eliminazione…' : 'Elimina'}
+              </button>
+            </div>
           </td>
         </tr>
         {isEditing && draft ? (
-          <tr key={`${event.id}-editor`}>
+          <tr>
             <td style={{ ...tdStyle, backgroundColor: '#111827' }} colSpan={7}>
-              <div style={{ display: 'grid', gap: '1rem' }}>
-                <div style={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-                  <label style={labelStyle}>
-                    Titolo
-                    <input
-                      type="text"
-                      value={draft.title}
-                      onChange={(e) => updateDraft(event.id, { title: e.target.value })}
-                      style={inputStyle}
-                    />
-                  </label>
-                  <label style={labelStyle}>
-                    Slug
-                    <input
-                      type="text"
-                      value={draft.slug}
-                      onChange={(e) => updateDraft(event.id, { slug: e.target.value })}
-                      style={inputStyle}
-                    />
-                  </label>
-                  <label style={labelStyle}>
-                    Inizio
-                    <input
-                      type="datetime-local"
-                      value={draft.startAt}
-                      onChange={(e) => updateDraft(event.id, { startAt: e.target.value })}
-                      style={inputStyle}
-                    />
-                  </label>
-                  <label style={labelStyle}>
-                    Fine
-                    <input
-                      type="datetime-local"
-                      value={draft.endAt}
-                      onChange={(e) => updateDraft(event.id, { endAt: e.target.value })}
-                      style={inputStyle}
-                    />
-                  </label>
-                  <label style={labelStyle}>
-                    Capacità
-                    <input
-                      type="number"
-                      min={1}
-                      value={draft.capacity}
-                      onChange={(e) => updateDraft(event.id, { capacity: e.target.value })}
-                      style={inputStyle}
-                    />
-                  </label>
-                </div>
-                <label style={labelStyle}>
-                  Descrizione
-                  <textarea
-                    value={draft.description}
-                    onChange={(e) => updateDraft(event.id, { description: e.target.value })}
-                    style={{ ...inputStyle, minHeight: 120, resize: 'vertical' }}
-                  />
-                </label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={draft.active}
-                      onChange={(e) => updateDraft(event.id, { active: e.target.checked })}
-                    />
-                    Attivo
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={draft.showOnHome}
-                      onChange={(e) => updateDraft(event.id, { showOnHome: e.target.checked })}
-                    />
-                    Mostra in home
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={draft.allowEmailOnlyBooking}
-                      onChange={(e) => updateDraft(event.id, { allowEmailOnlyBooking: e.target.checked })}
-                    />
-                    Prenotazione email-only
-                  </label>
-                </div>
-              </div>
+              <EventForm
+                values={draft}
+                onFieldChange={(field, value) => updateDraft(event.id, field, value)}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void saveDraft(event.id);
+                }}
+                submitLabel="Salva modifiche"
+                busyLabel="Salvataggio…"
+                busy={rowSaving[event.id]}
+                onSlugBlur={() => handleDraftSlugBlur(event.id)}
+              />
             </td>
           </tr>
         ) : null}
-      </>
+      </Fragment>
     );
   };
 
   return (
     <div style={containerStyle}>
       <section style={sectionStyle}>
-        <h1 style={sectionTitleStyle}>Nuovo evento</h1>
-        <form onSubmit={handleCreateSubmit} style={{ display: 'grid', gap: '1rem' }}>
-          <div style={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-            <label style={labelStyle}>
-              Titolo
-              <input type="text" value={createForm.title} onChange={handleCreateTitleChange} style={inputStyle} required />
-            </label>
-            <label style={labelStyle}>
-              Slug
-              <input
-                type="text"
-                value={createForm.slug}
-                onChange={handleCreateSlugChange}
-                onBlur={() => {
-                  setCreateForm((prev) => ({ ...prev, slug: prev.slug.trim() || slugify(prev.title) }));
-                }}
-                style={inputStyle}
-                required
-              />
-            </label>
-            <label style={labelStyle}>
-              Inizio
-              <input
-                type="datetime-local"
-                value={createForm.startAt}
-                onChange={(e) => handleCreateFieldChange('startAt', e.target.value)}
-                style={inputStyle}
-                required
-              />
-            </label>
-            <label style={labelStyle}>
-              Fine
-              <input
-                type="datetime-local"
-                value={createForm.endAt}
-                onChange={(e) => handleCreateFieldChange('endAt', e.target.value)}
-                style={inputStyle}
-              />
-            </label>
-            <label style={labelStyle}>
-              Capacità
-              <input
-                type="number"
-                min={1}
-                value={createForm.capacity}
-                onChange={(e) => handleCreateFieldChange('capacity', e.target.value)}
-                style={inputStyle}
-              />
-            </label>
-          </div>
-          <label style={labelStyle}>
-            Descrizione
-            <textarea
-              value={createForm.description}
-              onChange={(e) => handleCreateFieldChange('description', e.target.value)}
-              style={{ ...inputStyle, minHeight: 120, resize: 'vertical' }}
-              maxLength={2000}
-            />
-          </label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={createForm.active}
-                onChange={(e) => handleCreateFieldChange('active', e.target.checked)}
-              />
-              Attivo
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={createForm.showOnHome}
-                onChange={(e) => handleCreateFieldChange('showOnHome', e.target.checked)}
-              />
-              Mostra in home
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={createForm.allowEmailOnlyBooking}
-                onChange={(e) => handleCreateFieldChange('allowEmailOnlyBooking', e.target.checked)}
-              />
-              Prenotazione email-only
-            </label>
-          </div>
-          <div>
-            <button type="submit" style={primaryButtonStyle} disabled={creating}>
-              {creating ? 'Creazione…' : 'Crea evento'}
-            </button>
-          </div>
-        </form>
+        <h2 style={sectionTitleStyle}>Crea nuovo evento</h2>
+        <EventForm
+          values={createForm}
+          onFieldChange={handleCreateChange}
+          onSubmit={handleCreateSubmit}
+          submitLabel="Crea evento"
+          busyLabel="Creazione…"
+          busy={creating}
+          onSlugBlur={handleCreateSlugBlur}
+        />
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={sectionTitleStyle}>Eventi</h2>
-        <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+          <h2 style={sectionTitleStyle}>Eventi</h2>
+          <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>{pageLabel}</span>
+        </div>
+
+        <form
+          onSubmit={(eventObj) => {
+            eventObj.preventDefault();
+            void applyQuery({ search: searchInput, page: 1 });
+          }}
+          style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}
+        >
           <input
             type="text"
             placeholder="Cerca per titolo o slug"
@@ -770,7 +659,11 @@ function EventsPageInner({ initialEvents, initialMeta, initialQuery }: Props) {
             onChange={(e) => setSearchInput(e.target.value)}
             style={{ ...inputStyle, minWidth: 220 }}
           />
-          <select value={query.active} onChange={handleActiveFilterChange} style={inputStyle}>
+          <select
+            value={query.active}
+            onChange={(e) => void applyQuery({ active: e.target.value as QueryState['active'], page: 1 })}
+            style={inputStyle}
+          >
             <option value="all">Tutti</option>
             <option value="true">Solo attivi</option>
             <option value="false">Solo sospesi</option>
@@ -796,57 +689,36 @@ function EventsPageInner({ initialEvents, initialMeta, initialQuery }: Props) {
               <tr>
                 <th style={thStyle}>Titolo</th>
                 <th style={thStyle}>Data</th>
-                <th style={thStyle}>Slug</th>
+                <th style={thStyle}>Prezzo</th>
+                <th style={thStyle}>Modalità</th>
                 <th style={thStyle}>Attivo</th>
                 <th style={thStyle}>Home</th>
-                <th style={thStyle}>Email-only</th>
                 <th style={thStyle}>Azioni</th>
               </tr>
             </thead>
-            <tbody>
-              {events.length ? (
-                events.map((event) => <Fragment key={event.id}>{renderRow(event)}</Fragment>)
-              ) : (
-                <tr>
-                  <td style={{ ...tdStyle, textAlign: 'center' }} colSpan={7}>
-                    {loading ? 'Caricamento…' : 'Nessun evento trovato'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
+            <tbody>{events.map(renderRow)}</tbody>
           </table>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem', alignItems: 'center' }}>
-          <span style={{ color: '#cbd5f5', fontSize: '0.9rem' }}>{pageLabel}</span>
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <button
-              type="button"
-              style={actionButtonStyle}
-              onClick={() => handlePageChange(Math.max(1, meta.page - 1))}
-              disabled={!meta.hasPreviousPage || loading}
-            >
-              ← Precedente
-            </button>
-            <button
-              type="button"
-              style={actionButtonStyle}
-              onClick={() => handlePageChange(Math.min(meta.totalPages, meta.page + 1))}
-              disabled={!meta.hasNextPage || loading}
-            >
-              Successiva →
-            </button>
-          </div>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            style={actionButtonStyle}
+            disabled={!meta.hasPreviousPage || loading}
+            onClick={() => void applyQuery({ page: Math.max(1, meta.page - 1) })}
+          >
+            Precedente
+          </button>
+          <button
+            type="button"
+            style={actionButtonStyle}
+            disabled={!meta.hasNextPage || loading}
+            onClick={() => void applyQuery({ page: meta.page + 1 })}
+          >
+            Successiva
+          </button>
         </div>
       </section>
     </div>
-  );
-}
-
-export default function EventsPageClient(props: Props) {
-  return (
-    <ToastProvider>
-      <EventsPageInner {...props} />
-    </ToastProvider>
   );
 }

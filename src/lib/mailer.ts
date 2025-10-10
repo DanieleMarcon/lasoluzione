@@ -114,6 +114,229 @@ function sanitizeRecipient(email: string | null | undefined): string | null {
   return trimmed.length ? trimmed : null;
 }
 
+function normalizeBaseUrl(value: string | null | undefined): string {
+  if (!value) return '';
+  return value.trim().replace(/\/$/, '');
+}
+
+function buildAbsoluteUrl(baseUrl: string, path: string): string {
+  const normalized = normalizeBaseUrl(baseUrl);
+  return normalized ? `${normalized}${path}` : path;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export async function sendBookingVerifyEmail(params: {
+  to: string;
+  bookingId: number | string;
+  token: string;
+  eventTitle: string;
+  whenLabel: string;
+  baseUrl: string;
+}) {
+  const recipient = sanitizeRecipient(params.to);
+  if (!recipient) {
+    console.warn('[mailer] sendBookingVerifyEmail skipped: destinatario mancante', {
+      bookingId: params.bookingId,
+    });
+    return;
+  }
+
+  if (!hasSmtpConfig() || !MAIL_FROM) {
+    console.info('[mailer] sendBookingVerifyEmail skipped (SMTP non configurato)', {
+      bookingId: params.bookingId,
+      to: recipient,
+    });
+    return;
+  }
+
+  const transporter = await ensureTransport();
+  const confirmPath = `/checkout/confirm?token=${encodeURIComponent(params.token)}`;
+  const confirmUrl = buildAbsoluteUrl(params.baseUrl, confirmPath);
+  const safeTitle = params.eventTitle?.trim() ? escapeHtml(params.eventTitle.trim()) : 'La Soluzione';
+  const whenLabel = params.whenLabel?.trim();
+
+  const subject = 'Conferma la tua prenotazione';
+  const html = `
+    <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:#0f172a;">
+      <p style="margin:0 0 0.75rem;">Ciao,</p>
+      <p style="margin:0 0 1rem;">Per completare la prenotazione #${escapeHtml(String(params.bookingId))} per <strong>${safeTitle}</strong>${
+        whenLabel ? ` del <strong>${escapeHtml(whenLabel)}</strong>` : ''
+      } clicca sul pulsante qui sotto.</p>
+      <p style="margin:1.5rem 0;">
+        <a href="${confirmUrl}" style="background:#2563eb;color:#fff;padding:0.75rem 1.25rem;border-radius:999px;text-decoration:none;font-weight:600;">Conferma la tua prenotazione</a>
+      </p>
+      <p style="margin:0 0 0.75rem;color:#475569;">Se il pulsante non funziona copia e incolla questo link nel browser:</p>
+      <p style="margin:0 0 1.5rem;"><a href="${confirmUrl}" style="color:#2563eb;word-break:break-all;">${confirmUrl}</a></p>
+      <p style="margin:0;color:#94a3b8;">Se non hai richiesto questa prenotazione puoi ignorare questo messaggio.</p>
+    </div>
+  `;
+
+  const textLines = [
+    `Conferma la prenotazione #${params.bookingId} per ${params.eventTitle?.trim() || 'La Soluzione'}.`,
+    params.whenLabel?.trim() ? `Quando: ${params.whenLabel.trim()}` : '',
+    confirmUrl,
+    'Se non hai richiesto questa prenotazione ignora questo messaggio.',
+  ].filter(Boolean);
+
+  const info = await transporter.sendMail({
+    from: MAIL_FROM,
+    to: recipient,
+    subject,
+    html,
+    text: textLines.join('\n'),
+  });
+
+  console.info('[mailer] sendBookingVerifyEmail sent', {
+    messageId: info?.messageId ?? null,
+    bookingId: params.bookingId,
+  });
+}
+
+export async function sendBookingConfirmedCustomer(params: {
+  to: string;
+  bookingId: number | string;
+  eventTitle: string;
+  whenLabel: string;
+  people: number;
+  baseUrl: string;
+}) {
+  const recipient = sanitizeRecipient(params.to);
+  if (!recipient) {
+    console.warn('[mailer] sendBookingConfirmedCustomer skipped: destinatario mancante', {
+      bookingId: params.bookingId,
+    });
+    return;
+  }
+
+  if (!hasSmtpConfig() || !MAIL_FROM) {
+    console.info('[mailer] sendBookingConfirmedCustomer skipped (SMTP non configurato)', {
+      bookingId: params.bookingId,
+      to: recipient,
+    });
+    return;
+  }
+
+  const transporter = await ensureTransport();
+  const detailsPath = `/checkout/confirmed?bookingId=${encodeURIComponent(String(params.bookingId))}`;
+  const detailsUrl = buildAbsoluteUrl(params.baseUrl, detailsPath);
+  const subject = 'Prenotazione confermata';
+  const whenLabel = params.whenLabel?.trim();
+  const safeTitle = params.eventTitle?.trim() ? escapeHtml(params.eventTitle.trim()) : 'La Soluzione';
+
+  const html = `
+    <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:#0f172a;">
+      <p style="margin:0 0 0.75rem;">Ciao,</p>
+      <p style="margin:0 0 1rem;">La prenotazione #${escapeHtml(String(params.bookingId))} per <strong>${safeTitle}</strong>${
+        whenLabel ? ` del <strong>${escapeHtml(whenLabel)}</strong>` : ''
+      } è stata confermata.</p>
+      <ul style="padding-left:1.25rem;margin:0 0 1.25rem;">
+        <li><strong>Persone:</strong> ${params.people}</li>
+        ${whenLabel ? `<li><strong>Quando:</strong> ${escapeHtml(whenLabel)}</li>` : ''}
+      </ul>
+      <p style="margin:1.5rem 0 0.75rem;">
+        <a href="${detailsUrl}" style="background:#2563eb;color:#fff;padding:0.75rem 1.25rem;border-radius:999px;text-decoration:none;font-weight:600;">Dettagli</a>
+      </p>
+      <p style="margin:0;color:#475569;">Ti aspettiamo!</p>
+    </div>
+  `;
+
+  const textLines = [
+    `La prenotazione #${params.bookingId} è confermata.`,
+    `Evento: ${params.eventTitle?.trim() || 'La Soluzione'}`,
+    whenLabel ? `Quando: ${whenLabel}` : '',
+    `Persone: ${params.people}`,
+    `Dettagli: ${detailsUrl}`,
+  ].filter(Boolean);
+
+  const info = await transporter.sendMail({
+    from: MAIL_FROM,
+    to: recipient,
+    subject,
+    html,
+    text: textLines.join('\n'),
+  });
+
+  console.info('[mailer] sendBookingConfirmedCustomer sent', {
+    messageId: info?.messageId ?? null,
+    bookingId: params.bookingId,
+  });
+}
+
+export async function sendBookingConfirmedAdmin(params: {
+  to: string;
+  bookingId: number | string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  eventTitle: string;
+  whenLabel: string;
+  people: number;
+}) {
+  const recipient = sanitizeRecipient(params.to);
+  if (!recipient) {
+    console.warn('[mailer] sendBookingConfirmedAdmin skipped: destinatario mancante', {
+      bookingId: params.bookingId,
+    });
+    return;
+  }
+
+  if (!hasSmtpConfig() || !MAIL_FROM) {
+    console.info('[mailer] sendBookingConfirmedAdmin skipped (SMTP non configurato)', {
+      bookingId: params.bookingId,
+      to: recipient,
+    });
+    return;
+  }
+
+  const transporter = await ensureTransport();
+  const subject = 'Nuova prenotazione confermata';
+  const whenLabel = params.whenLabel?.trim();
+
+  const html = `
+    <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:#0f172a;">
+      <p style="margin:0 0 0.5rem;">Prenotazione confermata.</p>
+      <ul style="padding-left:1.25rem;margin:0 0 0.75rem;">
+        <li><strong>ID:</strong> #${escapeHtml(String(params.bookingId))}</li>
+        <li><strong>Evento:</strong> ${escapeHtml(params.eventTitle)}</li>
+        ${whenLabel ? `<li><strong>Quando:</strong> ${escapeHtml(whenLabel)}</li>` : ''}
+        <li><strong>Persone:</strong> ${params.people}</li>
+        <li><strong>Cliente:</strong> ${escapeHtml(params.customerName)} (${escapeHtml(params.customerEmail)}${
+          params.customerPhone ? `, ${escapeHtml(params.customerPhone)}` : ''
+        })</li>
+      </ul>
+    </div>
+  `;
+
+  const textLines = [
+    `Prenotazione confermata #${params.bookingId}`,
+    `Evento: ${params.eventTitle}`,
+    whenLabel ? `Quando: ${whenLabel}` : '',
+    `Persone: ${params.people}`,
+    `Cliente: ${params.customerName} (${params.customerEmail}${params.customerPhone ? `, ${params.customerPhone}` : ''})`,
+  ].filter(Boolean);
+
+  const info = await transporter.sendMail({
+    from: MAIL_FROM,
+    to: recipient,
+    subject,
+    html,
+    text: textLines.join('\n'),
+  });
+
+  console.info('[mailer] sendBookingConfirmedAdmin sent', {
+    messageId: info?.messageId ?? null,
+    bookingId: params.bookingId,
+  });
+}
+
 function logBookingEmail(
   label: string,
   booking: BookingForNotification,

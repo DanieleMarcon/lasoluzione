@@ -66,6 +66,23 @@ export async function POST(request: Request, ctx: RouteContext) {
     return NextResponse.json({ ok: true, data: null });
   }
 
+  const product = await prisma.product.findUnique({
+    where: { id: payload.productId },
+    select: { priceCents: true, name: true, imageUrl: true },
+  });
+
+  if (!product) {
+    return NextResponse.json({ ok: false, error: 'product_not_found' }, { status: 404 });
+  }
+
+  const snapshotPrice = product.priceCents;
+  const rawName = payload.nameSnapshot ?? product.name ?? 'Prodotto';
+  const snapshotName =
+    typeof rawName === 'string' && rawName.trim().length > 0
+      ? rawName.trim()
+      : 'Prodotto';
+  const snapshotImage = payload.imageUrlSnapshot ?? product.imageUrl ?? null;
+
   // Trova item esistente
   const existing = await prisma.cartItem.findFirst({
     where: { cartId, productId: payload.productId },
@@ -75,9 +92,9 @@ export async function POST(request: Request, ctx: RouteContext) {
     // costruiamo data con any per evitare mismatch del tipo 'meta'
     const data: any = {
       qty: payload.qty ?? existing.qty,
-      nameSnapshot: payload.nameSnapshot ?? existing.nameSnapshot,
-      priceCentsSnapshot: payload.priceCentsSnapshot ?? existing.priceCentsSnapshot,
-      imageUrlSnapshot: payload.imageUrlSnapshot ?? existing.imageUrlSnapshot,
+      nameSnapshot: snapshotName,
+      priceCentsSnapshot: snapshotPrice,
+      imageUrlSnapshot: snapshotImage,
     };
     if (payload.meta !== undefined && payload.meta !== null) {
       data.meta = payload.meta as any;
@@ -97,9 +114,9 @@ export async function POST(request: Request, ctx: RouteContext) {
     cartId,
     productId: payload.productId,
     qty: payload.qty ?? 1,
-    nameSnapshot: payload.nameSnapshot ?? 'Prodotto',
-    priceCentsSnapshot: payload.priceCentsSnapshot ?? 0,
-    imageUrlSnapshot: payload.imageUrlSnapshot ?? null,
+    nameSnapshot: snapshotName,
+    priceCentsSnapshot: snapshotPrice,
+    imageUrlSnapshot: snapshotImage,
   };
   if (payload.meta !== undefined && payload.meta !== null) {
     dataCreate.meta = payload.meta as any;

@@ -357,7 +357,7 @@ export default function CheckoutPage() {
             <div className="mt-6 flex items-center justify-between border-t border-slate-200 pt-4">
               <span className="text-sm font-medium text-slate-700">Totale</span>
               <span className="text-lg font-semibold text-slate-900">
-                {formatCurrency((totalCents ?? 0) / 100)}
+                {formatCurrency(totalCents ?? 0)}
               </span>
             </div>
           </div>

@@ -200,6 +200,65 @@ export async function sendBookingVerifyEmail(params: {
   });
 }
 
+export async function sendOrderEmailVerifyLink(params: {
+  to: string;
+  name?: string;
+  verifyUrl: string;
+}) {
+  const recipient = sanitizeRecipient(params.to);
+  if (!recipient) {
+    console.warn('[mailer] sendOrderEmailVerifyLink skipped: destinatario mancante');
+    return;
+  }
+
+  if (!hasSmtpConfig() || !MAIL_FROM) {
+    console.info('[mailer] sendOrderEmailVerifyLink skipped (SMTP non configurato)', {
+      to: recipient,
+    });
+    return;
+  }
+
+  const transporter = await ensureTransport();
+  const subject = 'Conferma il tuo ordine';
+  const trimmedName = params.name?.trim();
+  const greetingHtml = trimmedName ? ` ${escapeHtml(trimmedName)}` : '';
+  const greetingText = trimmedName ? ` ${trimmedName}` : '';
+
+  const html = `
+    <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:#0f172a;">
+      <p style="margin:0 0 0.75rem;">Ciao${greetingHtml},</p>
+      <p style="margin:0 0 1rem;">per confermare il tuo ordine clicca qui:</p>
+      <p style="margin:1.5rem 0;">
+        <a href="${params.verifyUrl}" style="background:#2563eb;color:#fff;padding:0.75rem 1.25rem;border-radius:999px;text-decoration:none;font-weight:600;">Conferma il tuo ordine</a>
+      </p>
+      <p style="margin:0 0 1.5rem;color:#475569;">Il link scade tra 15 minuti. Se il pulsante non funziona copia e incolla questo link nel browser:</p>
+      <p style="margin:0 0 1.5rem;"><a href="${params.verifyUrl}" style="color:#2563eb;word-break:break-all;">${params.verifyUrl}</a></p>
+      <p style="margin:0;color:#94a3b8;">Se non hai richiesto questo ordine puoi ignorare questo messaggio.</p>
+    </div>
+  `;
+
+  const text = [
+    `Ciao${greetingText},`,
+    '',
+    'per confermare il tuo ordine clicca qui:',
+    params.verifyUrl,
+    '',
+    'Il link scade tra 15 minuti. Se non hai richiesto questo ordine ignora questa email.',
+  ].join('\n');
+
+  const info = await transporter.sendMail({
+    from: MAIL_FROM,
+    to: recipient,
+    subject,
+    html,
+    text,
+  });
+
+  console.info('[mailer] sendOrderEmailVerifyLink sent', {
+    messageId: info?.messageId ?? null,
+  });
+}
+
 export async function sendBookingConfirmedCustomer(params: {
   to: string;
   bookingId: number | string;

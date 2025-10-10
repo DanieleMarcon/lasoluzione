@@ -9,13 +9,13 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const paramsSchema = z.object({
-  id: z
+  sectionId: z
     .string()
     .transform((value) => Number.parseInt(value, 10))
     .pipe(z.number().int().min(1, 'ID sezione non valido')),
 });
 
-export async function POST(request: Request, context: { params: { id: string } }) {
+export async function POST(request: Request, context: { params: { sectionId: string } }) {
   await assertAdmin();
 
   const parsedParams = paramsSchema.safeParse(context.params);
@@ -23,7 +23,7 @@ export async function POST(request: Request, context: { params: { id: string } }
     return NextResponse.json({ ok: false, error: parsedParams.error.flatten() }, { status: 400 });
   }
 
-  const sectionId = parsedParams.data.id;
+  const sectionId = parsedParams.data.sectionId;
   const payload = await request.json().catch(() => null);
   const parsedBody = AssignSchema.safeParse(payload);
   if (!parsedBody.success) {
@@ -69,12 +69,12 @@ export async function POST(request: Request, context: { params: { id: string } }
 
     return NextResponse.json({ ok: true, data: assigned });
   } catch (error) {
-    console.error('[POST /api/admin/sections/[id]/products] error', error);
+    console.error('[POST /api/admin/sections/[sectionId]/products] error', error);
     return NextResponse.json({ ok: false, error: 'assignment_failed' }, { status: 500 });
   }
 }
 
-export async function DELETE(request: Request, context: { params: { id: string } }) {
+export async function DELETE(request: Request, context: { params: { sectionId: string } }) {
   await assertAdmin();
 
   const parsedParams = paramsSchema.safeParse(context.params);
@@ -82,7 +82,7 @@ export async function DELETE(request: Request, context: { params: { id: string }
     return NextResponse.json({ ok: false, error: parsedParams.error.flatten() }, { status: 400 });
   }
 
-  const sectionId = parsedParams.data.id;
+  const sectionId = parsedParams.data.sectionId;
   const { searchParams } = new URL(request.url);
   let productId: number | null = null;
 
@@ -122,7 +122,7 @@ export async function DELETE(request: Request, context: { params: { id: string }
     if (error?.code === 'P2025') {
       return NextResponse.json({ ok: false, error: 'assignment_not_found' }, { status: 404 });
     }
-    console.error('[DELETE /api/admin/sections/[id]/products] error', error);
+    console.error('[DELETE /api/admin/sections/[sectionId]/products] error', error);
     return NextResponse.json({ ok: false, error: 'delete_failed' }, { status: 500 });
   }
 }

@@ -50,7 +50,7 @@
 | GET/POST | /api/admin/products | admin | `admin/products/route.ts`【F:src/app/api/admin/products/route.ts†L42-L140】 | Product | `assertAdmin` | CRUD catalogo prodotti unificato. |
 | PATCH/DELETE | /api/admin/products/[id] | admin | `admin/products/[id]/route.ts`【F:src/app/api/admin/products/[id]/route.ts†L33-L135】 | Product | `assertAdmin` | Update selettivo e soft delete con controllo slug. |
 | GET/POST | /api/admin/sections | admin | `admin/sections/route.ts`【F:src/app/api/admin/sections/route.ts†L10-L55】 | CatalogSection | `assertAdmin` | Lista e upsert sezioni catalogo. |
-| POST/DELETE | /api/admin/sections/[id]/products | admin | `admin/sections/[id]/products/route.ts`【F:src/app/api/admin/sections/[id]/products/route.ts†L13-L88】 | SectionProduct, CatalogSection, Product | `assertAdmin` | Assegna/rimuove prodotti alle sezioni. |
+| POST/DELETE | /api/admin/sections/[sectionId]/products | admin | `admin/sections/[sectionId]/products/route.ts`【F:src/app/api/admin/sections/[sectionId]/products/route.ts†L13-L88】 | SectionProduct, CatalogSection, Product | `assertAdmin` | Assegna/rimuove prodotti alle sezioni. |
 | GET/PUT/PATCH | /api/admin/settings | admin | `admin/settings/route.ts`【F:src/app/api/admin/settings/route.ts†L52-L178】 | BookingSettings | `assertAdmin` | Lettura/aggiornamento impostazioni prenotazioni. |
 
 ## Albero sorgenti rilevante (code-map)
@@ -72,7 +72,7 @@
 - `admin/menu/dishes/*` — CRUD piatti legacy con slug auto.【F:src/app/api/admin/menu/dishes/route.ts†L43-L157】【F:src/app/api/admin/menu/dishes/[id]/route.ts†L34-L115】
 - `admin/event-instances/[id]/route.ts` — Solo PATCH su `allowEmailOnlyBooking` per istanza evento.【F:src/app/api/admin/event-instances/[id]/route.ts†L20-L63】
 - `admin/products/*` — CRUD catalogo prodotti riusabili.【F:src/app/api/admin/products/route.ts†L42-L140】【F:src/app/api/admin/products/[id]/route.ts†L33-L135】
-- `admin/sections/*` — Upsert sezioni e associazioni prodotti.【F:src/app/api/admin/sections/route.ts†L10-L55】【F:src/app/api/admin/sections/[id]/products/route.ts†L13-L88】
+- `admin/sections/*` — Upsert sezioni e associazioni prodotti.【F:src/app/api/admin/sections/route.ts†L10-L55】【F:src/app/api/admin/sections/[sectionId]/products/route.ts†L13-L88】
 - `admin/settings/route.ts` — Gestione BookingSettings (PUT/PATCH).【F:src/app/api/admin/settings/route.ts†L52-L178】
 
 ### src/components/admin
@@ -152,7 +152,7 @@
 | `/admin/menu/dishes` | `MenuDishesManager` client.【F:src/app/admin/menu/dishes/page.tsx†L8-L44】【F:src/components/admin/menu/MenuDishesManager.tsx†L1-L120】 | Fetch `/api/admin/menu/dishes` (paginato) + azioni POST/PATCH/DELETE. | Toast per creazione/update; filtri attivo/categoria/search. |
 | `/admin/tiers` | `TiersManager` client.【F:src/app/admin/tiers/page.tsx†L18-L40】【F:src/components/admin/tiers/TiersManager.tsx†L54-L138】 | Fetch iniziale `/api/admin/tiers`, poi load dinamico, POST/PATCH/DELETE. | Crea/ordina/attiva tiers, toast esito. |
 | `/admin/catalog/products` | `CatalogProductsPageClient` (ProductForm).【F:src/app/admin/catalog/products/page.tsx†L4-L8】【F:src/components/admin/catalog/ProductForm.tsx†L1-L112】 | Client component invoca `/api/admin/products` per CRUD. | Form completo con flag nutrizionali, slug auto, toast. |
-| `/admin/catalog/sections` | `SectionsPageClient` con Toast.【F:src/app/admin/catalog/sections/page.tsx†L1-L54】【F:src/components/admin/catalog/SectionsPageClient.tsx†L1-L160】 | Prisma server (sections + product map), poi fetch `/api/admin/sections` e `/api/admin/sections/[id]/products`. | Toggle attivo/dateTime, assegnazione prodotti con ordine/featured/home. |
+| `/admin/catalog/sections` | `SectionsPageClient` con Toast.【F:src/app/admin/catalog/sections/page.tsx†L1-L54】【F:src/components/admin/catalog/SectionsPageClient.tsx†L1-L160】 | Prisma server (sections + product map), poi fetch `/api/admin/sections` e `/api/admin/sections/[sectionId]/products`. | Toggle attivo/dateTime, assegnazione prodotti con ordine/featured/home. |
 | `/admin/settings` | `SettingsForm` client.【F:src/app/admin/settings/page.tsx†L8-L12】【F:src/components/admin/settings/SettingsForm.tsx†L20-L188】 | Server side `fetchAdminSettingsDTO` + `fetchAdminEventInstances`; azioni `PUT/PATCH /api/admin/settings` e `PATCH /api/admin/event-instances/{id}`. | Gestisce tipi attivi, prepay, coperti e toggles evento email-only con toast. |
 | `/admin/signin` | Form accesso email magic link.【F:src/app/admin/signin/page.tsx†L4-L43】 | NextAuth signIn, nessun fetch addizionale. | Mostra errori AccessDenied. |
 | `/admin/not-authorized` | Pagina fallback (static).【F:src/app/admin/not-authorized/page.tsx†L1-L20】 | N/A | Messaggio accesso negato. |

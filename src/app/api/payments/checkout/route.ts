@@ -8,7 +8,11 @@ import { formatEventSchedule } from '@/lib/date';
 import { issueBookingToken } from '@/lib/bookingVerification';
 import { prisma } from '@/lib/prisma';
 import { createRevolutOrder } from '@/lib/revolut';
-import { sendBookingVerifyEmail, sendOrderEmailVerifyLink, sendOrderPaymentEmail } from '@/lib/mailer';
+import {
+  sendBookingVerifyEmail,
+  sendOrderEmailVerifyLink,
+  sendOrderPaymentEmail,
+} from '@/lib/mailer';
 import { encodeRevolutPaymentMeta, mergeEmailStatus, parsePaymentRef } from '@/lib/paymentRef';
 import { signJwt, verifyJwt } from '@/lib/jwt';
 import { logger } from '@/lib/logger';
@@ -235,10 +239,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'cart_empty' }, { status: 400 });
     }
 
+    // Auto-riapri se ha item ma status non valido
     if (cart.status !== 'open' && cart.status !== 'locked') {
-      cart = await prisma.cart.update({
+      await prisma.cart.update({
         where: { id: cart.id },
         data: { status: 'open' },
+      });
+      cart = await prisma.cart.findUnique({
+        where: { id: cart.id },
         include: { items: true },
       });
     }
@@ -277,24 +285,15 @@ export async function POST(req: Request) {
     }
 
     if (order.status === 'paid' || order.status === 'confirmed') {
-      const booking = await prisma.booking.findFirst({
-        where: { orderId: order.id },
-        orderBy: { id: 'desc' },
-      });
-
-      const responseBody: Record<string, unknown> = {
-        ok: true,
-        state: 'confirmed' as const,
-        orderId: order.id,
-        status: order.status,
-      };
-
-      if (booking) {
-        responseBody.bookingId = booking.id;
-        responseBody.nextUrl = `/checkout/email-sent?bookingId=${booking.id}`;
-      }
-
-      const response = NextResponse.json(responseBody, { status: 200 });
+      const response = NextResponse.json(
+        {
+          ok: true,
+          state: 'confirmed' as const,
+          orderId: order.id,
+          status: order.status,
+        },
+        { status: 200 }
+      );
       response.cookies.delete(VERIFY_COOKIE);
       return response;
     }
@@ -323,19 +322,21 @@ export async function POST(req: Request) {
     const candidateToken = bodyToken || cookieToken || null;
     let verifiedPayload: OrderVerifyTokenPayload | null = null;
 
+    // Considera verificato solo se il token coincide col cookie impostato da /email-verify
     if (candidateToken && cookieToken && candidateToken === cookieToken) {
       const verification = verifyJwt<OrderVerifyTokenPayload>(candidateToken, secret);
       if (verification.valid) {
-        const payload = verification.payload;
+        const v = verification.payload;
         const emailMatches =
-          typeof payload.email === 'string' &&
-          payload.email.toLowerCase() === parsed.data.email.toLowerCase();
-        if (payload.cartId === cart.id && emailMatches && payload.agreePrivacy !== false) {
-          verifiedPayload = payload;
+          typeof v.email === 'string' &&
+          v.email.toLowerCase() === parsed.data.email.toLowerCase();
+        if (v.cartId === cart.id && emailMatches && v.agreePrivacy !== false) {
+          verifiedPayload = v;
         }
       }
     }
 
+    // Primo passo: invio mail con link di verifica indirizzo
     if (!verifiedPayload) {
       const verifyPayload = {
         cartId: cart.id,
@@ -370,16 +371,18 @@ export async function POST(req: Request) {
         ok: true,
         state: 'verify_sent' as const,
         verifyToken,
-        token: verifyToken,
+        token: verifyToken, // compat con client che legge "token"
       });
       response.cookies.delete(VERIFY_COOKIE);
       return response;
     }
 
+    // Secondo passo: indirizzo verificato → conferma (0€) o redirect pagamento (>0€)
     const marketingConsent =
-      (verifiedPayload?.agreeMarketing ?? marketingConsentCandidate) as boolean;
+      (verifiedPayload?.agreeMarketing ?? marketingConsentCandidate) === true;
 
     if (totalCents <= 0) {
+      // Email-only (gratis): crea/aggiorna booking e invia mail di verifica booking
       const mappedItems = mapItems(cartItems);
       const people = sumPeople(cartItems);
       const eventInfo = extractEventInfo(cartItems);
@@ -452,6 +455,7 @@ export async function POST(req: Request) {
       return response;
     }
 
+    // Importi > 0: aggiorna consenso sui booking legati e genera ordine Revolut
     await prisma.booking.updateMany({
       where: { orderId: order.id },
       data: {

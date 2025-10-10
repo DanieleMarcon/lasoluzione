@@ -26,7 +26,7 @@ const INITIAL_VALUES: FormValues = {
   agreeMarketing: false,
 };
 
-// -- Helpers robusti contro DTO diversi (evita errori TS e campi mancanti) --
+// Helpers robusti contro DTO diversi
 function itemName(i: any): string {
   return i?.nameSnapshot ?? i?.name ?? i?.title ?? 'Articolo';
 }
@@ -48,7 +48,7 @@ export default function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>('idle');
 
-  // se si torna dal link di verifica
+  // ritorno dal link di verifica (?verified=1)
   const verifiedParam = searchParams.get('verified') === '1';
 
   const cartItems: any[] = cart?.items ?? [];
@@ -92,7 +92,7 @@ export default function CheckoutPage() {
         ? window.sessionStorage.getItem('order_verify_token') || undefined
         : undefined;
 
-    // Costruiamo items robusti (productId + quantity); se manca productId, filtriamo
+    // Items compatti (productId + quantity); filtra quelli senza productId
     const payloadItems = cartItems
       .map((it) => ({
         productId: itemProductId(it),
@@ -131,16 +131,26 @@ export default function CheckoutPage() {
 
       switch (result?.state) {
         case 'verify_sent': {
-          if (typeof window !== 'undefined' && typeof result?.token === 'string' && result.token) {
-            window.sessionStorage.setItem('order_verify_token', result.token);
+          // Accetta sia "token" che "verifyToken"
+          const t: string | undefined =
+            typeof result?.token === 'string' && result.token
+              ? result.token
+              : typeof result?.verifyToken === 'string' && result.verifyToken
+              ? result.verifyToken
+              : undefined;
+
+          if (typeof window !== 'undefined' && t) {
+            window.sessionStorage.setItem('order_verify_token', t);
           }
           setVerificationStatus('pending');
           setSubmitting(false);
           break;
         }
         case 'confirmed': {
-          if (typeof result?.orderId === 'string' && result.orderId) {
-            router.push(`/checkout/success?orderId=${encodeURIComponent(result.orderId)}`);
+          const orderId: string | undefined =
+            typeof result?.orderId === 'string' ? result.orderId : undefined;
+          if (orderId) {
+            router.push(`/checkout/success?orderId=${encodeURIComponent(orderId)}`);
             return;
           }
           setFormError('Ordine confermato ma senza identificativo valido. Contatta il supporto.');
@@ -148,8 +158,9 @@ export default function CheckoutPage() {
           break;
         }
         case 'paid_redirect': {
-          if (typeof result?.url === 'string' && result.url) {
-            window.location.href = result.url;
+          const url: string | undefined = typeof result?.url === 'string' ? result.url : undefined;
+          if (url) {
+            window.location.href = url;
             return;
           }
           setFormError('Redirezione pagamento non disponibile. Riprova.');
@@ -180,9 +191,15 @@ export default function CheckoutPage() {
           <form onSubmit={handleSubmit} className="mt-8 space-y-6" noValidate>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
               <div className="flex flex-col">
-                <label htmlFor="email" className="text-sm font-medium text-slate-700">Email</label>
+                <label htmlFor="email" className="text-sm font-medium text-slate-700">
+                  Email
+                </label>
                 <input
-                  id="email" name="email" type="email" autoComplete="email" required
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
                   value={formValues.email}
                   onChange={(e) => setFormValues((p) => ({ ...p, email: e.target.value }))}
                   className="mt-2 rounded-md border border-slate-300 px-3 py-2 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
@@ -190,9 +207,15 @@ export default function CheckoutPage() {
               </div>
 
               <div className="flex flex-col">
-                <label htmlFor="name" className="text-sm font-medium text-slate-700">Nome e cognome</label>
+                <label htmlFor="name" className="text-sm font-medium text-slate-700">
+                  Nome e cognome
+                </label>
                 <input
-                  id="name" name="name" type="text" autoComplete="name" required
+                  id="name"
+                  name="name"
+                  type="text"
+                  autoComplete="name"
+                  required
                   value={formValues.name}
                   onChange={(e) => setFormValues((p) => ({ ...p, name: e.target.value }))}
                   className="mt-2 rounded-md border border-slate-300 px-3 py-2 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
@@ -200,9 +223,14 @@ export default function CheckoutPage() {
               </div>
 
               <div className="flex flex-col">
-                <label htmlFor="phone" className="text-sm font-medium text-slate-700">Telefono</label>
+                <label htmlFor="phone" className="text-sm font-medium text-slate-700">
+                  Telefono
+                </label>
                 <input
-                  id="phone" name="phone" type="tel" autoComplete="tel"
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  autoComplete="tel"
                   value={formValues.phone}
                   onChange={(e) => setFormValues((p) => ({ ...p, phone: e.target.value }))}
                   className="mt-2 rounded-md border border-slate-300 px-3 py-2 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
@@ -210,9 +238,13 @@ export default function CheckoutPage() {
               </div>
 
               <div className="flex flex-col sm:col-span-2">
-                <label htmlFor="notes" className="text-sm font-medium text-slate-700">Note (facoltative)</label>
+                <label htmlFor="notes" className="text-sm font-medium text-slate-700">
+                  Note (facoltative)
+                </label>
                 <textarea
-                  id="notes" name="notes" rows={4}
+                  id="notes"
+                  name="notes"
+                  rows={4}
                   value={formValues.notes}
                   onChange={(e) => setFormValues((p) => ({ ...p, notes: e.target.value }))}
                   className="mt-2 rounded-md border border-slate-300 px-3 py-2 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
@@ -248,7 +280,11 @@ export default function CheckoutPage() {
             </div>
 
             {verificationStatus === 'pending' && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3" role="status" aria-live="polite">
+              <div
+                className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3"
+                role="status"
+                aria-live="polite"
+              >
                 <p className="text-sm font-semibold text-amber-900">Verifica email inviata</p>
                 <p className="mt-1 text-sm text-amber-900">
                   Ti abbiamo inviato una mail di verifica. Controlla la casella di posta e segui il link per completare l’ordine.
@@ -257,14 +293,24 @@ export default function CheckoutPage() {
             )}
 
             {verificationStatus === 'verified' && (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3" role="status" aria-live="polite">
+              <div
+                className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3"
+                role="status"
+                aria-live="polite"
+              >
                 <p className="text-sm font-semibold text-emerald-900">Email verificata</p>
-                <p className="mt-1 text-sm text-emerald-900">Grazie! Puoi completare il checkout confermando nuovamente l’ordine.</p>
+                <p className="mt-1 text-sm text-emerald-900">
+                  Grazie! Puoi completare il checkout confermando nuovamente l’ordine.
+                </p>
               </div>
             )}
 
             {formError && (
-              <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert" aria-live="assertive">
+              <div
+                className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                role="alert"
+                aria-live="assertive"
+              >
                 {formError}
               </div>
             )}
@@ -302,7 +348,7 @@ export default function CheckoutPage() {
                       <p className="text-sm font-medium text-slate-900">{itemName(item)}</p>
                       <p className="text-xs text-slate-500">Quantità: {itemQty(item)}</p>
                     </div>
-                    {/* Prezzo per riga: mostrato solo se disponibile in euro già calcolabili nel DTO (evitiamo campi inesistenti) */}
+                    {/* Se servisse, qui si può mostrare prezzo riga solo se disponibile nel DTO */}
                   </div>
                 ))
               )}

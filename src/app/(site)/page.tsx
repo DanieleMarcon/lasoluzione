@@ -1,5 +1,55 @@
 // src/app/(site)/page.tsx
-export default function HomePage() {
+import DeferredMap from '@/components/map/DeferredMap';
+
+type PublicEvent = {
+  id: number;
+  slug: string;
+  title: string;
+  description: string | null;
+  startAt: string;
+  endAt: string | null;
+  showOnHome: boolean;
+  excerpt: string | null;
+};
+
+function formatEventDate(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return 'Data da definire';
+  }
+
+  const dateLabel = date.toLocaleDateString('it-IT', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
+  const timeLabel = date.toLocaleTimeString('it-IT', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return `${dateLabel} · ${timeLabel}`;
+}
+
+function resolveEventDescription(event: PublicEvent) {
+  const raw = event.excerpt ?? event.description ?? '';
+  return raw.trim();
+}
+
+export default async function HomePage() {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000';
+  let events: PublicEvent[] = [];
+
+  try {
+    const res = await fetch(`${baseUrl}/api/events?limit=6`, { cache: 'no-store' });
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      events = data as PublicEvent[];
+    }
+  } catch (error) {
+    console.error('[home] failed to load events', error);
+  }
+
   return (
     <section>
       <h1 style={{ color: '#112f4d', textAlign: 'center' }}>
@@ -11,39 +61,61 @@ export default function HomePage() {
       </p>
 
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <a href="/prenota" style={{
-          display: 'inline-block', background: '#112f4d', color: '#fff',
-          borderRadius: 8, padding: '10px 16px', textDecoration: 'none'
-        }}>
+        <a
+          href="/prenota"
+          style={{
+            display: 'inline-block',
+            background: '#112f4d',
+            color: '#fff',
+            borderRadius: 8,
+            padding: '10px 16px',
+            textDecoration: 'none',
+          }}
+        >
           Prenota ora
         </a>
       </div>
 
       {/* Eventi */}
-      <section id="eventi" aria-labelledby="eventi-title">
-        <h2 id="eventi-title" style={{ color: '#112f4d' }}>Prossimi eventi</h2>
-        <div role="list" style={{ display: 'grid', gap: 12 }}>
-          <div role="listitem" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
-            <strong>Aperitivo Live Jazz</strong>
-            <div>ven 4 ott · 19:00</div>
-            <div>Quartetto Jazz, ingresso libero.</div>
+      {events.length > 0 ? (
+        <section id="eventi" aria-labelledby="eventi-title">
+          <h2 id="eventi-title" style={{ color: '#112f4d' }}>
+            Prossimi eventi
+          </h2>
+          <div role="list" style={{ display: 'grid', gap: 12 }}>
+            {events.map((event) => {
+              const description = resolveEventDescription(event);
+              return (
+                <div
+                  key={event.id}
+                  role="listitem"
+                  style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}
+                >
+                  <strong>{event.title}</strong>
+                  <div>{formatEventDate(event.startAt)}</div>
+                  {description ? <div>{description}</div> : null}
+                </div>
+              );
+            })}
           </div>
-          <div role="listitem" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
-            <strong>Serata Trivia</strong>
-            <div>mer 9 ott · 21:00</div>
-            <div>Quiz a squadre, premi finali.</div>
-          </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       {/* Prenotazione */}
       <section id="prenota" style={{ marginTop: 48 }}>
         <h2 style={{ color: '#112f4d' }}>Prenota il tuo tavolo</h2>
         <p>Pausa pranzo, aperitivo o evento privato: scegli data, persone e lascia i dettagli.</p>
-        <a href="/prenota" style={{
-          display: 'inline-block', background: '#112f4d', color: '#fff',
-          borderRadius: 8, padding: '10px 16px', textDecoration: 'none'
-        }}>
+        <a
+          href="/prenota"
+          style={{
+            display: 'inline-block',
+            background: '#112f4d',
+            color: '#fff',
+            borderRadius: 8,
+            padding: '10px 16px',
+            textDecoration: 'none',
+          }}
+        >
           Vai alla prenotazione
         </a>
       </section>
@@ -60,7 +132,10 @@ export default function HomePage() {
             placeholder="La tua email"
             style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #cbd5e1' }}
           />
-          <button type="submit" style={{ padding: '10px 16px', borderRadius: 8, background: '#112f4d', color: '#fff' }}>
+          <button
+            type="submit"
+            style={{ padding: '10px 16px', borderRadius: 8, background: '#112f4d', color: '#fff' }}
+          >
             Iscriviti
           </button>
         </form>
@@ -74,8 +149,6 @@ export default function HomePage() {
 }
 
 /* ===== Sezione mappa ===== */
-import DeferredMap from '@/components/map/DeferredMap';
-
 function DoveSiamo() {
   return (
     <section id="dove-siamo" style={{ marginTop: 48 }}>

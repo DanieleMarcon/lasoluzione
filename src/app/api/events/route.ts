@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     const includePast = parseIncludePast(searchParams.get('includePast'));
     const fromDate = parseFromDate(searchParams.get('from'));
 
-    const events = await prisma.eventInstance.findMany({
+    const events = await prisma.eventItem.findMany({
       where: {
         active: true,
         showOnHome: true,

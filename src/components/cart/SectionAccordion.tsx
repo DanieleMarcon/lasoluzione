@@ -123,11 +123,18 @@ export default function SectionAccordion() {
     async (event: CatalogEvent & { productId: number }) => {
       try {
         setLocalPending((m) => ({ ...m, [event.productId]: true }));
+        const emailOnlyFlag =
+          (event as CatalogEvent & { emailOnly?: boolean }).emailOnly ?? event.flags.emailOnly;
         await addItem({
           productId: event.productId,
           qty: 1,
           nameSnapshot: event.title,
           priceCentsSnapshot: event.priceCents,
+          meta: {
+            type: 'event',
+            eventId: event.id,
+            emailOnly: emailOnlyFlag,
+          },
         });
       } catch (e) {
         console.error('[SectionAccordion] add event error', e);

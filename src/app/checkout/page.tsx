@@ -1,718 +1,366 @@
 'use client';
 
-import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
-import RevolutCheckout from '@revolut/checkout';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-import { ToastProvider, useToast } from '@/components/admin/ui/toast';
 import { useCart } from '@/hooks/useCart';
 import { formatCurrency } from '@/lib/formatCurrency';
-import { customerSchema } from './schema';
 
-type FormState = {
+type VerificationStatus = 'idle' | 'pending' | 'verified';
+
+type FormValues = {
   email: string;
   name: string;
   phone: string;
   notes: string;
+  agreePrivacy: boolean;
+  agreeMarketing: boolean;
 };
 
-const INITIAL_FORM_STATE: FormState = {
+const INITIAL_VALUES: FormValues = {
   email: '',
   name: '',
   phone: '',
   notes: '',
+  agreePrivacy: false,
+  agreeMarketing: false,
 };
 
-type OrderView = 'idle' | 'pending_payment';
-
-type EmailOnlyEventMeta = {
-  eventInstanceId: number;
-  allowEmailOnlyBooking: boolean;
-  title?: string;
-};
-
-function extractEmailOnlyMeta(value: unknown): EmailOnlyEventMeta | null {
-  if (!value || typeof value !== 'object') return null;
-  const base = value as Record<string, unknown>;
-
-  const nested =
-    (base.eventInstance && typeof base.eventInstance === 'object'
-      ? (base.eventInstance as Record<string, unknown>)
-      : null) ||
-    (base.event && typeof base.event === 'object' ? (base.event as Record<string, unknown>) : null);
-
-  const idSource =
-    typeof base.eventInstanceId === 'number'
-      ? base.eventInstanceId
-      : typeof base.id === 'number'
-      ? base.id
-      : typeof base.eventId === 'number'
-      ? base.eventId
-      : typeof nested?.eventInstanceId === 'number'
-      ? nested.eventInstanceId
-      : typeof nested?.id === 'number'
-      ? nested.id
-      : typeof nested?.eventId === 'number'
-      ? nested.eventId
-      : null;
-
-  if (!idSource) return null;
-
-  const allow =
-    typeof base.allowEmailOnlyBooking === 'boolean'
-      ? base.allowEmailOnlyBooking
-      : typeof nested?.allowEmailOnlyBooking === 'boolean'
-      ? nested.allowEmailOnlyBooking
-      : false;
-
-  return {
-    eventInstanceId: idSource,
-    allowEmailOnlyBooking: allow,
-    title: typeof base.title === 'string' ? base.title : typeof nested?.title === 'string' ? nested.title : undefined,
-  };
-}
-
-function mapEmailOnlyError(code?: string | null): string {
-  switch (code) {
-    case 'event_not_found':
-      return 'Evento non trovato. Aggiorna la pagina e riprova.';
-    case 'email_only_not_allowed':
-      return 'Per questo evento non è disponibile la prenotazione via email.';
-    case 'invalid_payload':
-      return 'Dati non validi. Controlla le informazioni inserite.';
-    case 'rate_limited':
-      return 'Richieste troppo ravvicinate. Attendi qualche istante e riprova.';
-    default:
-      return 'Impossibile completare la prenotazione senza pagamento. Riprova più tardi.';
-  }
-}
-
-function CheckoutContent() {
+export default function CheckoutPage() {
   const router = useRouter();
-  const { cart, cartToken, loading, error, clearCartToken, refresh } = useCart();
-  const toast = useToast();
-  const [formState, setFormState] = useState<FormState>(INITIAL_FORM_STATE);
+  const searchParams = useSearchParams();
+  const { cart, loading, error } = useCart();
+
+  const [formValues, setFormValues] = useState<FormValues>(INITIAL_VALUES);
+  const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [phoneError, setPhoneError] = useState<string | null>(null);
-  const [orderView, setOrderView] = useState<OrderView>('idle');
-  const [orderInfo, setOrderInfo] = useState<{ orderId: string; totalCents: number } | null>(null);
-  const [revolutToken, setRevolutToken] = useState<string | null>(null);
-  const [hostedUrl, setHostedUrl] = useState<string | null>(null);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [revolutLoading, setRevolutLoading] = useState(false);
-  const [emailOnlyStatus, setEmailOnlyStatus] = useState<'idle' | 'loading' | 'error'>('idle');
-  const [emailOnlyMessage, setEmailOnlyMessage] = useState<string | null>(null);
-  const emailOnlyMessageRef = useRef<HTMLDivElement | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>('idle');
 
-  const cartItems = cart?.items;
-  const items = cartItems ?? [];
-  const hasItems = items.length > 0;
+  const verifiedParam = searchParams.get('verified') === '1';
+
+  const cartItems = cart?.items ?? [];
   const totalCents = cart?.totalCents ?? 0;
-
-  const emailOnlyEvent = useMemo(() => {
-    const source = cartItems ?? [];
-    for (const item of source) {
-      const meta = item.meta;
-      const extracted = extractEmailOnlyMeta(meta ?? undefined);
-      if (extracted) {
-        return {
-          ...extracted,
-          title: extracted.title ?? item.nameSnapshot,
-        };
-      }
-    }
-    return null;
-  }, [cartItems]);
 
   const summaryDescription = useMemo(() => {
     if (loading) return 'Caricamento del carrello in corso…';
-    if (error) return 'Impossibile caricare il carrello.';
-    if (!hasItems) return 'Il carrello è vuoto. Torna al catalogo per aggiungere prodotti.';
-    return 'Controlla i dettagli dell’ordine prima di completare il checkout.';
-  }, [loading, error, hasItems]);
+    if (error) return 'Impossibile caricare il carrello. Riprova più tardi.';
+    if (!cartItems.length) return 'Il carrello è vuoto. Torna al catalogo per continuare gli acquisti.';
+    return 'Controlla i dettagli e completa il checkout.';
+  }, [loading, error, cartItems.length]);
 
   useEffect(() => {
-    if (emailOnlyMessage && emailOnlyStatus !== 'loading') {
-      emailOnlyMessageRef.current?.focus();
+    if (typeof window === 'undefined') {
+      return;
     }
-  }, [emailOnlyMessage, emailOnlyStatus]);
 
-  const handleInputChange =
-    (field: keyof FormState) =>
-    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      const value = event.target.value;
-      setFormState((prev) => ({ ...prev, [field]: value }));
-      if (field === 'phone' && phoneError) {
-        setPhoneError(null);
-      }
-    };
-
-  const clearClientCart = async () => {
-    try {
-      clearCartToken();
-      await refresh();
-    } catch (err) {
-      console.error('[Checkout] unable to refresh cart after payment', err);
+    if (verifiedParam) {
+      window.sessionStorage.removeItem('order_verify_token');
+      setVerificationStatus('verified');
+      return;
     }
-  };
 
-  const navigateToSuccess = (orderId: string) => {
-    router.push(`/checkout/success?orderId=${encodeURIComponent(orderId)}`);
-  };
-
-  const pollOrderStatus = async (orderId: string) => {
-    const maxAttempts = 8;
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      try {
-        const res = await fetch(`/api/payments/order-status?orderId=${encodeURIComponent(orderId)}`, {
-          cache: 'no-store',
-        });
-        const body = (await res.json().catch(() => null)) as
-          | { ok: boolean; data?: { status?: string } }
-          | null;
-        if (body?.ok && body.data?.status) {
-          const status = body.data.status;
-          if (status === 'paid' || status === 'completed') return 'paid' as const;
-          if (status === 'failed' || status === 'cancelled' || status === 'declined') return 'failed' as const;
-        }
-      } catch (err) {
-        console.error('[Checkout] polling status error', err);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+    const storedToken = window.sessionStorage.getItem('order_verify_token');
+    if (storedToken) {
+      setVerificationStatus('pending');
     }
-    return 'pending' as const;
-  };
-
-  const openHostedPayment = async (orderId: string) => {
-    if (!hostedUrl) return false;
-    const win = window.open(hostedUrl, '_blank', 'noopener,noreferrer');
-    if (!win) {
-      // popup bloccato: apri nella stessa scheda
-      window.location.href = hostedUrl;
-      return true;
-    }
-    const status = await pollOrderStatus(orderId);
-    if (status === 'paid') {
-      await clearClientCart();
-      navigateToSuccess(orderId);
-      return true;
-    }
-    if (status === 'failed') {
-      setPaymentError('Pagamento non completato. Puoi riprovare.');
-      return true;
-    }
-    setPaymentError('Pagamento in elaborazione. Controlla la posta o riprova fra poco.');
-    return true;
-  };
-
-  const startRevolutCheckout = async (token: string, orderId: string) => {
-    setRevolutLoading(true);
-    setPaymentError(null);
-    try {
-      // Se abbiamo già l'Hosted URL, privilegiamolo in sandbox / in caso di popup bloccato
-      if (hostedUrl) {
-        await openHostedPayment(orderId);
-        return;
-      }
-
-      // Forza l'ambiente del widget (sandbox vs prod)
-      const mode =
-        process.env.NEXT_PUBLIC_REVOLUT_ENV === 'live' ||
-        process.env.NEXT_PUBLIC_REVOLUT_ENV === 'prod'
-          ? 'prod'
-          : 'sandbox';
-
-      // Inizializza il widget con il token (checkoutPublicId preferito, altrimenti paymentRef)
-      // @ts-expect-error: il pacchetto non tipizza bene le opzioni
-      const sdk = await RevolutCheckout(token, { mode });
-
-      // Apre il popup
-      await sdk.payWithPopup();
-
-      // Poll dello stato lato nostro
-      const status = await pollOrderStatus(orderId);
-      if (status === 'paid') {
-        await clearClientCart();
-        navigateToSuccess(orderId);
-        return;
-      }
-      if (status === 'failed') {
-        setPaymentError('Pagamento non completato. Puoi riprovare.');
-        return;
-      }
-      setPaymentError('Pagamento in elaborazione. Controlla la posta o riprova fra poco.');
-    } catch (err) {
-      console.error('[Checkout] Revolut popup error', err);
-      // Se il widget fallisce (404 ambiente o ad-block), usa l'Hosted Payment
-      if (hostedUrl) {
-        await openHostedPayment(orderId);
-        return;
-      }
-      setPaymentError('Impossibile avviare il pagamento. Contatta il supporto o riprova.');
-    } finally {
-      setRevolutLoading(false);
-    }
-  };
+  }, [verifiedParam]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!cartToken || !cart?.id) {
-      toast.error('Carrello non disponibile. Riprova più tardi.');
-      return;
-    }
-    if (!hasItems) {
-      toast.error('Il carrello è vuoto.');
+    if (verificationStatus === 'pending') {
       return;
     }
 
-    const trimmedEmail = formState.email.trim();
-    const trimmedName = formState.name.trim();
-    const trimmedPhone = formState.phone.trim();
-    const trimmedNotes = formState.notes.trim();
+    setFormError(null);
 
-    if (!trimmedPhone) {
-      setPhoneError('Telefono obbligatorio');
-      toast.error('Inserisci un numero di telefono.');
-      return;
-    }
-
-    const validated = customerSchema.safeParse({
-      email: trimmedEmail,
-      name: trimmedName,
-      phone: trimmedPhone,
-      notes: trimmedNotes ? trimmedNotes : undefined,
-    });
-
-    if (!validated.success) {
-      const flat = validated.error.flatten();
-      const phoneIssue = flat.fieldErrors.phone?.[0];
-      if (phoneIssue) setPhoneError(phoneIssue);
-      const generalError =
-        phoneIssue || flat.fieldErrors.email?.[0] || flat.fieldErrors.name?.[0] || flat.formErrors[0] || 'Dati non validi.';
-      toast.error(generalError);
+    if (!formValues.agreePrivacy) {
+      setFormError('Per procedere è necessario accettare l\'informativa sulla privacy.');
       return;
     }
 
     setSubmitting(true);
+
+    const verifyToken =
+      typeof window !== 'undefined'
+        ? window.sessionStorage.getItem('order_verify_token') || undefined
+        : undefined;
+
+    const payload = {
+      email: formValues.email,
+      name: formValues.name,
+      phone: formValues.phone,
+      notes: formValues.notes,
+      agreePrivacy: formValues.agreePrivacy,
+      agreeMarketing: !!formValues.agreeMarketing,
+      items: cartItems.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+      })),
+      verifyToken,
+    };
+
     try {
-      const res = await fetch('/api/orders', {
+      const response = await fetch('/api/payments/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cartId: cart.id,
-          email: validated.data.email,
-          name: validated.data.name,
-          phone: validated.data.phone,
-          notes: validated.data.notes,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
       });
 
-      const body = (await res.json().catch(() => null)) as
-        | {
-            ok: boolean;
-            data?:
-              | { orderId: string; status: 'paid' }
-              | {
-                  orderId: string;
-                  status: 'pending_payment';
-                  totalCents: number;
-                  revolutToken: string;
-                  hostedPaymentUrl?: string;
-                };
-            error?: string;
+      if (!response.ok) {
+        let message = 'Impossibile completare il checkout in questo momento. Riprova più tardi.';
+        try {
+          const data = await response.json();
+          if (typeof data?.error === 'string') {
+            message = data.error;
+          } else if (typeof data?.message === 'string') {
+            message = data.message;
           }
-        | null;
-
-      if (!res.ok || !body?.ok || !body.data) {
-        toast.error(body?.error || 'Impossibile completare il checkout.');
+        } catch (parseError) {
+          // ignore json parse errors
+        }
+        setFormError(message);
+        setSubmitting(false);
         return;
       }
 
-      setPhoneError(null);
-      if (body.data.status === 'paid') {
-        await clearClientCart();
-        navigateToSuccess(body.data.orderId);
-        return;
+      const result = await response.json();
+
+      switch (result?.state) {
+        case 'verify_sent': {
+          if (typeof window !== 'undefined' && typeof result?.token === 'string' && result.token) {
+            window.sessionStorage.setItem('order_verify_token', result.token);
+          }
+          setVerificationStatus('pending');
+          setSubmitting(false);
+          break;
+        }
+        case 'confirmed': {
+          if (typeof result?.orderId === 'string' && result.orderId) {
+            router.push(`/checkout/success?orderId=${encodeURIComponent(result.orderId)}`);
+            return;
+          }
+          setFormError('Ordine confermato ma senza identificativo valido. Contatta il supporto.');
+          setSubmitting(false);
+          break;
+        }
+        case 'paid_redirect': {
+          if (typeof result?.url === 'string' && result.url) {
+            window.location.href = result.url;
+            return;
+          }
+          setFormError('Redirezione pagamento non disponibile. Riprova.');
+          setSubmitting(false);
+          break;
+        }
+        default: {
+          setFormError('Risposta inattesa dal server. Riprova più tardi.');
+          setSubmitting(false);
+        }
       }
-
-      setOrderView('pending_payment');
-      setOrderInfo({ orderId: body.data.orderId, totalCents: body.data.totalCents });
-      setRevolutToken(body.data.revolutToken);
-      setHostedUrl(body.data.hostedPaymentUrl ?? null);
-
-      await startRevolutCheckout(body.data.revolutToken, body.data.orderId);
-    } catch (err) {
-      console.error('[Checkout] submit error', err);
-      toast.error('Errore di rete durante il checkout.');
-    } finally {
+    } catch (requestError) {
+      setFormError('Si è verificato un errore imprevisto. Controlla la connessione e riprova.');
       setSubmitting(false);
     }
   };
 
-  const handleEmailOnlyBooking = async () => {
-    if (!emailOnlyEvent?.allowEmailOnlyBooking || !emailOnlyEvent.eventInstanceId) {
-      return;
-    }
-
-    const trimmedEmail = formState.email.trim();
-    const trimmedName = formState.name.trim();
-    const trimmedPhone = formState.phone.trim();
-    const trimmedNotes = formState.notes.trim();
-
-    if (!trimmedPhone) {
-      setPhoneError('Telefono obbligatorio');
-      toast.error('Inserisci un numero di telefono.');
-      return;
-    }
-
-    const validated = customerSchema.safeParse({
-      email: trimmedEmail,
-      name: trimmedName,
-      phone: trimmedPhone,
-      notes: trimmedNotes ? trimmedNotes : undefined,
-    });
-
-    if (!validated.success) {
-      const flat = validated.error.flatten();
-      const phoneIssue = flat.fieldErrors.phone?.[0];
-      if (phoneIssue) setPhoneError(phoneIssue);
-      const generalError =
-        phoneIssue || flat.fieldErrors.email?.[0] || flat.fieldErrors.name?.[0] || flat.formErrors[0] || 'Dati non validi.';
-      toast.error(generalError);
-      return;
-    }
-
-    setEmailOnlyStatus('loading');
-    setEmailOnlyMessage('Invio della richiesta in corso…');
-
-    try {
-      const res = await fetch('/api/bookings/email-only', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventInstanceId: emailOnlyEvent.eventInstanceId,
-          customer: {
-            email: validated.data.email,
-            name: validated.data.name,
-            phone: validated.data.phone,
-          },
-          notes: validated.data.notes ?? undefined,
-        }),
-      });
-
-      const body = (await res.json().catch(() => null)) as
-        | {
-            ok: boolean;
-            nextUrl?: string;
-            error?: string;
-          }
-        | null;
-
-      if (res.ok && body?.ok && body.nextUrl) {
-        setEmailOnlyMessage(null);
-        setEmailOnlyStatus('idle');
-        try {
-          await clearClientCart();
-        } catch (err) {
-          console.error('[Checkout] unable to clear cart after email-only booking', err);
-        }
-        router.push(body.nextUrl);
-        return;
-      }
-
-      setEmailOnlyStatus('error');
-      setEmailOnlyMessage(mapEmailOnlyError(body?.error));
-    } catch (err) {
-      console.error('[Checkout] email-only booking error', err);
-      setEmailOnlyStatus('error');
-      setEmailOnlyMessage('Errore di rete durante l’invio della richiesta. Riprova.');
-    }
-  };
-
-  if (orderView === 'pending_payment' && orderInfo) {
-    return (
-      <div
-        className="container"
-        style={{ padding: '2rem 1rem', maxWidth: 640, margin: '0 auto', textAlign: 'center' }}
-      >
-        <h1 style={{ color: '#0f172a', marginBottom: '0.5rem' }}>Completa il pagamento</h1>
-        <p style={{ fontSize: '1.05rem', color: '#334155' }}>
-          Ordine <strong>#{orderInfo.orderId}</strong> creato correttamente. Premi il pulsante per aprire il pagamento
-          e finalizzare l’importo di {formatCurrency(orderInfo.totalCents)}.
-        </p>
-
-        <div style={{ margin: '2rem auto 0', maxWidth: 360, display: 'grid', gap: '0.75rem' }}>
-          {paymentError && (
-            <div className="alert alert-danger" role="alert" style={{ margin: 0 }}>
-              {paymentError}
-            </div>
-          )}
-
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => (revolutToken ? startRevolutCheckout(revolutToken, orderInfo.orderId) : null)}
-            disabled={!revolutToken || revolutLoading}
-          >
-            {revolutLoading
-              ? 'Apertura pagamento…'
-              : hostedUrl
-              ? 'Apri pagamento'
-              : 'Paga con carta / Revolut Pay'}
-          </button>
-
-          {hostedUrl && (
-            <a
-              href={hostedUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={{ fontSize: '0.95rem', textDecoration: 'underline', color: '#334155' }}
-            >
-              Oppure apri il pagamento in una nuova scheda
-            </a>
-          )}
-        </div>
-
-        <p style={{ marginTop: '1.5rem', color: '#64748b' }}>
-          Una volta completata la transazione verrai reindirizzato alla pagina di conferma. Se chiudi la finestra puoi
-          sempre riprendere il pagamento dal link ricevuto via email.
-        </p>
-
-        <div style={{ marginTop: '2rem' }}>
-          <Link
-            href="/prenota"
-            style={{
-              display: 'inline-block',
-              padding: '0.75rem 1.5rem',
-              borderRadius: 999,
-              backgroundColor: '#1e293b',
-              color: '#fff',
-              textDecoration: 'none',
-              fontWeight: 600,
-            }}
-          >
-            Torna alle prenotazioni
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  const isSubmitDisabled = submitting || verificationStatus === 'pending';
 
   return (
-    <div className="container" style={{ padding: '2rem 1rem', maxWidth: 960, margin: '0 auto' }}>
-      <header style={{ marginBottom: '2rem', textAlign: 'center' }}>
-        <h1 style={{ color: '#0f172a', marginBottom: 8 }}>Checkout</h1>
-        <p style={{ margin: 0, color: '#475569' }}>{summaryDescription}</p>
-      </header>
+    <div className="bg-white">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-12 sm:px-6 lg:flex-row lg:px-8">
+        <div className="w-full lg:w-2/3">
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Checkout</h1>
+          <p className="mt-2 text-sm text-slate-600">{summaryDescription}</p>
 
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '2rem',
-          alignItems: 'flex-start',
-        }}
-      >
-        <section style={{ flex: '1 1 360px', minWidth: 0 }}>
-          <div
-            style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: 16,
-              padding: '1.5rem',
-              backgroundColor: '#f8fafc',
-              display: 'grid',
-              gap: '1rem',
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: '1.125rem', color: '#0f172a' }}>Riepilogo ordine</h2>
-            {loading ? (
-              <p style={{ margin: 0, color: '#475569' }}>Caricamento in corso…</p>
-            ) : error ? (
-              <p style={{ margin: 0, color: '#b91c1c' }}>Errore nel caricamento del carrello.</p>
-            ) : hasItems ? (
-              <>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.75rem' }}>
-                  {items.map((item) => (
-                    <li key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
-                      <div>
-                        <strong style={{ display: 'block', color: '#0f172a' }}>{item.nameSnapshot}</strong>
-                        <span style={{ color: '#64748b' }}>x {item.qty}</span>
-                      </div>
-                      <span style={{ color: '#0f172a', fontWeight: 600 }}>
-                        {formatCurrency(item.priceCentsSnapshot * item.qty)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    borderTop: '1px solid #e2e8f0',
-                    paddingTop: '0.75rem',
-                    fontWeight: 600,
-                    color: '#0f172a',
-                  }}
-                >
-                  <span>Totale</span>
-                  <span>{formatCurrency(totalCents)}</span>
-                </div>
-              </>
-            ) : (
-              <p style={{ margin: 0, color: '#475569' }}>Nessun prodotto nel carrello.</p>
-            )}
-          </div>
-        </section>
+          <form onSubmit={handleSubmit} className="mt-8 space-y-6" noValidate>
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <div className="flex flex-col">
+                <label htmlFor="email" className="text-sm font-medium text-slate-700">
+                  Email
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={formValues.email}
+                  onChange={(event) =>
+                    setFormValues((prev) => ({ ...prev, email: event.target.value }))
+                  }
+                  className="mt-2 rounded-md border border-slate-300 px-3 py-2 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                />
+              </div>
 
-        <section style={{ flex: '1 1 360px', minWidth: 0 }}>
-          <form
-            onSubmit={handleSubmit}
-            noValidate
-            style={{ display: 'grid', gap: '1rem', border: '1px solid #e2e8f0', borderRadius: 16, padding: '1.5rem' }}
-          >
-            <h2 style={{ margin: 0, fontSize: '1.125rem', color: '#0f172a' }}>Dati di contatto</h2>
-            <label style={{ display: 'grid', gap: '0.25rem', color: '#0f172a', fontWeight: 600 }}>
-              Email
-              <input
-                type="email"
-                required
-                value={formState.email}
-                onChange={handleInputChange('email')}
-                placeholder="nome@example.com"
-                style={{
-                  padding: '0.65rem 0.75rem',
-                  borderRadius: 12,
-                  border: '1px solid #cbd5f5',
-                  fontSize: '1rem',
-                }}
-              />
-            </label>
-            <label style={{ display: 'grid', gap: '0.25rem', color: '#0f172a', fontWeight: 600 }}>
-              Nome e cognome
-              <input
-                type="text"
-                required
-                value={formState.name}
-                onChange={handleInputChange('name')}
-                placeholder="Mario Rossi"
-                style={{
-                  padding: '0.65rem 0.75rem',
-                  borderRadius: 12,
-                  border: '1px solid #cbd5f5',
-                  fontSize: '1rem',
-                }}
-              />
-            </label>
-            <label style={{ display: 'grid', gap: '0.25rem', color: '#0f172a', fontWeight: 600 }}>
-              Telefono
-              <input
-                type="tel"
-                value={formState.phone}
-                onChange={handleInputChange('phone')}
-                placeholder="Numero di telefono"
-                required
-                aria-invalid={Boolean(phoneError)}
-                aria-describedby="checkout-phone-error"
-                style={{
-                  padding: '0.65rem 0.75rem',
-                  borderRadius: 12,
-                  border: phoneError ? '1px solid #dc2626' : '1px solid #cbd5f5',
-                  fontSize: '1rem',
-                }}
-              />
-              {phoneError && (
-                <span
-                  id="checkout-phone-error"
-                  role="alert"
-                  style={{ color: '#b91c1c', fontSize: '0.9rem' }}
-                >
-                  {phoneError}
+              <div className="flex flex-col">
+                <label htmlFor="name" className="text-sm font-medium text-slate-700">
+                  Nome e cognome
+                </label>
+                <input
+                  id="name"
+                  name="name"
+                  type="text"
+                  autoComplete="name"
+                  required
+                  value={formValues.name}
+                  onChange={(event) =>
+                    setFormValues((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  className="mt-2 rounded-md border border-slate-300 px-3 py-2 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label htmlFor="phone" className="text-sm font-medium text-slate-700">
+                  Telefono
+                </label>
+                <input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  autoComplete="tel"
+                  value={formValues.phone}
+                  onChange={(event) =>
+                    setFormValues((prev) => ({ ...prev, phone: event.target.value }))
+                  }
+                  className="mt-2 rounded-md border border-slate-300 px-3 py-2 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                />
+              </div>
+
+              <div className="flex flex-col sm:col-span-2">
+                <label htmlFor="notes" className="text-sm font-medium text-slate-700">
+                  Note (facoltative)
+                </label>
+                <textarea
+                  id="notes"
+                  name="notes"
+                  rows={4}
+                  value={formValues.notes}
+                  onChange={(event) =>
+                    setFormValues((prev) => ({ ...prev, notes: event.target.value }))
+                  }
+                  className="mt-2 rounded-md border border-slate-300 px-3 py-2 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                  checked={formValues.agreePrivacy}
+                  onChange={(event) =>
+                    setFormValues((prev) => ({ ...prev, agreePrivacy: event.target.checked }))
+                  }
+                  required
+                />
+                <span className="text-sm text-slate-700">
+                  Ho letto e accetto l&apos;informativa privacy (obbligatorio).
                 </span>
-              )}
-            </label>
-            <label style={{ display: 'grid', gap: '0.25rem', color: '#0f172a', fontWeight: 600 }}>
-              Note
-              <textarea
-                value={formState.notes}
-                onChange={handleInputChange('notes')}
-                rows={4}
-                placeholder="Indicazioni aggiuntive"
-                style={{
-                  padding: '0.65rem 0.75rem',
-                  borderRadius: 12,
-                  border: '1px solid #cbd5f5',
-                  fontSize: '1rem',
-                  resize: 'vertical',
-                }}
-              />
-            </label>
+              </label>
+
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                  checked={formValues.agreeMarketing}
+                  onChange={(event) =>
+                    setFormValues((prev) => ({ ...prev, agreeMarketing: event.target.checked }))
+                  }
+                />
+                <span className="text-sm text-slate-700">
+                  Voglio ricevere aggiornamenti e offerte via email (facoltativo).
+                </span>
+              </label>
+            </div>
+
+            {verificationStatus === 'pending' && (
+              <div
+                className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3"
+                role="status"
+                aria-live="polite"
+              >
+                <p className="text-sm font-semibold text-amber-900">Verifica email inviata</p>
+                <p className="mt-1 text-sm text-amber-900">
+                  Ti abbiamo inviato una mail di verifica. Controlla la casella di posta e segui il link
+                  per completare l&apos;ordine.
+                </p>
+              </div>
+            )}
+
+            {verificationStatus === 'verified' && (
+              <div
+                className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3"
+                role="status"
+                aria-live="polite"
+              >
+                <p className="text-sm font-semibold text-emerald-900">Email verificata</p>
+                <p className="mt-1 text-sm text-emerald-900">
+                  Grazie! Puoi completare il checkout confermando nuovamente l&apos;ordine.
+                </p>
+              </div>
+            )}
+
+            {formError && (
+              <div
+                className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                role="alert"
+                aria-live="assertive"
+              >
+                {formError}
+              </div>
+            )}
+
             <button
               type="submit"
-              disabled={submitting || !hasItems || loading || Boolean(error)}
-              style={{
-                padding: '0.85rem 1.25rem',
-                borderRadius: 999,
-                border: 'none',
-                backgroundColor:
-                  submitting || loading
-                    ? '#94a3b8'
-                    : !hasItems || Boolean(error)
-                    ? '#94a3b8'
-                    : '#2563eb',
-                color: '#fff',
-                fontWeight: 600,
-                cursor:
-                  submitting || !hasItems || loading || Boolean(error) ? 'not-allowed' : 'pointer',
-                transition: 'background-color 0.2s ease',
-              }}
+              disabled={isSubmitDisabled}
+              className="inline-flex w-full items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-base font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? 'Invio in corso…' : 'Completa l’ordine'}
+              {submitting ? 'Invio in corso…' : verificationStatus === 'pending' ? 'In attesa di verifica…' : 'Conferma ordine'}
             </button>
-            {emailOnlyEvent?.allowEmailOnlyBooking ? (
-              <div style={{ display: 'grid', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={handleEmailOnlyBooking}
-                  disabled={emailOnlyStatus === 'loading'}
-                  className="btn btn-outline-secondary"
-                  style={{
-                    borderRadius: 999,
-                    fontWeight: 600,
-                    padding: '0.75rem 1.25rem',
-                  }}
-                >
-                  {emailOnlyStatus === 'loading' ? 'Invio richiesta…' : 'Prenota senza pagare'}
-                </button>
-                <div
-                  ref={emailOnlyMessageRef}
-                  aria-live={emailOnlyStatus === 'error' ? 'assertive' : 'polite'}
-                  role="status"
-                  tabIndex={emailOnlyMessage ? -1 : undefined}
-                  style={{
-                    minHeight: emailOnlyMessage ? 'auto' : 0,
-                    outline: 'none',
-                    color: emailOnlyStatus === 'error' ? '#b91c1c' : '#475569',
-                    fontSize: '0.95rem',
-                  }}
-                >
-                  {emailOnlyMessage}
-                </div>
-              </div>
-            ) : null}
           </form>
-        </section>
+        </div>
+
+        <aside className="w-full lg:w-1/3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-6">
+            <h2 className="text-lg font-semibold text-slate-900">Il tuo ordine</h2>
+            <p className="mt-1 text-sm text-slate-600">{summaryDescription}</p>
+
+            <div className="mt-6 space-y-4">
+              {cartItems.length === 0 && !loading ? (
+                <p className="text-sm text-slate-500">Nessun articolo nel carrello.</p>
+              ) : (
+                cartItems.map((item) => (
+                  <div key={item.id ?? `${item.productId}-${item.quantity}`}
+                    className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4 last:border-b-0 last:pb-0"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{item.nameSnapshot ?? item.name}</p>
+                      <p className="text-xs text-slate-500">Quantità: {item.quantity}</p>
+                    </div>
+                    {typeof item.priceCents === 'number' && (
+                      <p className="text-sm font-semibold text-slate-900">
+                        {formatCurrency(item.priceCents / 100)}
+                      </p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="mt-6 flex items-center justify-between border-t border-slate-200 pt-4">
+              <span className="text-sm font-medium text-slate-700">Totale</span>
+              <span className="text-lg font-semibold text-slate-900">
+                {formatCurrency(totalCents / 100)}
+              </span>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
-  );
-}
-
-export default function CheckoutPage() {
-  return (
-    <ToastProvider>
-      <CheckoutContent />
-    </ToastProvider>
   );
 }

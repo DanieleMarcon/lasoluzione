@@ -25,31 +25,37 @@ function parseIncludePast(rawIncludePast: string | null): boolean {
 }
 
 function parseFromDate(rawFrom: string | null): Date {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   if (!rawFrom) {
-    return now;
+    return today;
   }
 
   const match = rawFrom.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) {
-    return now;
+    return today;
   }
 
   const [, year, month, day] = match;
-  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
-  return date;
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+  parsed.setHours(0, 0, 0, 0);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return today;
+  }
+
+  return parsed;
 }
 
 function createExcerpt(description: string | null): string | null {
   if (!description) return null;
-  if (description.length <= EXCERPT_LENGTH) {
-    return description;
-  }
 
-  const sliced = description.slice(0, EXCERPT_LENGTH).trimEnd();
-  return `${sliced}\u2026`;
+  const trimmed = description.trim();
+  const slice = trimmed.slice(0, EXCERPT_LENGTH);
+  const needsEllipsis = trimmed.length > EXCERPT_LENGTH;
+
+  return `${slice}${needsEllipsis ? '\u2026' : ''}`;
 }
 
 export async function GET(request: NextRequest) {
@@ -57,22 +63,19 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const limit = parseLimit(searchParams.get('limit'));
     const includePast = parseIncludePast(searchParams.get('includePast'));
-    const hasFromParam = searchParams.has('from');
     const fromDate = parseFromDate(searchParams.get('from'));
-
-    const shouldFilterFrom = !includePast || hasFromParam;
 
     const events = await prisma.eventInstance.findMany({
       where: {
         active: true,
         showOnHome: true,
-        ...(shouldFilterFrom
-          ? {
+        ...(includePast
+          ? {}
+          : {
               startAt: {
                 gte: fromDate,
               },
-            }
-          : {}),
+            }),
       },
       orderBy: { startAt: 'asc' },
       take: limit,

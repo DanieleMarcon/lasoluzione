@@ -226,7 +226,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'cart_not_found' }, { status: 404 });
     }
 
-    const cart = await prisma.cart.findUnique({
+    let cart = await prisma.cart.findUnique({
       where: { id: cartId },
       include: { items: true },
     });
@@ -236,7 +236,11 @@ export async function POST(req: Request) {
     }
 
     if (cart.status !== 'open' && cart.status !== 'locked') {
-      return NextResponse.json({ ok: false, error: 'cart_not_ready' }, { status: 400 });
+      cart = await prisma.cart.update({
+        where: { id: cart.id },
+        data: { status: 'open' },
+        include: { items: true },
+      });
     }
 
     const totalCents = await recalcCartTotal(cart.id);
@@ -273,15 +277,24 @@ export async function POST(req: Request) {
     }
 
     if (order.status === 'paid' || order.status === 'confirmed') {
-      const response = NextResponse.json(
-        {
-          ok: true,
-          state: 'confirmed' as const,
-          orderId: order.id,
-          status: order.status,
-        },
-        { status: 200 }
-      );
+      const booking = await prisma.booking.findFirst({
+        where: { orderId: order.id },
+        orderBy: { id: 'desc' },
+      });
+
+      const responseBody: Record<string, unknown> = {
+        ok: true,
+        state: 'confirmed' as const,
+        orderId: order.id,
+        status: order.status,
+      };
+
+      if (booking) {
+        responseBody.bookingId = booking.id;
+        responseBody.nextUrl = `/checkout/email-sent?bookingId=${booking.id}`;
+      }
+
+      const response = NextResponse.json(responseBody, { status: 200 });
       response.cookies.delete(VERIFY_COOKIE);
       return response;
     }
@@ -357,6 +370,7 @@ export async function POST(req: Request) {
         ok: true,
         state: 'verify_sent' as const,
         verifyToken,
+        token: verifyToken,
       });
       response.cookies.delete(VERIFY_COOKIE);
       return response;

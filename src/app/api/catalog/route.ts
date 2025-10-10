@@ -34,6 +34,21 @@ export async function GET() {
         })
       : [];
 
+    const emailOnlyProductIds = new Set<number>();
+    if (productIds.length) {
+      const emailOnlyInstances = await prisma.eventInstance.findMany({
+        where: {
+          productId: { in: productIds },
+          allowEmailOnlyBooking: true,
+        },
+        select: { productId: true },
+      });
+
+      for (const row of emailOnlyInstances) {
+        emailOnlyProductIds.add(row.productId);
+      }
+    }
+
     const productMap = new Map(products.map((product) => [product.id, product] as const));
     const linksBySection = new Map<number, Array<(typeof sectionProducts)[number]>>();
 
@@ -63,6 +78,9 @@ export async function GET() {
           .map((link) => {
             const product = productMap.get(link.productId);
             if (!product) return null;
+            if (section.key === 'eventi' && emailOnlyProductIds.has(link.productId)) {
+              return null;
+            }
             return {
               id: product.id,
               slug: product.slug,

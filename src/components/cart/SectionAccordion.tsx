@@ -4,16 +4,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useCart } from '@/hooks/useCart';
 
-import type { CatalogDTO, CatalogSectionDTO } from '@/types/catalog';
+import EventSectionItem from './EventSectionItem';
+import type {
+  CatalogDTO,
+  CatalogEventDTO,
+  CatalogProductDTO,
+  CatalogSectionDTO,
+} from '@/types/catalog';
 
-type CatalogProduct = CatalogSectionDTO['products'][number] & {
+type CatalogProduct = CatalogProductDTO & {
   description?: string | null;
   ingredients?: string | null;
   allergens?: string | null;
 };
 
+type CatalogEvent = CatalogEventDTO;
+
 type CatalogSection = Omit<CatalogSectionDTO, 'products'> & {
-  products: CatalogProduct[];
+  products: Array<CatalogProduct | CatalogEvent>;
 };
 
 const SECTION_ORDER: CatalogSectionDTO['key'][] = [
@@ -111,6 +119,29 @@ export default function SectionAccordion() {
     [addItem]
   );
 
+  const handleAddEventToCart = useCallback(
+    async (event: CatalogEvent & { productId: number }) => {
+      try {
+        setLocalPending((m) => ({ ...m, [event.productId]: true }));
+        await addItem({
+          productId: event.productId,
+          qty: 1,
+          nameSnapshot: event.title,
+          priceCentsSnapshot: event.priceCents,
+        });
+      } catch (e) {
+        console.error('[SectionAccordion] add event error', e);
+      } finally {
+        setLocalPending((m) => {
+          const next = { ...m };
+          delete next[event.productId];
+          return next;
+        });
+      }
+    },
+    [addItem],
+  );
+
   const content = useMemo(() => {
     if (loading) {
       return (
@@ -153,95 +184,121 @@ export default function SectionAccordion() {
           <div className="px-4 pb-4">
             {section.products.length === 0 ? (
               <p className="text-muted">Nessun prodotto disponibile in questa sezione.</p>
+            ) : section.key === 'eventi' ? (
+              section.products
+                .filter((item): item is CatalogEvent => item.type === 'event')
+                .map((event) => {
+                  const hasProductId = typeof event.productId === 'number';
+                  const pendingStatus = hasProductId
+                    ? pending[event.productId] || localPending[event.productId]
+                    : false;
+
+                  return (
+                    <EventSectionItem
+                      key={`event-${event.id}`}
+                      event={event}
+                      priceLabel={currencyFormatter.format(event.priceCents / 100)}
+                      pending={pendingStatus}
+                      disabled={cartLoading}
+                      onAddToCart={
+                        !event.flags.emailOnly && hasProductId
+                          ? () => handleAddEventToCart({ ...event, productId: event.productId! })
+                          : undefined
+                      }
+                    />
+                  );
+                })
             ) : (
-              section.products.map((product) => {
-                const isDetailsOpen = openDetails[product.id] ?? false;
-                const hasDetails =
-                  Boolean(product.description) ||
-                  Boolean(product.ingredients) ||
-                  Boolean(product.allergens);
+              section.products
+                .filter((item): item is CatalogProduct => item.type === 'product')
+                .map((product) => {
+                  const isDetailsOpen = openDetails[product.id] ?? false;
+                  const hasDetails =
+                    Boolean(product.description) ||
+                    Boolean(product.ingredients) ||
+                    Boolean(product.allergens);
 
-                return (
-                  <div className="border rounded-3 p-3 mb-3" key={product.id}>
-                    <div className="d-flex align-items-start">
-                      {product.imageUrl ? (
-                        <img
-                          src={product.imageUrl}
-                          alt={product.name}
-                          className="rounded me-3"
-                          style={{ width: 72, height: 72, objectFit: 'cover' }}
-                        />
-                      ) : null}
+                  return (
+                    <div className="border rounded-3 p-3 mb-3" key={product.id}>
+                      <div className="d-flex align-items-start">
+                        {product.imageUrl ? (
+                          <img
+                            src={product.imageUrl}
+                            alt={product.name}
+                            className="rounded me-3"
+                            style={{ width: 72, height: 72, objectFit: 'cover' }}
+                          />
+                        ) : null}
 
-                      <div className="flex-grow-1">
-                        <div className="d-flex justify-content-between align-items-start flex-wrap gap-2">
-                          <div>
-                            <h5 className="mb-1" style={{ fontSize: '1.05rem' }}>
-                              {product.name}
-                            </h5>
-                            <span className="text-primary fw-semibold">
-                              {currencyFormatter.format(product.priceCents / 100)}
-                            </span>
-                          </div>
+                        <div className="flex-grow-1">
+                          <div className="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                            <div>
+                              <h5 className="mb-1" style={{ fontSize: '1.05rem' }}>
+                                {product.name}
+                              </h5>
+                              <span className="text-primary fw-semibold">
+                                {currencyFormatter.format(product.priceCents / 100)}
+                              </span>
+                            </div>
 
-                          <div className="d-flex gap-2">
-                            {hasDetails ? (
+                            <div className="d-flex gap-2">
+                              {hasDetails ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-outline-secondary btn-sm"
+                                  onClick={() => handleToggleDetails(product.id)}
+                                >
+                                  {isDetailsOpen ? 'Nascondi dettagli' : 'Dettagli'}
+                                </button>
+                              ) : null}
+
                               <button
                                 type="button"
-                                className="btn btn-outline-secondary btn-sm"
-                                onClick={() => handleToggleDetails(product.id)}
+                                className="btn btn-primary btn-sm"
+                                disabled={
+                                  cartLoading || !!pending[product.id] || !!localPending[product.id]
+                                }
+                                onClick={() => handleAddToCart(product)}
                               >
-                                {isDetailsOpen ? 'Nascondi dettagli' : 'Dettagli'}
+                                {pending[product.id] || localPending[product.id]
+                                  ? 'Attendere…'
+                                  : 'Aggiungi'}
                               </button>
-                            ) : null}
-
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-sm"
-                            disabled={
-                              cartLoading || !!pending[product.id] || !!localPending[product.id]
-                            }
-                            onClick={() => handleAddToCart(product)}
-                          >
-                            {pending[product.id] || localPending[product.id]
-                              ? 'Attendere…'
-                              : 'Aggiungi'}
-                          </button>
+                            </div>
                           </div>
+
+                          {hasDetails ? (
+                            <div
+                              className="mt-3"
+                              style={{ display: isDetailsOpen ? 'block' : 'none' }}
+                              aria-live="polite"
+                            >
+                              {product.description ? (
+                                <p className="mb-2">
+                                  <strong>Descrizione:</strong> {product.description}
+                                </p>
+                              ) : null}
+                              {product.ingredients ? (
+                                <p className="mb-2">
+                                  <strong>Ingredienti:</strong> {product.ingredients}
+                                </p>
+                              ) : null}
+                              {product.allergens ? (
+                                <p className="mb-0">
+                                  <strong>Allergeni:</strong> {product.allergens}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <p className="text-muted small mb-0 mt-2">
+                              Nessun dettaglio aggiuntivo disponibile.
+                            </p>
+                          )}
                         </div>
-
-                        {hasDetails ? (
-                          <div
-                            className="mt-3"
-                            style={{ display: isDetailsOpen ? 'block' : 'none' }}
-                            aria-live="polite"
-                          >
-                            {product.description ? (
-                              <p className="mb-2">
-                                <strong>Descrizione:</strong> {product.description}
-                              </p>
-                            ) : null}
-                            {product.ingredients ? (
-                              <p className="mb-2">
-                                <strong>Ingredienti:</strong> {product.ingredients}
-                              </p>
-                            ) : null}
-                            {product.allergens ? (
-                              <p className="mb-0">
-                                <strong>Allergeni:</strong> {product.allergens}
-                              </p>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <p className="text-muted small mb-0 mt-2">
-                            Nessun dettaglio aggiuntivo disponibile.
-                          </p>
-                        )}
                       </div>
                     </div>
-                  </div>
-                );
-              })
+                  );
+                })
             )}
           </div>
         ) : null}
@@ -257,6 +314,7 @@ export default function SectionAccordion() {
     pending,
     localPending,
     handleAddToCart,
+    handleAddEventToCart,
     handleToggleDetails,
     handleToggleSection,
   ]);

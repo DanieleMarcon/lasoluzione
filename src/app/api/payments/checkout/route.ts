@@ -217,6 +217,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'invalid_payload' }, { status: 400 });
     }
 
+    const marketingConsentCandidate = (parsed.data.agreeMarketing ?? false) as boolean;
+
     const jar = cookies();
     const cartId = jar.get(CART_COOKIE)?.value ?? null;
     const cookieToken = jar.get(VERIFY_COOKIE)?.value ?? null;
@@ -328,7 +330,7 @@ export async function POST(req: Request) {
         name: parsed.data.name,
         phone: parsed.data.phone,
         agreePrivacy: true,
-        agreeMarketing: marketingConsent,
+        agreeMarketing: marketingConsentCandidate,
       } satisfies Omit<OrderVerifyTokenPayload, 'iat' | 'exp'>;
 
       const verifyToken = signJwt(verifyPayload, secret, {
@@ -361,7 +363,7 @@ export async function POST(req: Request) {
     }
 
     const marketingConsent =
-      verifiedPayload.agreeMarketing ?? parsed.data.agreeMarketing ?? false;
+      (verifiedPayload?.agreeMarketing ?? marketingConsentCandidate) as boolean;
 
     if (totalCents <= 0) {
       const mappedItems = mapItems(cartItems);

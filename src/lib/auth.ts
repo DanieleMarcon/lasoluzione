@@ -5,7 +5,6 @@ import NextAuth, { type NextAuthConfig } from 'next-auth';
 import EmailProvider from 'next-auth/providers/email';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import type { Adapter } from 'next-auth/adapters';
-import type { UserRole } from '@prisma/client';
 
 import { prisma } from '@/lib/prisma';
 import { isAdminEmail } from '@/lib/admin/emails';
@@ -43,17 +42,21 @@ export const authConfig = {
           pass: readAuthEnv('SMTP_PASS'),
         },
       },
+      // link di magic login valido 10 minuti
       maxAge: 10 * 60,
     }),
   ],
   callbacks: {
+    /** Consente l'accesso SOLO se l'email è nella whitelist ADMIN_EMAILS */
     async signIn({ user, email }) {
       const emailParam = (email as { email?: string } | undefined)?.email;
       const candidate = (user?.email ?? emailParam ?? '').toLowerCase();
+
       if (isAdminEmail(candidate)) {
         return true;
       }
 
+      // Hardening: se il provider ha creato l'utente ma non è whitelisted, lo eliminiamo
       if (user?.id) {
         try {
           await prisma.user.delete({ where: { id: user.id } });
@@ -63,17 +66,20 @@ export const authConfig = {
       }
       return false;
     },
-    async jwt({ token, user }) {
-      if (user) {
-        token.role = user.role;
+
+    /** Propaga una "role" logica nel token per compatibilità UI (admin unico caso) */
+    async jwt({ token }) {
+      if (token?.email && isAdminEmail(String(token.email).toLowerCase())) {
+        (token as any).role = 'admin';
       }
       return token;
     },
+
+    /** Aggiunge id e role (string) alla sessione senza dipendere da Prisma enums */
     async session({ session, token }) {
       if (session.user) {
-        const role = (token.role as UserRole | undefined) ?? session.user.role ?? 'admin';
-        session.user.id = token.sub ?? session.user.id;
-        session.user.role = role;
+        session.user.id = (token.sub as string) ?? session.user.id;
+        (session.user as any).role = (token as any).role ?? 'admin';
       }
       return session;
     },
@@ -83,5 +89,4 @@ export const authConfig = {
 } satisfies NextAuthConfig;
 
 const authHandler = NextAuth(authConfig);
-
 export const { auth, handlers, signIn, signOut } = authHandler;

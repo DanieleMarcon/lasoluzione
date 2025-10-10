@@ -1,45 +1,348 @@
 // src/app/api/payments/checkout/route.ts
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { recalcCartTotal } from '@/lib/cart';
-import { createRevolutOrder } from '@/lib/revolut';
-import { sendOrderPaymentEmail } from '@/lib/mailer';
-import { encodeRevolutPaymentMeta, mergeEmailStatus, parsePaymentRef } from '@/lib/paymentRef';
 import { z } from 'zod';
+
+import { recalcCartTotal } from '@/lib/cart';
+import { formatEventSchedule } from '@/lib/date';
+import { issueBookingToken } from '@/lib/bookingVerification';
+import { prisma } from '@/lib/prisma';
+import { createRevolutOrder } from '@/lib/revolut';
+import { sendBookingVerifyEmail, sendOrderPaymentEmail } from '@/lib/mailer';
+import { encodeRevolutPaymentMeta, mergeEmailStatus, parsePaymentRef } from '@/lib/paymentRef';
 
 export const dynamic = 'force-dynamic';
 
+const CART_COOKIE = 'cart_token';
+
+const payloadSchema = z.object({
+  name: z.string().trim().min(1),
+  email: z.string().email(),
+  phone: z.string().trim().min(6),
+  notes: z.string().trim().max(2000).optional(),
+  agreePrivacy: z
+    .literal(true, {
+      errorMap: () => ({ message: 'Il consenso privacy è obbligatorio.' }),
+    })
+    .default(true),
+  agreeMarketing: z.boolean().optional().default(false),
+});
+
+type CartItemRow = {
+  productId: number;
+  nameSnapshot: string;
+  priceCentsSnapshot: number;
+  qty: number;
+  meta: unknown | null;
+};
+
+type EventInfo = {
+  title?: string;
+  startAt?: Date | null;
+  endAt?: Date | null;
+};
+
+function resolveBaseUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.APP_BASE_URL ?? '';
+  return raw.replace(/\/$/, '');
+}
+
+function formatWhenLabel(startAt: Date | null, endAt: Date | null): string {
+  if (!startAt) return '';
+  const label = formatEventSchedule(startAt, endAt ?? undefined);
+  if (label.trim().length > 0) return label;
+  try {
+    return startAt.toLocaleString('it-IT', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '';
+  }
+}
+
+function normalizeNotes(notes?: string | null): string | null {
+  if (typeof notes !== 'string') return null;
+  const trimmed = notes.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function mapItems(items: CartItemRow[]) {
+  return items.map((item) => ({
+    productId: item.productId,
+    name: item.nameSnapshot,
+    priceCents: item.priceCentsSnapshot,
+    qty: item.qty,
+    totalCents: item.priceCentsSnapshot * item.qty,
+  }));
+}
+
+function sumPeople(items: CartItemRow[]): number {
+  const total = items.reduce((acc, item) => acc + (Number.isFinite(item.qty) ? item.qty : 0), 0);
+  return total > 0 ? total : 1;
+}
+
+function toDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
+}
+
+function parseEventCandidate(candidate: Record<string, unknown>): EventInfo | null {
+  const titleSources = ['title', 'name', 'label'];
+  let title: string | undefined;
+  for (const key of titleSources) {
+    const raw = candidate[key];
+    if (typeof raw === 'string' && raw.trim().length) {
+      title = raw.trim();
+      break;
+    }
+  }
+
+  const startAt =
+    toDate(candidate.startAt) ??
+    toDate((candidate as any).start_at) ??
+    toDate((candidate as any).start) ??
+    toDate(candidate.date) ??
+    toDate((candidate as any).startDate);
+
+  const endAt =
+    toDate(candidate.endAt) ??
+    toDate((candidate as any).end_at) ??
+    toDate((candidate as any).end) ??
+    toDate((candidate as any).endDate);
+
+  if (!title && !startAt && !endAt) {
+    return null;
+  }
+
+  return { title, startAt: startAt ?? null, endAt: endAt ?? null };
+}
+
+function extractEventInfoFromMeta(meta: unknown): EventInfo | null {
+  if (!meta || typeof meta !== 'object') return null;
+
+  const queue: unknown[] = [meta];
+  const seen = new Set<object>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || typeof current !== 'object') continue;
+    if (seen.has(current as object)) continue;
+    seen.add(current as object);
+
+    const candidate = parseEventCandidate(current as Record<string, unknown>);
+    if (candidate) {
+      return candidate;
+    }
+
+    for (const value of Object.values(current)) {
+      if (!value) continue;
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          queue.push(entry);
+        }
+      } else if (typeof value === 'object') {
+        queue.push(value);
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractEventInfo(items: CartItemRow[]): EventInfo | null {
+  for (const item of items) {
+    const info = extractEventInfoFromMeta(item.meta ?? undefined);
+    if (info) {
+      if (!info.title && item.nameSnapshot) {
+        info.title = item.nameSnapshot;
+      }
+      return info;
+    }
+  }
+  return null;
+}
+
 function getBaseUrl() {
-  // togli l'eventuale trailing slash
   const fromEnv = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, '');
   return fromEnv || 'http://localhost:3000';
 }
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({} as any));
-    const parsed = z.object({ orderId: z.string().min(1) }).safeParse(body ?? {});
+    const payload = await req.json().catch(() => ({}));
+    const parsed = payloadSchema.safeParse(payload ?? {});
     if (!parsed.success) {
-      return NextResponse.json({ ok: false, error: 'Missing orderId' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: 'invalid_payload' }, { status: 400 });
     }
-    const { orderId } = parsed.data;
 
-    // Recupero ordine
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    const jar = cookies();
+    const cartId = jar.get(CART_COOKIE)?.value ?? null;
+    if (!cartId) {
+      return NextResponse.json({ ok: false, error: 'cart_not_found' }, { status: 404 });
+    }
+
+    const cart = await prisma.cart.findUnique({
+      where: { id: cartId },
+      include: { items: true },
+    });
+
+    if (!cart || !Array.isArray(cart.items) || cart.items.length === 0) {
+      return NextResponse.json({ ok: false, error: 'cart_empty' }, { status: 400 });
+    }
+
+    if (cart.status !== 'open' && cart.status !== 'locked') {
+      return NextResponse.json({ ok: false, error: 'cart_not_ready' }, { status: 400 });
+    }
+
+    const totalCents = await recalcCartTotal(cart.id);
+    const orderStatus = totalCents > 0 ? 'pending_payment' : 'pending';
+
+    const normalizedNotes = normalizeNotes(parsed.data.notes ?? null);
+
+    let order = await prisma.order.findUnique({ where: { cartId: cart.id } });
+
     if (!order) {
-      return NextResponse.json({ ok: false, error: 'Order not found' }, { status: 404 });
+      try {
+        order = await prisma.order.create({
+          data: {
+            cartId: cart.id,
+            email: parsed.data.email,
+            name: parsed.data.name,
+            phone: parsed.data.phone,
+            notes: normalizedNotes,
+            status: orderStatus,
+            totalCents,
+          },
+        });
+      } catch (error: any) {
+        if (error?.code === 'P2002') {
+          order = await prisma.order.findUnique({ where: { cartId: cart.id } });
+        } else {
+          throw error;
+        }
+      }
     }
 
-    // Ricalcolo totale dal carrello (fonte di verità)
-    const totalCents = await recalcCartTotal(order.cartId);
+    if (!order) {
+      return NextResponse.json({ ok: false, error: 'order_unavailable' }, { status: 500 });
+    }
 
-    // Allineo l'ordine se necessario (non obbligatorio ma utile)
-    if (order.totalCents !== totalCents) {
+    if (order.status === 'paid' || order.status === 'confirmed') {
+      return NextResponse.json(
+        {
+          ok: true,
+          data: {
+            orderId: order.id,
+            amountCents: totalCents,
+            status: order.status,
+          },
+        },
+        { status: 200 }
+      );
+    }
+
+    order = await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        email: parsed.data.email,
+        name: parsed.data.name,
+        phone: parsed.data.phone,
+        notes: normalizedNotes,
+        status: orderStatus,
+        totalCents,
+      },
+    });
+
+    const cartItems = cart.items as CartItemRow[];
+
+    if (totalCents <= 0) {
+      const mappedItems = mapItems(cartItems);
+      const people = sumPeople(cartItems);
+      const eventInfo = extractEventInfo(cartItems);
+      const primaryItem = cartItems[0];
+      const bookingDate = eventInfo?.startAt ?? new Date();
+      const bookingType = eventInfo ? 'evento' : 'pranzo';
+      const tierLabel = eventInfo?.title ?? primaryItem?.nameSnapshot ?? 'La Soluzione';
+      const tierPriceCents = primaryItem?.priceCentsSnapshot ?? null;
+
+      const bookingData = {
+        date: bookingDate,
+        people,
+        name: parsed.data.name,
+        email: parsed.data.email,
+        phone: parsed.data.phone,
+        notes: normalizedNotes,
+        agreePrivacy: true,
+        agreeMarketing: parsed.data.agreeMarketing ?? false,
+        status: 'pending' as const,
+        type: bookingType as any,
+        order: { connect: { id: order.id } },
+        lunchItemsJson: mappedItems as any,
+        subtotalCents: totalCents,
+        totalCents,
+        tierLabel,
+        tierPriceCents,
+        prepayToken: null,
+      };
+
+      const existingBooking = await prisma.booking.findFirst({ where: { orderId: order.id } });
+      const booking = existingBooking
+        ? await prisma.booking.update({
+            where: { id: existingBooking.id },
+            data: bookingData,
+          })
+        : await prisma.booking.create({ data: bookingData });
+
+      await prisma.bookingVerification.deleteMany({ where: { bookingId: booking.id } });
+      const verification = await issueBookingToken(booking.id, booking.email);
+
+      const baseUrl = resolveBaseUrl();
+      const whenLabel = formatWhenLabel(eventInfo?.startAt ?? booking.date, eventInfo?.endAt ?? null);
+      const eventTitle = tierLabel ?? 'La Soluzione';
+
+      await sendBookingVerifyEmail({
+        to: booking.email,
+        bookingId: booking.id,
+        token: verification.token,
+        eventTitle,
+        whenLabel,
+        baseUrl,
+      });
+
       await prisma.order.update({
         where: { id: order.id },
-        data: { totalCents },
+        data: { status: 'pending', paymentRef: null },
       });
+
+      return NextResponse.json(
+        {
+          ok: true,
+          bookingId: booking.id,
+          nextUrl: `/checkout/email-sent?bookingId=${booking.id}`,
+        },
+        { status: 201 }
+      );
     }
+
+    await prisma.booking.updateMany({
+      where: { orderId: order.id },
+      data: {
+        agreePrivacy: true,
+        agreeMarketing: parsed.data.agreeMarketing ?? false,
+      },
+    });
 
     const publicKey = process.env.NEXT_PUBLIC_REVOLUT_PUBLIC_KEY;
     const configWarning = publicKey
@@ -49,27 +352,9 @@ export async function POST(req: Request) {
       console.warn('[payments][checkout] missing public checkout key');
     }
 
-    // Costruisco i redirect URL (utili per hosted fallback Revolut)
     const base = getBaseUrl();
     const returnUrl = process.env.PAY_RETURN_URL || `${base}/checkout/return`;
     const cancelUrl = process.env.PAY_CANCEL_URL || `${base}/checkout/cancel`;
-
-    // Flusso a 0€
-    if (totalCents <= 0) {
-      const paymentRef = 'FREE';
-      await prisma.order.update({
-        where: { id: orderId },
-        data: { status: 'paid', paymentRef },
-      });
-      const redirectUrl = `${returnUrl}?orderId=${encodeURIComponent(order.id)}`;
-      return NextResponse.json({
-        ok: true,
-        data: { orderId: order.id, amountCents: totalCents, redirectUrl, paymentRef, configWarning },
-      });
-    }
-
-    // Crea ordine su Revolut
-    const description = `Prenotazione #${order.id} - Bar La Soluzione`;
 
     const parsedRef = parsePaymentRef(order.paymentRef);
     if (parsedRef.kind === 'revolut' && parsedRef.meta.checkoutPublicId) {
@@ -87,6 +372,7 @@ export async function POST(req: Request) {
       });
     }
 
+    const description = `Prenotazione #${order.id} - Bar La Soluzione`;
     const revolutOrder = await createRevolutOrder({
       amountMinor: totalCents,
       currency: 'EUR',

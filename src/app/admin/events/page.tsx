@@ -3,21 +3,12 @@ import EventsPageClient, { type AdminEvent } from '@/components/admin/events/Eve
 import { ToastProvider } from '@/components/admin/ui/toast';
 import { assertAdmin } from '@/lib/admin/session';
 import { prisma } from '@/lib/prisma';
+import { ensureEventItemModel } from '@/utils/dev-guards';
 import type { EventItem } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 
 const DEFAULT_PAGE_SIZE = 10;
-
-function assertEventItemModelExists(p: typeof prisma) {
-  // @ts-expect-error: runtime guard
-  if (!p || typeof (p as any).eventItem?.count !== 'function') {
-    throw new Error(
-      'Prisma client non include EventItem. Esegui: `npx prisma migrate dev && npx prisma generate`. ' +
-        'Verifica che il modello sia `model EventItem { ... }` e che questa pagina NON usi runtime Edge.'
-    );
-  }
-}
 
 function toAdminEventItemDTO(event: EventItem) {
   return {
@@ -40,7 +31,7 @@ function toAdminEventItemDTO(event: EventItem) {
 export default async function AdminEventsPage() {
   await assertAdmin();
 
-  assertEventItemModelExists(prisma);
+  ensureEventItemModel();
 
   const [total, items] = await Promise.all([
     prisma.eventItem.count(),

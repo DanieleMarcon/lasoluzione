@@ -8,22 +8,24 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/* -------------------- BOOKING & LEGACY -------------------- */
+/**
+ * -------------------- BOOKING & LEGACY --------------------
+ */
 
 model Booking {
-  id             Int            @id @default(autoincrement())
-  date           DateTime
-  people         Int
-  name           String
-  email          String
-  phone          String
-  notes          String?
+  id     Int      @id @default(autoincrement())
+  date   DateTime
+  people Int
+  name   String
+  email  String
+  phone  String
+  notes  String?
 
   // Estensioni
   type           BookingType
-  agreePrivacy   Boolean        @default(false)
-  agreeMarketing Boolean        @default(false)
-  status         BookingStatus  @default(pending)
+  agreePrivacy   Boolean       @default(false)
+  agreeMarketing Boolean       @default(false)
+  status         BookingStatus @default(pending)
   prepayToken    String?
 
   lunchItemsJson      Json?
@@ -38,46 +40,46 @@ model Booking {
   tierLabel           String?
   tierPriceCents      Int?
 
-  orderId        String?
-  order          Order?         @relation(fields: [orderId], references: [id])
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id])
 
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  verifications  BookingVerification[]
+  verifications BookingVerification[]
 }
 
 model BookingVerification {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   bookingId Int
   email     String
-  token     String   @unique
+  token     String    @unique
   nonce     String
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
-  Booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  Booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([bookingId])
   @@index([expiresAt])
 }
 
 model BookingSettings {
-  id                  Int      @id @default(1)
-  enableDateTimeStep  Boolean  @default(true)
+  id                  Int       @id @default(1)
+  enableDateTimeStep  Boolean   @default(true)
   fixedDate           DateTime?
   fixedTime           String?
   enabledTypes        Json
   typeLabels          Json
   prepayTypes         Json
   prepayAmountCents   Int?
-  coverCents          Int      @default(0)
-  lunchRequirePrepay  Boolean  @default(false)
-  dinnerCoverCents    Int      @default(0)
-  dinnerRequirePrepay Boolean  @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  coverCents          Int       @default(0)
+  lunchRequirePrepay  Boolean   @default(false)
+  dinnerCoverCents    Int       @default(0)
+  dinnerRequirePrepay Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 }
 
 enum BookingType {
@@ -96,35 +98,37 @@ enum BookingStatus {
   cancelled
 }
 
-/* -------------------- CATALOGO / CARRELLO -------------------- */
+/**
+ * -------------------- CATALOGO / CARRELLO --------------------
+ */
 
 model Product {
-  id             Int       @id @default(autoincrement())
-  slug           String    @unique
-  name           String
-  description    String?
-  ingredients    String?
-  allergens      String?
-  priceCents     Int       @default(0)
-  unitCostCents  Int       @default(0)
-  supplierName   String?
-  stockQty       Int       @default(0)
-  imageUrl       String?
-  category       String?
-  order          Int       @default(0)
-  active         Boolean   @default(true)
-  sourceType     String?
-  sourceId       String?
+  id            Int     @id @default(autoincrement())
+  slug          String  @unique
+  name          String
+  description   String?
+  ingredients   String?
+  allergens     String?
+  priceCents    Int     @default(0)
+  unitCostCents Int     @default(0)
+  supplierName  String?
+  stockQty      Int     @default(0)
+  imageUrl      String?
+  category      String?
+  order         Int     @default(0)
+  active        Boolean @default(true)
+  sourceType    String?
+  sourceId      String?
 
   // Flag nutrizionali
-  isVegan        Boolean   @default(false)
-  isVegetarian   Boolean   @default(false)
-  isGlutenFree   Boolean   @default(false)
-  isLactoseFree  Boolean   @default(false)
-  isOrganic      Boolean   @default(false)
+  isVegan       Boolean @default(false)
+  isVegetarian  Boolean @default(false)
+  isGlutenFree  Boolean @default(false)
+  isLactoseFree Boolean @default(false)
+  isOrganic     Boolean @default(false)
 
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // RELAZIONI
   cartItems      CartItem[]
@@ -136,18 +140,18 @@ model Product {
 }
 
 model CatalogSection {
-  id             Int              @id @default(autoincrement())
-  key            String           @unique   // 'eventi' | 'aperitivo' | 'pranzo' | 'cena' | 'colazione'
+  id             Int      @id @default(autoincrement())
+  key            String   @unique // 'eventi' | 'aperitivo' | 'pranzo' | 'cena' | 'colazione'
   title          String
   description    String?
-  enableDateTime Boolean          @default(false)
-  active         Boolean          @default(true)
-  displayOrder   Int              @default(0)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  enableDateTime Boolean  @default(false)
+  active         Boolean  @default(true)
+  displayOrder   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   // RELAZIONI
-  products       SectionProduct[]
+  products SectionProduct[]
 }
 
 model SectionProduct {
@@ -166,19 +170,19 @@ model SectionProduct {
 }
 
 model EventInstance {
-  id                     Int      @id @default(autoincrement())
-  productId              Int
-  slug                   String   @unique
-  title                  String
-  description            String?
-  startAt                DateTime
-  endAt                  DateTime?
-  showOnHome             Boolean  @default(false)
-  active                 Boolean  @default(true)
-  capacity               Int?
-  allowEmailOnlyBooking  Boolean  @default(false)
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  id                    Int       @id @default(autoincrement())
+  productId             Int
+  slug                  String    @unique
+  title                 String
+  description           String?
+  startAt               DateTime
+  endAt                 DateTime?
+  showOnHome            Boolean   @default(false)
+  active                Boolean   @default(true)
+  capacity              Int?
+  allowEmailOnlyBooking Boolean   @default(false)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   // RELAZIONI
   product Product @relation(fields: [productId], references: [id])
@@ -187,19 +191,19 @@ model EventInstance {
 }
 
 model EventItem {
-  id          String   @id @default(cuid())
-  slug        String   @unique
+  id          String    @id @default(cuid())
+  slug        String    @unique
   title       String
   description String?
   startAt     DateTime
   endAt       DateTime?
-  active      Boolean  @default(true)
-  showOnHome  Boolean  @default(false)
+  active      Boolean   @default(true)
+  showOnHome  Boolean   @default(false)
   capacity    Int?
-  priceCents  Int      @default(0)
-  emailOnly   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  priceCents  Int       @default(0)
+  emailOnly   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model SectionEvent {
@@ -213,24 +217,26 @@ model SectionEvent {
   @@index([eventId])
 }
 
-/* -------------------- CARRELLO / ORDINI -------------------- */
+/**
+ * -------------------- CARRELLO / ORDINI --------------------
+ */
 
 model Cart {
-  id         String     @id @default(cuid())
-  status     String     @default("open")
-  totalCents Int        @default(0)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  id         String   @id @default(cuid())
+  status     String   @default("open")
+  totalCents Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   // RELAZIONI
-  items      CartItem[]
-  order      Order?
+  items CartItem[]
+  order Order?
 }
 
 model CartItem {
-  id                 Int      @id @default(autoincrement())
-  cartId             String
-  productId          Int
+  id        Int    @id @default(autoincrement())
+  cartId    String
+  productId Int
 
   // snapshot per stabilità storica
   nameSnapshot       String
@@ -242,8 +248,8 @@ model CartItem {
   updatedAt          DateTime @updatedAt
 
   // RELAZIONI
-  cart     Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id])
+  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
 
   @@index([cartId])
   @@index([productId])
@@ -263,14 +269,16 @@ model Order {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  cart      Cart      @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  bookings  Booking[]
+  cart     Cart      @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  bookings Booking[]
 
   @@index([cartId, status])
   @@index([paymentRef])
 }
 
-/* -------------------- LEGACY MENU / EVENT TIERS -------------------- */
+/**
+ * -------------------- LEGACY MENU / EVENT TIERS --------------------
+ */
 
 model MenuDish {
   id          Int      @id @default(autoincrement())
@@ -294,13 +302,15 @@ model EventTier {
   active     Boolean @default(true)
   order      Int     @default(0)
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([type, active, order])
 }
 
-/* -------------------- AUTH.JS -------------------- */
+/**
+ * -------------------- AUTH.JS --------------------
+ */
 
 model User {
   id            String    @id @default(cuid())

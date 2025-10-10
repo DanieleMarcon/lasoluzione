@@ -135,6 +135,24 @@ Auth e Middleware invariati.
 - **F3** — La validazione blocca prenotazioni su istanze evento inattive anche se chiamate tramite `eventInstanceId`.
 - **F4** — L'esportazione Prenotazioni produce `bookings.csv` con le nuove colonne consensi, allineando naming e contenuto.
 
+## Checkout unificato (carrello)
+- Il form del checkout raccoglie i consensi privacy/marketing tramite due checkbox aggiuntive (privacy obbligatoria, marketing opzionale).
+- Se `totalCents === 0` il checkout crea un ordine `pending` e una prenotazione `pending` con i consensi salvati, invia **solo** la mail “Conferma la tua prenotazione” e attende il click sul link di verifica prima di inviare le email d’ordine.
+- Dopo la conferma via `/api/bookings/confirm?token=…` la prenotazione passa a `confirmed`, l’ordine diventa `confirmed` e vengono spedite le due mail d’ordine (cliente + admin) riusando i template esistenti.
+- Se `totalCents > 0` il flusso di pagamento Revolut resta invariato; i consensi vengono comunque salvati con l’ordine (o aggiornati sulla prenotazione esistente).
+- Esempio payload verso `POST /api/payments/checkout`:
+
+```json
+{
+  "name": "Mario Rossi",
+  "email": "mario@example.com",
+  "phone": "3331234567",
+  "notes": "Allergie da segnalare",
+  "agreePrivacy": true,
+  "agreeMarketing": false
+}
+```
+
 ## Flusso email
 - **Fase 1** — Invio immediato della mail di verifica al cliente con link `Conferma la tua prenotazione`; nessuna notifica admin viene spedita in questa fase.
 - **Fase 2** — Al click sul link di verifica il booking passa a `confirmed`, parte la mail “Prenotazione confermata” al cliente e viene inviata la notifica “Nuova prenotazione confermata” all’admin (se `MAIL_TO_BOOKINGS` è configurata).

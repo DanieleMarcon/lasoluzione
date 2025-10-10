@@ -262,3 +262,4 @@ Apri /eventi/capodanno-2025, invia il form (privacy obbligatoria), conferma dal 
 
 > [!IMPORTANT]
 > 🚀 **MVP Prenotazione via email (singolo evento)** — Consulta la guida dedicata in [`docs/EVENTI_EMAIL_ONLY_MVP.md`](docs/EVENTI_EMAIL_ONLY_MVP.md) per setup, flusso e fix post-audit.
+> Il checkout del carrello gestisce anche l’opzione Prenota senza pagare con verifica email.

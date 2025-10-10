@@ -34,6 +34,11 @@ type EventInfo = {
   endAt?: Date | null;
 };
 
+type CartWithItems = {
+  id: string;
+  items: CartItemRow[];
+};
+
 function resolveBaseUrl(): string {
   const raw =
     process.env.NEXT_PUBLIC_BASE_URL ??
@@ -168,6 +173,95 @@ function sumPeople(items: CartItemRow[]): number {
   return total > 0 ? total : 1;
 }
 
+type EmailOnlyFlagEvaluation = {
+  flagFound: boolean;
+  emailOnly: boolean;
+};
+
+function normalizeEmailOnlyValue(value: unknown): boolean | null {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return null;
+    if (['true', '1', 'yes', 'y', 'si', 'sì'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'n'].includes(normalized)) {
+      return false;
+    }
+  }
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  return null;
+}
+
+function extractEmailOnlyFromMeta(meta: unknown): EmailOnlyFlagEvaluation {
+  if (!meta || typeof meta !== 'object') {
+    return { flagFound: false, emailOnly: false };
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(meta, 'emailOnly')) {
+    return { flagFound: false, emailOnly: false };
+  }
+
+  const value = (meta as Record<string, unknown>).emailOnly;
+  const normalized = normalizeEmailOnlyValue(value);
+  if (normalized === null) {
+    return { flagFound: true, emailOnly: false };
+  }
+
+  return { flagFound: true, emailOnly: normalized };
+}
+
+async function evaluateEmailOnly(cart: CartWithItems): Promise<EmailOnlyFlagEvaluation> {
+  if (!cart.items || cart.items.length === 0) {
+    return { flagFound: false, emailOnly: false };
+  }
+
+  let flagFound = false;
+  for (const item of cart.items) {
+    const { flagFound: metaFlagFound, emailOnly: metaEmailOnly } = extractEmailOnlyFromMeta(item.meta ?? undefined);
+    if (metaFlagFound) {
+      flagFound = true;
+      if (metaEmailOnly) {
+        return { flagFound: true, emailOnly: true };
+      }
+    }
+  }
+
+  const productIds = Array.from(
+    new Set(
+      cart.items
+        .map((item) => (typeof item.productId === 'number' ? item.productId : Number.parseInt(String(item.productId), 10)))
+        .filter((id) => Number.isFinite(id)) as number[],
+    ),
+  );
+
+  if (productIds.length === 0) {
+    return { flagFound, emailOnly: false };
+  }
+
+  const instances = await prisma.eventInstance.findMany({
+    where: { productId: { in: productIds } },
+    select: { allowEmailOnlyBooking: true },
+  });
+
+  if (instances.length === 0) {
+    return { flagFound, emailOnly: false };
+  }
+
+  const hasEmailOnlyInstance = instances.some((instance) => instance.allowEmailOnlyBooking);
+  if (hasEmailOnlyInstance) {
+    return { flagFound: true, emailOnly: true };
+  }
+
+  return { flagFound: true, emailOnly: false };
+}
+
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
@@ -207,21 +301,37 @@ export async function GET(request: Request) {
       return new NextResponse('Token non valido o scaduto', { status: 400 });
     }
 
+    const cart = await prisma.cart.findUnique({
+      where: { id: order.cartId },
+      include: { items: true },
+    });
+
+    const cartItems = cart?.items ? (cart.items as CartItemRow[]) : [];
+    let emailOnlyFlagFound = false;
+    let emailOnly = false;
+
+    if (cart && cartItems.length) {
+      const evaluation = await evaluateEmailOnly({ id: cart.id, items: cartItems });
+      emailOnlyFlagFound = evaluation.flagFound;
+      emailOnly = evaluation.emailOnly;
+    }
+
+    if (!emailOnlyFlagFound) {
+      const fallbackTotal = cart?.totalCents ?? order.totalCents ?? 0;
+      emailOnly = fallbackTotal <= 0;
+    }
+
+    logger.info('email_verify.email_only', { cartId: order.cartId, orderId: order.id, emailOnly });
+
     let bookingId: number | null = null;
 
-    if (order.totalCents <= 0 && order.status !== 'confirmed') {
-      const cart = await prisma.cart.findUnique({
-        where: { id: order.cartId },
-        include: { items: true },
-      });
-
-      if (!cart || !Array.isArray(cart.items) || cart.items.length === 0) {
-        console.error('[payments][email-verify] cart not found or empty during confirmation', {
+    if (emailOnly) {
+      if (!cart || cartItems.length === 0) {
+        console.error('[payments][email-verify] cart not found or empty during email-only confirmation', {
           orderId: order.id,
           cartId: order.cartId,
         });
-      } else {
-        const cartItems = cart.items as CartItemRow[];
+      } else if (order.status !== 'confirmed') {
         const mappedItems = mapItems(cartItems);
         const people = sumPeople(cartItems);
         const eventInfo = extractEventInfo(cartItems);
@@ -317,19 +427,28 @@ export async function GET(request: Request) {
           console.error('[payments][email-verify] booking confirmation admin email failed', error);
         }
 
-        logger.info('order.confirmed.email_only', {
-          action: 'order.confirmed.email_only',
-          orderId: order.id,
-          bookingId: result.id,
-          email: order.email,
+      } else {
+        const existingConfirmedBooking = await prisma.booking.findFirst({
+          where: { orderId: order.id },
+          orderBy: { id: 'desc' },
         });
+        bookingId = existingConfirmedBooking?.id ?? null;
       }
-    } else if (order.totalCents <= 0) {
-      const existingConfirmedBooking = await prisma.booking.findFirst({
-        where: { orderId: order.id },
-        orderBy: { id: 'desc' },
-      });
-      bookingId = existingConfirmedBooking?.id ?? null;
+
+      const baseUrl = resolveBaseUrl();
+      const params = new URLSearchParams({ orderId: order.id });
+      if (bookingId) {
+        params.append('bookingId', String(bookingId));
+      }
+      const successUrl = `${baseUrl}/checkout/success?${params.toString()}`;
+
+      const response = NextResponse.redirect(successUrl);
+      response.cookies.delete(VERIFY_COOKIE);
+
+      logger.info('order.confirmed.email_only', { orderId: order.id, bookingId, email: order.email });
+      logger.info('order.verify.ok', { orderId: order.id, email: order.email, emailOnly: true });
+
+      return response;
     }
 
     const baseUrl = resolveBaseUrl();
@@ -346,12 +465,7 @@ export async function GET(request: Request) {
       path: '/',
     });
 
-    logger.info('order.verify.ok', {
-      action: 'order.verify.ok',
-      email,
-      orderId: order.id,
-      bookingId,
-    });
+    logger.info('order.verify.ok', { orderId: order.id, email: order.email, emailOnly: false });
 
     return response;
   } catch (error) {

@@ -7,8 +7,9 @@ import { useEffect } from 'react';
 import { useCart } from '@/hooks/useCart';
 
 export default function CheckoutSuccessPage() {
-  const sp = useSearchParams();
-  const orderId = sp.get('orderId');
+  const searchParams = useSearchParams();
+  const orderId = searchParams.get('orderId');
+  const bookingId = searchParams.get('bookingId');
   const { clearCartToken } = useCart();
 
   useEffect(() => {
@@ -16,26 +17,31 @@ export default function CheckoutSuccessPage() {
   }, [clearCartToken]);
 
   return (
-    <main className="container" style={{ padding: '2.5rem 1rem', maxWidth: 640, margin: '0 auto' }}>
-      <h1 style={{ color: '#14532d', textAlign: 'center', marginBottom: '1rem' }}>Grazie per l’ordine!</h1>
-      <p style={{ color: '#0f172a', fontSize: '1.1rem', textAlign: 'center' }}>
-        Il tuo ordine{orderId ? ` #${orderId}` : ''} è stato confermato con successo. Riceverai una email di riepilogo con tutti i dettagli.
-      </p>
-      <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-        <Link
-          href="/prenota"
-          className="btn btn-primary"
-          style={{ paddingInline: '1.5rem', borderRadius: 999 }}
-        >
-          Torna alle prenotazioni
-        </Link>
-        <Link
-          href="/"
-          className="btn btn-outline-secondary"
-          style={{ paddingInline: '1.5rem', borderRadius: 999 }}
-        >
-          Vai alla home
-        </Link>
+    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+      <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-lg">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-3xl">
+          ✅
+        </div>
+        <h1 className="mt-6 text-3xl font-semibold text-slate-900 md:text-4xl">
+          Prenotazione confermata!
+        </h1>
+        <p className="mt-4 text-base text-slate-600 md:text-lg">
+          Grazie per la tua prenotazione. Ti abbiamo inviato un’email con tutti i dettagli dell’ordine.
+        </p>
+        {(orderId || bookingId) && (
+          <div className="mt-6 space-y-1 text-sm text-slate-500">
+            {orderId && <p>ID ordine: {orderId}</p>}
+            {bookingId && <p>ID prenotazione: {bookingId}</p>}
+          </div>
+        )}
+        <div className="mt-10 flex justify-center">
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            Torna alla Home
+          </Link>
+        </div>
       </div>
     </main>
   );

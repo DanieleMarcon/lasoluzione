@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { prisma } from '@/lib/prisma';
+import { ensureEventItemModel } from '@/utils/dev-guards';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -60,6 +61,8 @@ function createExcerpt(description: string | null): string | null {
 
 export async function GET(request: NextRequest) {
   try {
+    ensureEventItemModel();
+
     const searchParams = request.nextUrl.searchParams;
     const limit = parseLimit(searchParams.get('limit'));
     const includePast = parseIncludePast(searchParams.get('includePast'));

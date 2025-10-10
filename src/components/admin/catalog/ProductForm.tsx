@@ -87,7 +87,7 @@ const DEFAULT_STATE: ProductFormState = {
   description: '',
   ingredients: '',
   allergens: '',
-  priceCents: '0',
+  priceCents: '0,00',
   unitCostCents: '0',
   supplierName: '',
   stockQty: '0',
@@ -127,7 +127,8 @@ function buildState(values?: ProductFormInitialValues): ProductFormState {
     description: toStringValue(values.description),
     ingredients: toStringValue(values.ingredients),
     allergens: toStringValue(values.allergens),
-    priceCents: toNumberString(values.priceCents, DEFAULT_STATE.priceCents),
+    priceCents:
+      values.priceCents != null ? formatPriceInput(values.priceCents) : DEFAULT_STATE.priceCents,
     unitCostCents: toNumberString(values.unitCostCents, DEFAULT_STATE.unitCostCents),
     supplierName: toStringValue(values.supplierName),
     stockQty: toNumberString(values.stockQty, DEFAULT_STATE.stockQty),
@@ -156,6 +157,25 @@ function parseOptionalInt(value: string) {
     return 0;
   }
   return parseRequiredInt(value);
+}
+
+function formatPriceInput(cents: number) {
+  return (cents / 100).toLocaleString('it-IT', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function parsePriceInput(value: string) {
+  const normalized = value.replace(/\s+/g, '').replace(',', '.');
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+  return Math.round(parsed * 100);
 }
 
 export default function ProductForm({ productId, initialValues, onSuccess, onCancel }: ProductFormProps) {
@@ -211,7 +231,7 @@ export default function ProductForm({ productId, initialValues, onSuccess, onCan
       return;
     }
 
-    const priceCents = parseRequiredInt(form.priceCents);
+    const priceCents = parsePriceInput(form.priceCents);
     if (priceCents === null) {
       toast.error('Prezzo non valido (minimo 0)');
       return;
@@ -360,14 +380,14 @@ export default function ProductForm({ productId, initialValues, onSuccess, onCan
 
       <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
         <label style={fieldLabelStyle}>
-          <span>Prezzo (cent)</span>
+          <span>Prezzo (€)</span>
           <input
-            type="number"
-            min={0}
-            step={1}
+            type="text"
+            inputMode="decimal"
             value={form.priceCents}
             onChange={(event) => setForm((prev) => ({ ...prev, priceCents: event.target.value }))}
             style={inputStyle}
+            placeholder="0,00"
             required
           />
         </label>

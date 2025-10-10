@@ -68,15 +68,52 @@ export async function POST(request: Request, ctx: RouteContext) {
 
   const product = await prisma.product.findUnique({
     where: { id: payload.productId },
-    select: { priceCents: true, name: true, imageUrl: true },
+    select: {
+      priceCents: true,
+      name: true,
+      imageUrl: true,
+      slug: true,
+      sourceType: true,
+    },
   });
 
   if (!product) {
     return NextResponse.json({ ok: false, error: 'product_not_found' }, { status: 404 });
   }
 
-  const snapshotPrice = product.priceCents;
-  const rawName = payload.nameSnapshot ?? product.name ?? 'Prodotto';
+  let eventMeta: { type: 'event'; eventId: string; emailOnly: boolean } | null = null;
+  let snapshotPrice = product.priceCents;
+  let rawName = payload.nameSnapshot ?? product.name ?? 'Prodotto';
+
+  const eventInstance = await prisma.eventInstance.findFirst({
+    where: { productId: payload.productId },
+    select: { slug: true },
+  });
+
+  let eventSlug: string | null = null;
+  if (eventInstance?.slug) {
+    eventSlug = eventInstance.slug;
+  } else if (typeof product.sourceType === 'string' && product.sourceType.includes('event')) {
+    eventSlug = product.slug;
+  }
+
+  if (eventSlug) {
+    const eventItem = await prisma.eventItem.findUnique({
+      where: { slug: eventSlug },
+      select: { id: true, title: true, priceCents: true, emailOnly: true },
+    });
+
+    if (eventItem) {
+      snapshotPrice = eventItem.priceCents;
+      rawName = eventItem.title ?? rawName;
+      eventMeta = {
+        type: 'event',
+        eventId: eventItem.id,
+        emailOnly: eventItem.emailOnly,
+      };
+    }
+  }
+
   const snapshotName =
     typeof rawName === 'string' && rawName.trim().length > 0
       ? rawName.trim()
@@ -96,7 +133,9 @@ export async function POST(request: Request, ctx: RouteContext) {
       priceCentsSnapshot: snapshotPrice,
       imageUrlSnapshot: snapshotImage,
     };
-    if (payload.meta !== undefined && payload.meta !== null) {
+    if (eventMeta) {
+      data.meta = eventMeta;
+    } else if (payload.meta !== undefined && payload.meta !== null) {
       data.meta = payload.meta as any;
     }
 
@@ -118,7 +157,9 @@ export async function POST(request: Request, ctx: RouteContext) {
     priceCentsSnapshot: snapshotPrice,
     imageUrlSnapshot: snapshotImage,
   };
-  if (payload.meta !== undefined && payload.meta !== null) {
+  if (eventMeta) {
+    dataCreate.meta = eventMeta;
+  } else if (payload.meta !== undefined && payload.meta !== null) {
     dataCreate.meta = payload.meta as any;
   }
 

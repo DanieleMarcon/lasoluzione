@@ -204,12 +204,23 @@ function extractEmailOnlyFromMeta(meta: unknown): EmailOnlyFlagEvaluation {
     return { flagFound: false, emailOnly: false };
   }
 
-  if (!Object.prototype.hasOwnProperty.call(meta, 'emailOnly')) {
+  const record = meta as Record<string, unknown>;
+  const metaType = typeof record.type === 'string' ? record.type : null;
+  const hasEmailOnly = Object.prototype.hasOwnProperty.call(record, 'emailOnly');
+
+  if (metaType === 'event' && hasEmailOnly) {
+    const normalized = normalizeEmailOnlyValue(record.emailOnly);
+    if (normalized === null) {
+      return { flagFound: true, emailOnly: false };
+    }
+    return { flagFound: true, emailOnly: normalized };
+  }
+
+  if (!hasEmailOnly) {
     return { flagFound: false, emailOnly: false };
   }
 
-  const value = (meta as Record<string, unknown>).emailOnly;
-  const normalized = normalizeEmailOnlyValue(value);
+  const normalized = normalizeEmailOnlyValue(record.emailOnly);
   if (normalized === null) {
     return { flagFound: true, emailOnly: false };
   }
@@ -222,15 +233,24 @@ async function evaluateEmailOnly(cart: CartWithItems): Promise<EmailOnlyFlagEval
     return { flagFound: false, emailOnly: false };
   }
 
-  let flagFound = false;
+  let flaggedItems = 0;
+  let allEmailOnly = true;
+
   for (const item of cart.items) {
     const { flagFound: metaFlagFound, emailOnly: metaEmailOnly } = extractEmailOnlyFromMeta(item.meta ?? undefined);
     if (metaFlagFound) {
-      flagFound = true;
-      if (metaEmailOnly) {
-        return { flagFound: true, emailOnly: true };
+      flaggedItems += 1;
+      if (!metaEmailOnly) {
+        allEmailOnly = false;
       }
+    } else {
+      allEmailOnly = false;
     }
+  }
+
+  if (flaggedItems > 0) {
+    const allFlagged = flaggedItems === cart.items.length;
+    return { flagFound: true, emailOnly: allFlagged && allEmailOnly };
   }
 
   const productIds = Array.from(
@@ -242,7 +262,7 @@ async function evaluateEmailOnly(cart: CartWithItems): Promise<EmailOnlyFlagEval
   );
 
   if (productIds.length === 0) {
-    return { flagFound, emailOnly: false };
+    return { flagFound: false, emailOnly: false };
   }
 
   const instances = await prisma.eventInstance.findMany({
@@ -251,7 +271,7 @@ async function evaluateEmailOnly(cart: CartWithItems): Promise<EmailOnlyFlagEval
   });
 
   if (instances.length === 0) {
-    return { flagFound, emailOnly: false };
+    return { flagFound: false, emailOnly: false };
   }
 
   const hasEmailOnlyInstance = instances.some((instance) => instance.allowEmailOnlyBooking);

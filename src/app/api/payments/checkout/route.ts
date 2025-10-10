@@ -51,6 +51,21 @@ type EventInfo = {
   endAt?: Date | null;
 };
 
+function isEmailOnlyEventItem(item: CartItemRow): boolean {
+  if (!item?.meta || typeof item.meta !== 'object') return false;
+  const meta = item.meta as Record<string, unknown>;
+  const metaType = typeof meta.type === 'string' ? meta.type : null;
+  if (metaType !== 'event') return false;
+  return meta.emailOnly === true;
+}
+
+function isEmailOnlyCart(items: CartItemRow[]): boolean {
+  if (!Array.isArray(items) || items.length === 0) {
+    return false;
+  }
+  return items.every((item) => isEmailOnlyEventItem(item));
+}
+
 type OrderVerifyTokenPayload = {
   cartId: string;
   email: string;
@@ -252,7 +267,10 @@ export async function POST(req: Request) {
     }
 
     const totalCents = await recalcCartTotal(cart.id);
-    const orderStatus = totalCents > 0 ? 'pending_payment' : 'pending';
+    const cartItems = cart.items as CartItemRow[];
+    const emailOnlyCart = isEmailOnlyCart(cartItems);
+
+    const orderStatus = emailOnlyCart ? 'pending' : totalCents > 0 ? 'pending_payment' : 'pending';
 
     const normalizedNotes = normalizeNotes(parsed.data.notes ?? null);
 
@@ -309,8 +327,6 @@ export async function POST(req: Request) {
         totalCents,
       },
     });
-
-    const cartItems = cart.items as CartItemRow[];
 
     const secret = process.env.NEXTAUTH_SECRET;
     if (!secret) {
@@ -381,7 +397,7 @@ export async function POST(req: Request) {
     const marketingConsent =
       (verifiedPayload?.agreeMarketing ?? marketingConsentCandidate) === true;
 
-    if (totalCents <= 0) {
+    if (emailOnlyCart) {
       // Email-only (gratis): crea/aggiorna booking e invia mail di verifica booking
       const mappedItems = mapItems(cartItems);
       const people = sumPeople(cartItems);

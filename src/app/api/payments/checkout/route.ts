@@ -8,12 +8,16 @@ import { formatEventSchedule } from '@/lib/date';
 import { issueBookingToken } from '@/lib/bookingVerification';
 import { prisma } from '@/lib/prisma';
 import { createRevolutOrder } from '@/lib/revolut';
-import { sendBookingVerifyEmail, sendOrderPaymentEmail } from '@/lib/mailer';
+import { sendBookingVerifyEmail, sendOrderEmailVerifyLink, sendOrderPaymentEmail } from '@/lib/mailer';
 import { encodeRevolutPaymentMeta, mergeEmailStatus, parsePaymentRef } from '@/lib/paymentRef';
+import { signJwt, verifyJwt } from '@/lib/jwt';
+import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
 const CART_COOKIE = 'cart_token';
+const VERIFY_COOKIE = 'order_verify_token';
+const VERIFY_TOKEN_TTL_SECONDS = 15 * 60;
 
 const payloadSchema = z.object({
   name: z.string().trim().min(1),
@@ -26,6 +30,7 @@ const payloadSchema = z.object({
     })
     .default(true),
   agreeMarketing: z.boolean().optional().default(false),
+  verifyToken: z.string().trim().min(1).optional(),
 });
 
 type CartItemRow = {
@@ -42,9 +47,34 @@ type EventInfo = {
   endAt?: Date | null;
 };
 
+type OrderVerifyTokenPayload = {
+  cartId: string;
+  email: string;
+  name?: string;
+  phone?: string;
+  agreePrivacy?: boolean;
+  agreeMarketing?: boolean;
+  iat: number;
+  exp: number;
+};
+
 function resolveBaseUrl(): string {
-  const raw = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.APP_BASE_URL ?? '';
+  const raw =
+    process.env.NEXT_PUBLIC_BASE_URL ??
+    process.env.APP_BASE_URL ??
+    process.env.BASE_URL ??
+    'http://localhost:3000';
   return raw.replace(/\/$/, '');
+}
+
+function buildVerifyLink(token: string): string {
+  const base =
+    process.env.NEXT_PUBLIC_BASE_URL ??
+    process.env.APP_BASE_URL ??
+    process.env.BASE_URL ??
+    'http://localhost:3000';
+  const normalized = base.replace(/\/$/, '');
+  return `${normalized}/api/payments/email-verify?token=${encodeURIComponent(token)}`;
 }
 
 function formatWhenLabel(startAt: Date | null, endAt: Date | null): string {
@@ -189,6 +219,7 @@ export async function POST(req: Request) {
 
     const jar = cookies();
     const cartId = jar.get(CART_COOKIE)?.value ?? null;
+    const cookieToken = jar.get(VERIFY_COOKIE)?.value ?? null;
     if (!cartId) {
       return NextResponse.json({ ok: false, error: 'cart_not_found' }, { status: 404 });
     }
@@ -240,17 +271,17 @@ export async function POST(req: Request) {
     }
 
     if (order.status === 'paid' || order.status === 'confirmed') {
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           ok: true,
-          data: {
-            orderId: order.id,
-            amountCents: totalCents,
-            status: order.status,
-          },
+          state: 'confirmed' as const,
+          orderId: order.id,
+          status: order.status,
         },
         { status: 200 }
       );
+      response.cookies.delete(VERIFY_COOKIE);
+      return response;
     }
 
     order = await prisma.order.update({
@@ -266,6 +297,71 @@ export async function POST(req: Request) {
     });
 
     const cartItems = cart.items as CartItemRow[];
+
+    const secret = process.env.NEXTAUTH_SECRET;
+    if (!secret) {
+      console.error('[payments][checkout] missing NEXTAUTH_SECRET');
+      return NextResponse.json({ ok: false, error: 'server_error' }, { status: 500 });
+    }
+
+    const bodyToken = parsed.data.verifyToken?.trim() || null;
+    const candidateToken = bodyToken || cookieToken || null;
+    let verifiedPayload: OrderVerifyTokenPayload | null = null;
+
+    if (candidateToken && cookieToken && candidateToken === cookieToken) {
+      const verification = verifyJwt<OrderVerifyTokenPayload>(candidateToken, secret);
+      if (verification.valid) {
+        const payload = verification.payload;
+        const emailMatches =
+          typeof payload.email === 'string' &&
+          payload.email.toLowerCase() === parsed.data.email.toLowerCase();
+        if (payload.cartId === cart.id && emailMatches && payload.agreePrivacy !== false) {
+          verifiedPayload = payload;
+        }
+      }
+    }
+
+    if (!verifiedPayload) {
+      const verifyPayload = {
+        cartId: cart.id,
+        email: parsed.data.email,
+        name: parsed.data.name,
+        phone: parsed.data.phone,
+        agreePrivacy: true,
+        agreeMarketing: marketingConsent,
+      } satisfies Omit<OrderVerifyTokenPayload, 'iat' | 'exp'>;
+
+      const verifyToken = signJwt(verifyPayload, secret, {
+        expiresInSeconds: VERIFY_TOKEN_TTL_SECONDS,
+      });
+      const verifyUrl = buildVerifyLink(verifyToken);
+
+      try {
+        await sendOrderEmailVerifyLink({
+          to: parsed.data.email,
+          name: parsed.data.name,
+          verifyUrl,
+        });
+        logger.info('order.verify_mail.sent', {
+          action: 'order.verify_mail.sent',
+          email: parsed.data.email,
+        });
+      } catch (error) {
+        console.error('[payments][checkout] verify email send failed', error);
+        return NextResponse.json({ ok: false, error: 'verify_email_failed' }, { status: 500 });
+      }
+
+      const response = NextResponse.json({
+        ok: true,
+        state: 'verify_sent' as const,
+        verifyToken,
+      });
+      response.cookies.delete(VERIFY_COOKIE);
+      return response;
+    }
+
+    const marketingConsent =
+      verifiedPayload.agreeMarketing ?? parsed.data.agreeMarketing ?? false;
 
     if (totalCents <= 0) {
       const mappedItems = mapItems(cartItems);
@@ -285,7 +381,7 @@ export async function POST(req: Request) {
         phone: parsed.data.phone,
         notes: normalizedNotes,
         agreePrivacy: true,
-        agreeMarketing: parsed.data.agreeMarketing ?? false,
+        agreeMarketing: marketingConsent,
         status: 'pending' as const,
         type: bookingType as any,
         order: { connect: { id: order.id } },
@@ -326,21 +422,25 @@ export async function POST(req: Request) {
         data: { status: 'pending', paymentRef: null },
       });
 
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           ok: true,
+          state: 'confirmed' as const,
+          orderId: order.id,
           bookingId: booking.id,
           nextUrl: `/checkout/email-sent?bookingId=${booking.id}`,
         },
-        { status: 201 }
+        { status: 200 }
       );
+      response.cookies.delete(VERIFY_COOKIE);
+      return response;
     }
 
     await prisma.booking.updateMany({
       where: { orderId: order.id },
       data: {
         agreePrivacy: true,
-        agreeMarketing: parsed.data.agreeMarketing ?? false,
+        agreeMarketing: marketingConsent,
       },
     });
 
@@ -358,18 +458,20 @@ export async function POST(req: Request) {
 
     const parsedRef = parsePaymentRef(order.paymentRef);
     if (parsedRef.kind === 'revolut' && parsedRef.meta.checkoutPublicId) {
-      return NextResponse.json({
+      const response = NextResponse.json({
         ok: true,
-        data: {
-          orderId: order.id,
-          amountCents: totalCents,
-          paymentRef: parsedRef.meta.orderId,
-          checkoutPublicId: parsedRef.meta.checkoutPublicId,
-          hostedPaymentUrl: parsedRef.meta.hostedPaymentUrl,
-          email: parsedRef.meta.emailError ? { ok: false, error: parsedRef.meta.emailError } : { ok: true },
-          configWarning,
-        },
+        state: 'paid_redirect' as const,
+        orderId: order.id,
+        amountCents: totalCents,
+        paymentRef: parsedRef.meta.orderId,
+        checkoutPublicId: parsedRef.meta.checkoutPublicId,
+        hostedPaymentUrl: parsedRef.meta.hostedPaymentUrl,
+        url: parsedRef.meta.hostedPaymentUrl,
+        email: parsedRef.meta.emailError ? { ok: false, error: parsedRef.meta.emailError } : { ok: true },
+        configWarning,
       });
+      response.cookies.delete(VERIFY_COOKIE);
+      return response;
     }
 
     const description = `Prenotazione #${order.id} - Bar La Soluzione`;
@@ -412,18 +514,20 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
-      data: {
-        orderId: order.id,
-        amountCents: totalCents,
-        paymentRef: revolutOrder.paymentRef,
-        checkoutPublicId: revolutOrder.checkoutPublicId,
-        hostedPaymentUrl: finalMeta.hostedPaymentUrl,
-        email: emailResult,
-        configWarning,
-      },
+      state: 'paid_redirect' as const,
+      orderId: order.id,
+      amountCents: totalCents,
+      paymentRef: revolutOrder.paymentRef,
+      checkoutPublicId: revolutOrder.checkoutPublicId,
+      hostedPaymentUrl: finalMeta.hostedPaymentUrl,
+      url: finalMeta.hostedPaymentUrl,
+      email: emailResult,
+      configWarning,
     });
+    response.cookies.delete(VERIFY_COOKIE);
+    return response;
   } catch (err) {
     console.error('[payments][checkout] error', err);
     const message = err instanceof Error ? err.message : String(err);

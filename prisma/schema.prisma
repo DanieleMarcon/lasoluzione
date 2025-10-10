@@ -186,6 +186,33 @@ model EventInstance {
   @@index([productId, startAt])
 }
 
+model EventItem {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  description String?
+  startAt     DateTime
+  endAt       DateTime?
+  active      Boolean  @default(true)
+  showOnHome  Boolean  @default(false)
+  capacity    Int?
+  priceCents  Int      @default(0)
+  emailOnly   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SectionEvent {
+  sectionId  String
+  eventId    String
+  order      Int     @default(0)
+  featured   Boolean @default(false)
+  showInHome Boolean @default(false)
+
+  @@id([sectionId, eventId])
+  @@index([eventId])
+}
+
 /* -------------------- CARRELLO / ORDINI -------------------- */
 
 model Cart {

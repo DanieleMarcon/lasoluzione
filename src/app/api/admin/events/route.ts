@@ -1,16 +1,17 @@
 // src/app/api/admin/events/route.ts
 import { NextResponse } from 'next/server';
+import type { EventItem } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 import { assertAdmin } from '@/lib/admin/session';
 import { prisma } from '@/lib/prisma';
-import { toAdminEventDTO, toAdminEventListDTO } from '@/lib/admin/events-dto';
+import { eventItemCreateSchema } from '@/lib/validators/eventItem';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const DEFAULT_PAGE_SIZE = 10;
-const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const querySchema = z.object({
   search: z.string().trim().optional(),
@@ -19,42 +20,22 @@ const querySchema = z.object({
   size: z.coerce.number().int().min(1).max(100).optional(),
 });
 
-const isoStringSchema = z
-  .string({ required_error: 'Data obbligatoria' })
-  .trim()
-  .refine((value) => !Number.isNaN(new Date(value).getTime()), {
-    message: 'Formato data non valido',
-  });
-
-const createSchema = z.object({
-  slug: z
-    .string({ required_error: 'Slug obbligatorio' })
-    .trim()
-    .min(3)
-    .max(100)
-    .regex(SLUG_REGEX, { message: 'Usa lettere minuscole, numeri e trattini' }),
-  title: z.string({ required_error: 'Titolo obbligatorio' }).trim().min(3),
-  description: z.string().trim().max(2000).optional().nullable(),
-  startAt: isoStringSchema,
-  endAt: isoStringSchema.optional().nullable(),
-  active: z.boolean({ required_error: 'Stato obbligatorio' }),
-  showOnHome: z.boolean({ required_error: 'Visibilità obbligatoria' }),
-  allowEmailOnlyBooking: z.boolean({ required_error: 'Flag email-only obbligatorio' }),
-  capacity: z.number().int().min(1).optional().nullable(),
-});
-
-async function resolveDefaultEventProductId() {
-  const preferred = await prisma.product.findFirst({
-    where: { category: 'evento' },
-    orderBy: { id: 'asc' },
-    select: { id: true },
-  });
-  if (preferred) return preferred.id;
-  const fallback = await prisma.product.findFirst({
-    orderBy: { id: 'asc' },
-    select: { id: true },
-  });
-  return fallback?.id ?? null;
+function toAdminEventItemDTO(event: EventItem) {
+  return {
+    id: event.id,
+    slug: event.slug,
+    title: event.title,
+    description: event.description ?? null,
+    startAt: event.startAt.toISOString(),
+    endAt: event.endAt ? event.endAt.toISOString() : null,
+    active: event.active,
+    showOnHome: event.showOnHome,
+    emailOnly: event.emailOnly,
+    capacity: event.capacity ?? null,
+    priceCents: event.priceCents,
+    createdAt: event.createdAt.toISOString(),
+    updatedAt: event.updatedAt.toISOString(),
+  };
 }
 
 export async function GET(request: Request) {
@@ -77,24 +58,24 @@ export async function GET(request: Request) {
   const requestedPage = parsedQuery.data.page ?? 1;
   const pageSize = parsedQuery.data.size ?? DEFAULT_PAGE_SIZE;
 
-  const where: Parameters<typeof prisma.eventInstance.findMany>[0]['where'] = {};
+  const where: Prisma.EventItemWhereInput = {};
 
   if (search) {
     where.OR = [
-      { title: { contains: search } },
-      { slug: { contains: search } },
+      { title: { contains: search, mode: 'insensitive' } },
+      { slug: { contains: search, mode: 'insensitive' } },
     ];
   }
 
   if (activeFilter === 'true') where.active = true;
   else if (activeFilter === 'false') where.active = false;
 
-  const total = await prisma.eventInstance.count({ where });
+  const total = await prisma.eventItem.count({ where });
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(requestedPage, totalPages);
   const skip = (page - 1) * pageSize;
 
-  const items = await prisma.eventInstance.findMany({
+  const items = await prisma.eventItem.findMany({
     where,
     orderBy: { startAt: 'asc' },
     skip,
@@ -103,7 +84,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    data: toAdminEventListDTO(items),
+    data: items.map(toAdminEventItemDTO),
     meta: {
       page,
       pageSize,
@@ -118,9 +99,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   await assertAdmin();
 
-  let payload: z.infer<typeof createSchema>;
+  let payload: z.infer<typeof eventItemCreateSchema>;
   try {
-    payload = createSchema.parse(await request.json());
+    payload = eventItemCreateSchema.parse(await request.json());
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -131,8 +112,7 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  const slug = payload.slug;
-  const existingSlug = await prisma.eventInstance.findUnique({ where: { slug } });
+  const existingSlug = await prisma.eventItem.findUnique({ where: { slug: payload.slug } });
   if (existingSlug) {
     return NextResponse.json(
       { ok: false, error: 'slug_conflict', message: 'Slug già in uso' },
@@ -141,6 +121,8 @@ export async function POST(request: Request) {
   }
 
   const startDate = new Date(payload.startAt);
+  const endDate = payload.endAt ? new Date(payload.endAt) : null;
+
   if (Number.isNaN(startDate.getTime())) {
     return NextResponse.json(
       { ok: false, error: 'invalid_start', message: 'Data di inizio non valida' },
@@ -148,49 +130,34 @@ export async function POST(request: Request) {
     );
   }
 
-  let endDate: Date | null = null;
-  if (payload.endAt) {
-    endDate = new Date(payload.endAt);
-    if (Number.isNaN(endDate.getTime())) {
-      return NextResponse.json(
-        { ok: false, error: 'invalid_end', message: 'Data di fine non valida' },
-        { status: 400 },
-      );
-    }
-    if (endDate <= startDate) {
-      return NextResponse.json(
-        { ok: false, error: 'invalid_range', message: 'La fine deve essere successiva all\'inizio' },
-        { status: 400 },
-      );
-    }
-  }
-
-  const productId = await resolveDefaultEventProductId();
-  if (!productId) {
+  if (endDate && Number.isNaN(endDate.getTime())) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: 'missing_product',
-        message: 'Configura almeno un prodotto prima di creare eventi',
-      },
+      { ok: false, error: 'invalid_end', message: 'Data di fine non valida' },
       { status: 400 },
     );
   }
 
-  const created = await prisma.eventInstance.create({
+  if (endDate && endDate <= startDate) {
+    return NextResponse.json(
+      { ok: false, error: 'invalid_range', message: 'La fine deve essere successiva all\'inizio' },
+      { status: 400 },
+    );
+  }
+
+  const created = await prisma.eventItem.create({
     data: {
-      slug,
+      slug: payload.slug,
       title: payload.title.trim(),
       description: payload.description?.trim() ? payload.description.trim() : null,
       startAt: startDate,
       endAt: endDate,
       active: payload.active,
       showOnHome: payload.showOnHome,
-      allowEmailOnlyBooking: payload.allowEmailOnlyBooking,
+      emailOnly: payload.emailOnly,
       capacity: payload.capacity ?? null,
-      productId,
+      priceCents: payload.priceCents,
     },
   });
 
-  return NextResponse.json({ ok: true, data: toAdminEventDTO(created) }, { status: 201 });
+  return NextResponse.json({ ok: true, data: toAdminEventItemDTO(created) }, { status: 201 });
 }

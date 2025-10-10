@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 
 import { prisma } from '@/lib/prisma';
 import { consumeBookingToken } from '@/lib/bookingVerification';
-import { sendBookingEmails } from '@/lib/mailer';
+import { sendBookingConfirmedAdmin, sendBookingConfirmedCustomer } from '@/lib/mailer';
 import { logger } from '@/lib/logger';
-import { normalizeStoredDinnerItems, normalizeStoredLunchItems } from '@/lib/lunchOrder';
+import { formatEventSchedule } from '@/lib/date';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,6 +13,37 @@ function mapErrorStatus(status: 'invalid' | 'expired' | 'used'): number {
   if (status === 'expired') return 410;
   if (status === 'used') return 409;
   return 400;
+}
+
+function resolveBaseUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.APP_BASE_URL ?? '';
+  return raw.replace(/\/$/, '');
+}
+
+function extractEventInstanceId(booking: unknown): number | null {
+  if (!booking || typeof booking !== 'object') {
+    return null;
+  }
+  const maybeId = (booking as { eventInstanceId?: unknown }).eventInstanceId;
+  if (typeof maybeId === 'number' && Number.isFinite(maybeId) && maybeId > 0) {
+    return maybeId;
+  }
+  return null;
+}
+
+function fallbackWhenLabel(date: Date): string {
+  try {
+    return date.toLocaleString('it-IT', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '';
+  }
 }
 
 export async function GET(req: Request) {
@@ -42,51 +73,70 @@ export async function GET(req: Request) {
           data: { status: 'confirmed', prepayToken: null },
         });
 
-  const lunchItems = normalizeStoredLunchItems(updated.lunchItemsJson);
-  const lunch = lunchItems.length
-    ? {
-        items: lunchItems,
-        subtotalCents: updated.subtotalCents ?? 0,
-        coverCents: updated.coverCents ?? 0,
-        totalCents:
-          updated.totalCents ?? (updated.subtotalCents ?? 0) + (updated.coverCents ?? 0) * updated.people,
-      }
-    : undefined;
+  const eventInstanceId = extractEventInstanceId(updated);
+  let eventInstance: { title: string | null; startAt: Date; endAt: Date | null } | null = null;
 
-  const dinnerItems = normalizeStoredDinnerItems((updated as any).dinnerItemsJson);
-  const dinner = dinnerItems.length
-    ? {
-        items: dinnerItems,
-        subtotalCents: (updated as any).dinnerSubtotalCents ?? 0,
-        coverCents: (updated as any).dinnerCoverCents ?? 0,
-        totalCents:
-          (updated as any).dinnerTotalCents ??
-          ((updated as any).dinnerSubtotalCents ?? 0) + ((updated as any).dinnerCoverCents ?? 0) * updated.people,
-      }
-    : undefined;
+  if (eventInstanceId) {
+    eventInstance = await prisma.eventInstance.findUnique({
+      where: { id: eventInstanceId },
+      select: { title: true, startAt: true, endAt: true },
+    });
+  } else if (updated.tierLabel) {
+    eventInstance = await prisma.eventInstance.findFirst({
+      where: { title: updated.tierLabel, startAt: updated.date },
+      select: { title: true, startAt: true, endAt: true },
+    });
+  }
+
+  const eventTitle = eventInstance?.title ?? updated.tierLabel ?? 'La Soluzione';
+  const whenLabelRaw = formatEventSchedule(
+    eventInstance?.startAt ?? updated.date,
+    eventInstance?.endAt ?? undefined,
+  );
+  const whenLabel = whenLabelRaw.trim().length ? whenLabelRaw : fallbackWhenLabel(eventInstance?.startAt ?? updated.date);
+  const baseUrl = resolveBaseUrl();
 
   try {
-    await sendBookingEmails({
-      id: updated.id,
-      date: updated.date.toISOString(),
+    await sendBookingConfirmedCustomer({
+      to: updated.email,
+      bookingId: updated.id,
+      eventTitle,
+      whenLabel,
       people: updated.people,
-      name: updated.name,
-      email: updated.email,
-      phone: updated.phone,
-      notes: updated.notes ?? undefined,
-      lunch,
-      dinner,
-      tierLabel: updated.tierLabel ?? undefined,
-      tierPriceCents: updated.tierPriceCents ?? undefined,
+      baseUrl,
     });
   } catch (error) {
     logger.error('booking.confirm', {
       action: 'booking.confirm',
-      outcome: 'email_error',
+      outcome: 'customer_email_error',
       bookingId: updated.id,
       email: updated.email,
       error: error instanceof Error ? error.message : 'unknown_error',
     });
+  }
+
+  const adminRecipient = process.env.MAIL_TO_BOOKINGS?.trim();
+  if (adminRecipient) {
+    try {
+      await sendBookingConfirmedAdmin({
+        to: adminRecipient,
+        bookingId: updated.id,
+        customerName: updated.name,
+        customerEmail: updated.email,
+        customerPhone: updated.phone,
+        eventTitle,
+        whenLabel,
+        people: updated.people,
+      });
+    } catch (error) {
+      logger.error('booking.confirm', {
+        action: 'booking.confirm',
+        outcome: 'admin_email_error',
+        bookingId: updated.id,
+        email: updated.email,
+        error: error instanceof Error ? error.message : 'unknown_error',
+      });
+    }
   }
 
   logger.info('booking.confirm', {

@@ -4,11 +4,9 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { bookingSchema } from '@/components/booking/validation';
 import { issueBookingToken } from '@/lib/bookingVerification';
-import {
-  sendBookingPendingNotificationEmail,
-  sendBookingRequestConfirmationEmail,
-} from '@/lib/mailer';
+import { sendBookingVerifyEmail } from '@/lib/mailer';
 import { logger } from '@/lib/logger';
+import { formatEventSchedule } from '@/lib/date';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -71,12 +69,28 @@ const emailOnlyBookingSchema = z
   });
 
 function resolveBaseUrl(): string {
-  const raw =
-    process.env.APP_BASE_URL ||
-    process.env.NEXT_PUBLIC_BASE_URL ||
-    process.env.BASE_URL ||
-    'http://localhost:3000';
+  const raw = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.APP_BASE_URL ?? '';
   return raw.replace(/\/$/, '');
+}
+
+function formatWhenLabel(startAt: Date, endAt: Date | null): string {
+  const label = formatEventSchedule(startAt, endAt ?? undefined);
+  if (label.trim().length > 0) {
+    return label;
+  }
+
+  try {
+    return startAt.toLocaleString('it-IT', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '';
+  }
 }
 
 export async function POST(req: Request) {
@@ -164,17 +178,16 @@ export async function POST(req: Request) {
     const verification = await issueBookingToken(booking.id, booking.email);
 
     const baseUrl = resolveBaseUrl();
-    const confirmUrl = `${baseUrl}/checkout/confirm?token=${encodeURIComponent(verification.token)}`;
+    const whenLabel = formatWhenLabel(event.startAt, event.endAt ?? null);
 
-    const eventInfo = { title: event.title, startAt: event.startAt };
-
-    await sendBookingRequestConfirmationEmail({
-      booking,
-      event: eventInfo,
-      confirmUrl,
+    await sendBookingVerifyEmail({
+      to: booking.email,
+      bookingId: booking.id,
+      token: verification.token,
+      eventTitle: event.title ?? 'La Soluzione',
+      whenLabel,
+      baseUrl,
     });
-
-    await sendBookingPendingNotificationEmail({ booking, event: eventInfo });
 
     logger.info('booking.create', {
       action: 'booking.create',

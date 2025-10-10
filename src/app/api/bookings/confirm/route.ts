@@ -2,27 +2,15 @@ import { NextResponse } from 'next/server';
 
 import { prisma } from '@/lib/prisma';
 import { consumeBookingToken } from '@/lib/bookingVerification';
-import {
-  sendBookingConfirmedAdmin,
-  sendBookingConfirmedCustomer,
-  sendOrderConfirmation,
-  sendOrderNotificationToAdmin,
-} from '@/lib/mailer';
+import { sendOrderConfirmation, sendOrderNotificationToAdmin } from '@/lib/mailer';
 import { logger } from '@/lib/logger';
 import { formatEventSchedule } from '@/lib/date';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function mapErrorStatus(status: 'invalid' | 'expired' | 'used'): number {
-  if (status === 'expired') return 410;
-  if (status === 'used') return 409;
+function mapErrorStatus(): number {
   return 400;
-}
-
-function resolveBaseUrl(): string {
-  const raw = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.APP_BASE_URL ?? '';
-  return raw.replace(/\/$/, '');
 }
 
 function extractEventInstanceId(booking: unknown): number | null {
@@ -62,10 +50,7 @@ export async function GET(req: Request) {
       action: 'booking.confirm',
       outcome: result.status,
     });
-    return NextResponse.json(
-      { ok: false, state: result.status },
-      { status: mapErrorStatus(result.status) },
-    );
+    return NextResponse.json({ ok: false, state: result.status }, { status: mapErrorStatus() });
   }
 
   const booking = result.booking;
@@ -78,67 +63,69 @@ export async function GET(req: Request) {
           data: { status: 'confirmed', prepayToken: null },
         });
 
+  type OrderMailParams = Parameters<typeof sendOrderConfirmation>[0];
+  type MailOrder = OrderMailParams['order'];
+  type MailItem = OrderMailParams['items'][number];
+
+  let mailOrder: MailOrder | null = null;
+  let mailItems: MailItem[] = [];
+
   if (updated.orderId) {
     const orderWithCart = await prisma.order.findUnique({
       where: { id: updated.orderId },
       include: { cart: { include: { items: true } } },
     });
 
-    if (orderWithCart && orderWithCart.status === 'pending') {
-      const itemsForMail = orderWithCart.cart.items.map((item) => ({
+    if (orderWithCart) {
+      mailItems = orderWithCart.cart.items.map((item) => ({
         name: item.nameSnapshot,
         qty: item.qty,
         priceCents: item.priceCentsSnapshot,
       }));
 
-      const nextOrder = await prisma.order.update({
-        where: { id: orderWithCart.id },
-        data: { status: 'confirmed' },
-      });
-
-      try {
-        await prisma.cart.update({
-          where: { id: orderWithCart.cartId },
-          data: { status: 'completed', totalCents: 0 },
-        });
-        await prisma.cartItem.deleteMany({ where: { cartId: orderWithCart.cartId } });
-      } catch (error) {
-        logger.error('booking.confirm', {
-          action: 'booking.confirm',
-          outcome: 'order_cart_cleanup_error',
-          bookingId: updated.id,
-          orderId: nextOrder.id,
-          error: error instanceof Error ? error.message : 'unknown_error',
-        });
+      if (orderWithCart.status !== 'confirmed') {
+        try {
+          await prisma.order.update({
+            where: { id: orderWithCart.id },
+            data: { status: 'confirmed' },
+          });
+        } catch (error) {
+          logger.error('booking.confirm', {
+            action: 'booking.confirm',
+            outcome: 'order_status_update_error',
+            bookingId: updated.id,
+            orderId: orderWithCart.id,
+            error: error instanceof Error ? error.message : 'unknown_error',
+          });
+        }
       }
 
-      try {
-        await sendOrderConfirmation({ to: nextOrder.email, order: nextOrder, items: itemsForMail });
-      } catch (error) {
-        logger.error('booking.confirm', {
-          action: 'booking.confirm',
-          outcome: 'order_customer_email_error',
-          bookingId: updated.id,
-          orderId: nextOrder.id,
-          error: error instanceof Error ? error.message : 'unknown_error',
-        });
+      if (orderWithCart.status === 'pending') {
+        try {
+          await prisma.cart.update({
+            where: { id: orderWithCart.cartId },
+            data: { status: 'completed', totalCents: 0 },
+          });
+          await prisma.cartItem.deleteMany({ where: { cartId: orderWithCart.cartId } });
+        } catch (error) {
+          logger.error('booking.confirm', {
+            action: 'booking.confirm',
+            outcome: 'order_cart_cleanup_error',
+            bookingId: updated.id,
+            orderId: orderWithCart.id,
+            error: error instanceof Error ? error.message : 'unknown_error',
+          });
+        }
       }
 
-      try {
-        await sendOrderNotificationToAdmin({
-          order: nextOrder,
-          items: itemsForMail,
-          booking: { date: updated.date, people: updated.people },
-        });
-      } catch (error) {
-        logger.error('booking.confirm', {
-          action: 'booking.confirm',
-          outcome: 'order_admin_email_error',
-          bookingId: updated.id,
-          orderId: nextOrder.id,
-          error: error instanceof Error ? error.message : 'unknown_error',
-        });
-      }
+      mailOrder = {
+        id: orderWithCart.id,
+        name: orderWithCart.name,
+        email: orderWithCart.email,
+        phone: orderWithCart.phone,
+        notes: orderWithCart.notes ?? undefined,
+        totalCents: orderWithCart.totalCents ?? orderWithCart.cart.totalCents ?? 0,
+      };
     }
   }
 
@@ -163,50 +150,64 @@ export async function GET(req: Request) {
     eventInstance?.endAt ?? undefined,
   );
   const whenLabel = whenLabelRaw.trim().length ? whenLabelRaw : fallbackWhenLabel(eventInstance?.startAt ?? updated.date);
-  const baseUrl = resolveBaseUrl();
+  if (!mailOrder) {
+    const pricePerPerson = typeof updated.tierPriceCents === 'number' ? updated.tierPriceCents : 0;
+    const nameParts = [eventTitle];
+    if (whenLabel) {
+      nameParts.push(whenLabel);
+    }
+
+    mailOrder = {
+      id: `booking-${updated.id}`,
+      name: updated.name,
+      email: updated.email,
+      phone: updated.phone,
+      notes: updated.notes ?? undefined,
+      totalCents: pricePerPerson * updated.people,
+    };
+
+    mailItems = [
+      {
+        name: nameParts.filter(Boolean).join(' – ') || eventTitle,
+        qty: updated.people,
+        priceCents: pricePerPerson,
+      },
+    ];
+  }
 
   try {
-    await sendBookingConfirmedCustomer({
-      to: updated.email,
-      bookingId: updated.id,
-      eventTitle,
-      whenLabel,
-      people: updated.people,
-      baseUrl,
-    });
+    await sendOrderConfirmation({ to: mailOrder.email, order: mailOrder, items: mailItems });
   } catch (error) {
     logger.error('booking.confirm', {
       action: 'booking.confirm',
-      outcome: 'customer_email_error',
+      outcome: 'order_customer_email_error',
       bookingId: updated.id,
-      email: updated.email,
+      orderId: mailOrder.id,
       error: error instanceof Error ? error.message : 'unknown_error',
     });
   }
 
-  const adminRecipient = process.env.MAIL_TO_BOOKINGS?.trim();
-  if (adminRecipient) {
-    try {
-      await sendBookingConfirmedAdmin({
-        to: adminRecipient,
-        bookingId: updated.id,
-        customerName: updated.name,
-        customerEmail: updated.email,
-        customerPhone: updated.phone,
-        eventTitle,
-        whenLabel,
-        people: updated.people,
-      });
-    } catch (error) {
-      logger.error('booking.confirm', {
-        action: 'booking.confirm',
-        outcome: 'admin_email_error',
-        bookingId: updated.id,
-        email: updated.email,
-        error: error instanceof Error ? error.message : 'unknown_error',
-      });
-    }
+  try {
+    await sendOrderNotificationToAdmin({
+      order: mailOrder,
+      items: mailItems,
+      booking: { date: updated.date, people: updated.people },
+    });
+  } catch (error) {
+    logger.error('booking.confirm', {
+      action: 'booking.confirm',
+      outcome: 'order_admin_email_error',
+      bookingId: updated.id,
+      orderId: mailOrder.id,
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
   }
+
+  logger.info({
+    action: 'booking.confirm.emails_sent',
+    bookingId: updated.id,
+    email: updated.email,
+  });
 
   logger.info('booking.confirm', {
     action: 'booking.confirm',

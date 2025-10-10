@@ -24,9 +24,9 @@ const agreePrivacyField =
   z.literal(true, {
     errorMap: () => ({ message: 'Il consenso privacy è obbligatorio.' }),
   });
-const agreeMarketingField =
-  (BASE_BOOKING_OBJECT?.shape?.agreeMarketing as z.ZodTypeAny | undefined) ??
-  z.boolean().optional();
+const agreeMarketingField = (
+  (BASE_BOOKING_OBJECT?.shape?.agreeMarketing as z.ZodTypeAny | undefined) ?? z.boolean()
+).default(false);
 
 const customerSchema = z.object({
   name: nameField,
@@ -45,7 +45,7 @@ const emailOnlyBookingSchema = z
     people: peopleField.optional(),
     notes: notesField.nullish(),
     agreePrivacy: agreePrivacyField,
-    agreeMarketing: agreeMarketingField.default(false),
+    agreeMarketing: agreeMarketingField,
   })
   .superRefine((data, ctx) => {
     if (!data.eventSlug && !data.eventInstanceId) {
@@ -187,6 +187,12 @@ export async function POST(req: Request) {
       eventTitle: event.title ?? 'La Soluzione',
       whenLabel,
       baseUrl,
+    });
+
+    logger.info({
+      action: 'booking.verify_mail.sent',
+      bookingId: booking.id,
+      email: booking.email,
     });
 
     logger.info('booking.create', {

@@ -20,43 +20,27 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
     process.env.NEXT_PUBLIC_CONSENT_DEBUG === '1';
 
   return (
-    <html lang="it">
-      <body style={{ margin: 0, fontFamily: 'system-ui, Arial, sans-serif' }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            padding: '0.75rem 1.5rem'
-          }}
+    <div className="flex min-h-screen flex-col bg-white text-slate-900">
+      <div className="flex justify-end px-6 py-3">
+        <a
+          href="/admin/signin"
+          className="inline-flex items-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:border-slate-300 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/50 focus:ring-offset-2"
         >
-          <a
-            href="/admin/signin"
-            style={{
-              border: '1px solid rgba(17, 47, 77, 0.2)',
-              borderRadius: 999,
-              padding: '0.4rem 1rem',
-              textDecoration: 'none',
-              color: '#112f4d',
-              fontWeight: 600,
-              fontSize: '0.95rem'
-            }}
-          >
-            Accedi
-          </a>
-        </div>
-        <Header />
-        <main id="main" className="container" style={{ padding: '2rem 1rem', minHeight: '60vh' }}>
-          {children}
-        </main>
-        <Footer />
+          Accedi
+        </a>
+      </div>
+      <Header />
+      <main id="main" className="container mx-auto flex-1 px-4 py-8 sm:px-6 lg:px-8">
+        {children}
+      </main>
+      <Footer />
 
-        {/* Consenso (montati una sola volta qui) */}
-        <CookieBar />
-        <PreferencesModal />
-        <ConsentScripts />
+      {/* Consenso (montati una sola volta qui) */}
+      <CookieBar />
+      <PreferencesModal />
+      <ConsentScripts />
 
-        {showConsentDebug && <ConsentDebug />}
-      </body>
-    </html>
+      {showConsentDebug && <ConsentDebug />}
+    </div>
   );
 }

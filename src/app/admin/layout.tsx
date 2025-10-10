@@ -20,41 +20,23 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const isAdminUser = Boolean(email && isAdminEmail(email));
 
   if (!isAdminUser) {
-    return (
-      <html lang="it">
-        <body style={{ margin: 0, backgroundColor: '#f3f4f6', fontFamily: 'Inter, system-ui, sans-serif' }}>
-          {children}
-        </body>
-      </html>
-    );
+    return <div className="min-h-screen bg-slate-100 font-sans">{children}</div>;
   }
 
   const adminSession = session!;
 
   return (
-    <html lang="it">
-      <body style={{ margin: 0, backgroundColor: '#f3f4f6', fontFamily: 'Inter, system-ui, sans-serif' }}>
-        <AdminProviders session={adminSession}>
-          <div style={{ display: 'flex', minHeight: '100vh' }}>
-            <AdminNav links={links} userEmail={email ?? 'admin'} />
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <header
-                style={{
-                  padding: '1.5rem 2rem',
-                  borderBottom: '1px solid #e5e7eb',
-                  backgroundColor: '#fff',
-                }}
-              >
-                <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 600 }}>Area amministrativa</h1>
-                <p style={{ margin: '0.25rem 0 0', color: '#6b7280', fontSize: '0.95rem' }}>
-                  Gestisci prenotazioni e impostazioni del locale.
-                </p>
-              </header>
-              <main style={{ flex: 1, padding: '2rem', overflowY: 'auto' }}>{children}</main>
-            </div>
-          </div>
-        </AdminProviders>
-      </body>
-    </html>
+    <AdminProviders session={adminSession}>
+      <div className="flex min-h-screen bg-slate-100 text-slate-900">
+        <AdminNav links={links} userEmail={email ?? 'admin'} />
+        <div className="flex flex-1 flex-col">
+          <header className="border-b border-slate-200 bg-white px-8 py-6">
+            <h1 className="text-2xl font-semibold text-slate-900">Area amministrativa</h1>
+            <p className="mt-1 text-sm text-slate-600">Gestisci prenotazioni e impostazioni del locale.</p>
+          </header>
+          <main className="flex-1 overflow-y-auto px-8 py-6">{children}</main>
+        </div>
+      </div>
+    </AdminProviders>
   );
 }

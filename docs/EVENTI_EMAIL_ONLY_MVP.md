@@ -106,6 +106,11 @@ pnpm dev
 # Verifica sessione admin e env in dev
 open http://localhost:3000/api/admin/_whoami
 
+## Pacchetti nel form
+- Le istanze evento possono avere pacchetti dedicati (`Product` con `sourceType = 'event_instance_tier'`) gestiti dalla pagina `/admin/events/{id}`. L’elenco mostra solo i pacchetti **attivi** ordinati per `order` crescente.
+- Se esiste almeno un pacchetto attivo, il form pubblico mostra una select opzionale “Pacchetto” con etichetta e prezzo formattato; il valore inviato corrisponde all’`id` del prodotto.
+- Il campo resta facoltativo: gli utenti possono completare la prenotazione anche senza selezionare alcun pacchetto, preservando il flusso email-only originario.
+
 Troubleshooting
 
 Nessuna istanza evento in admin: eseguire seed.
@@ -129,3 +134,9 @@ Auth e Middleware invariati.
 - **F2** — I consensi `agreePrivacy` e `agreeMarketing` vengono salvati e propagati fino alla vista Admin (colonne “Privacy”/“News”).
 - **F3** — La validazione blocca prenotazioni su istanze evento inattive anche se chiamate tramite `eventInstanceId`.
 - **F4** — L'esportazione Prenotazioni produce `bookings.csv` con le nuove colonne consensi, allineando naming e contenuto.
+
+## Flusso email
+- **Fase 1** — Invio immediato della mail di verifica al cliente con link `Conferma la tua prenotazione`; nessuna notifica admin viene spedita in questa fase.
+- **Fase 2** — Al click sul link di verifica il booking passa a `confirmed`, parte la mail “Prenotazione confermata” al cliente e viene inviata la notifica “Nuova prenotazione confermata” all’admin (se `MAIL_TO_BOOKINGS` è configurata).
+- Il payload del form resta invariato e include sempre `agreePrivacy: true` (obbligatorio) e `agreeMarketing` opzionale.
+- URL di conferma utilizzato: `/checkout/confirm?token=...` (la CTA punta allo stesso endpoint anche quando viene costruito con `NEXT_PUBLIC_BASE_URL`/`APP_BASE_URL`).

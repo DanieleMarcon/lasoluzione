@@ -3,9 +3,12 @@ import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
 import { issueBookingToken } from '@/lib/bookingVerification';
-import { sendBookingRequestConfirmationEmail } from '@/lib/mailer';
+import { sendBookingVerifyEmail } from '@/lib/mailer';
 import { logger } from '@/lib/logger';
 import { assertCooldownOrThrow } from '@/lib/rateLimit';
+import { formatEventSchedule } from '@/lib/date';
+
+type BookingRecord = Awaited<ReturnType<typeof prisma.booking.findUnique>>;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,12 +18,53 @@ const payloadSchema = z.object({
 });
 
 function resolveBaseUrl(): string {
-  const raw =
-    process.env.APP_BASE_URL ||
-    process.env.NEXT_PUBLIC_BASE_URL ||
-    process.env.BASE_URL ||
-    'http://localhost:3000';
+  const raw = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.APP_BASE_URL ?? '';
   return raw.replace(/\/$/, '');
+}
+
+async function resolveEventDetails(booking: BookingRecord) {
+  if (!booking) {
+    return { title: booking?.tierLabel ?? 'La Soluzione', whenLabel: '' };
+  }
+
+  const eventInstanceId = (booking as { eventInstanceId?: unknown }).eventInstanceId;
+  let eventInstance: { title: string | null; startAt: Date; endAt: Date | null } | null = null;
+
+  if (typeof eventInstanceId === 'number' && Number.isFinite(eventInstanceId) && eventInstanceId > 0) {
+    eventInstance = await prisma.eventInstance.findUnique({
+      where: { id: eventInstanceId },
+      select: { title: true, startAt: true, endAt: true },
+    });
+  } else if (booking.tierLabel) {
+    eventInstance = await prisma.eventInstance.findFirst({
+      where: { title: booking.tierLabel, startAt: booking.date },
+      select: { title: true, startAt: true, endAt: true },
+    });
+  }
+
+  const title = eventInstance?.title ?? booking.tierLabel ?? 'La Soluzione';
+  const whenLabelRaw = formatEventSchedule(
+    eventInstance?.startAt ?? booking.date,
+    eventInstance?.endAt ?? undefined,
+  );
+  const whenLabel = whenLabelRaw.trim().length
+    ? whenLabelRaw
+    : (() => {
+        try {
+          return (eventInstance?.startAt ?? booking.date).toLocaleString('it-IT', {
+            weekday: 'long',
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+        } catch {
+          return '';
+        }
+      })();
+
+  return { title, whenLabel };
 }
 
 function extractClientIp(req: Request): string {
@@ -102,12 +146,15 @@ export async function POST(req: Request) {
     const verification = await issueBookingToken(booking.id, booking.email);
 
     const baseUrl = resolveBaseUrl();
-    const confirmUrl = `${baseUrl}/checkout/confirm?token=${encodeURIComponent(verification.token)}`;
+    const { title, whenLabel } = await resolveEventDetails(booking);
 
-    await sendBookingRequestConfirmationEmail({
-      booking,
-      event: { title: booking.tierLabel ?? undefined, startAt: booking.date },
-      confirmUrl,
+    await sendBookingVerifyEmail({
+      to: booking.email,
+      bookingId: booking.id,
+      token: verification.token,
+      eventTitle: title,
+      whenLabel,
+      baseUrl,
     });
 
     logger.info('booking.resend', {

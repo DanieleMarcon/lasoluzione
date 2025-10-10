@@ -75,12 +75,16 @@ export default function AdminNav({ links, userEmail }: Props) {
 
   const catalogLinks: NavLink[] = [
     { href: '/admin/catalog/products', label: 'Prodotti' },
+    { href: '/admin/events', label: 'Eventi' },
     { href: '/admin/catalog/sections', label: 'Sezioni' },
   ];
+
+  const crmLinks: NavLink[] = [{ href: '/admin/contacts', label: 'Contatti' }];
 
   const sections: Array<{ key: string; title: string | null; items: NavLink[]; depth: 0 | 1 }> = [
     { key: 'main', title: null, items: enhancedLinks, depth: 0 },
     { key: 'catalog', title: 'Catalogo', items: catalogLinks, depth: 1 },
+    { key: 'crm', title: 'CRM', items: crmLinks, depth: 1 },
   ];
 
   return (

@@ -12,8 +12,15 @@ type FieldErrors = Partial<{
   submit: string;
 }>;
 
+type EventTierOption = {
+  id: number;
+  label: string;
+  priceCents: number;
+};
+
 interface EventFormProps {
   eventSlug: string;
+  tiers?: EventTierOption[];
 }
 
 interface FormState {
@@ -22,6 +29,7 @@ interface FormState {
   phone: string;
   people: string;
   notes: string;
+  tierId: string;
   agreePrivacy: boolean;
   agreeMarketing: boolean;
 }
@@ -32,6 +40,7 @@ const INITIAL_STATE: FormState = {
   phone: '',
   people: '1',
   notes: '',
+  tierId: '',
   agreePrivacy: false,
   agreeMarketing: false,
 };
@@ -46,7 +55,14 @@ function parsePeople(value: string): number {
   return parsed;
 }
 
-export default function EventForm({ eventSlug }: EventFormProps) {
+function formatMoney(cents: number): string {
+  return (cents / 100).toLocaleString('it-IT', {
+    style: 'currency',
+    currency: 'EUR',
+  });
+}
+
+export default function EventForm({ eventSlug, tiers }: EventFormProps) {
   const router = useRouter();
   const [formState, setFormState] = useState<FormState>(INITIAL_STATE);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -55,7 +71,7 @@ export default function EventForm({ eventSlug }: EventFormProps) {
   const peopleValue = useMemo(() => parsePeople(formState.people), [formState.people]);
 
   const handleChange = (field: keyof FormState) =>
-    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       const value =
         event.target.type === 'checkbox'
           ? (event.target as HTMLInputElement).checked
@@ -74,6 +90,10 @@ export default function EventForm({ eventSlug }: EventFormProps) {
     const trimmedEmail = formState.email.trim();
     const trimmedPhone = formState.phone.trim();
     const trimmedNotes = formState.notes.trim();
+    const trimmedTierId = formState.tierId.trim();
+    const parsedTierIdValue = Number.parseInt(trimmedTierId, 10);
+    const parsedTierId =
+      trimmedTierId.length && Number.isFinite(parsedTierIdValue) ? parsedTierIdValue : undefined;
 
     if (!trimmedName) {
       nextErrors.name = 'Inserisci il tuo nome e cognome.';
@@ -116,6 +136,7 @@ export default function EventForm({ eventSlug }: EventFormProps) {
           phone: trimmedPhone,
           people: peopleValue,
           notes: trimmedNotes.length ? trimmedNotes : undefined,
+          tierId: parsedTierId,
           agreePrivacy: formState.agreePrivacy,
           agreeMarketing: formState.agreeMarketing,
         }),
@@ -216,6 +237,29 @@ export default function EventForm({ eventSlug }: EventFormProps) {
           {errors.people ? <p className="mt-1 text-sm text-red-600">{errors.people}</p> : null}
         </div>
       </div>
+
+      {tiers && tiers.length > 0 ? (
+        <div>
+          <label className="block text-sm font-medium text-gray-700" htmlFor="event-tier">
+            Pacchetto (opzionale)
+          </label>
+          <select
+            id="event-tier"
+            name="tierId"
+            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            value={formState.tierId}
+            onChange={handleChange('tierId')}
+            disabled={submitting}
+          >
+            <option value="">Seleziona un pacchetto</option>
+            {tiers.map((tier) => (
+              <option key={tier.id} value={tier.id}>
+                {`${tier.label} (${formatMoney(tier.priceCents)})`}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
 
       <div>
         <label className="block text-sm font-medium text-gray-700" htmlFor="event-notes">

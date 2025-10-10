@@ -141,6 +141,15 @@ pnpm dev                     # http://localhost:3000
   - `ADMIN_EMAILS` (lista whitelisted)
 - Middleware protegge `/admin/*` e `/api/admin/*` con redirect a `/admin/signin`.
 
+## 📅 Eventi (Admin + API)
+- **Gestione admin**: la pagina `/admin/events` consente di creare/modificare istanze con visibilità pubblica, toggle “Prenotazione email-only” e gestione pacchetti collegati. Dettagli e quick start in [docs/ADMIN.md › Eventi](docs/ADMIN.md#eventi).
+- **Flusso email-only**: guida end-to-end in [docs/EVENTI_EMAIL_ONLY_MVP.md](docs/EVENTI_EMAIL_ONLY_MVP.md) con setup, API e troubleshooting.
+- **Endpoint pubblico**: lista eventi promossi via `GET /api/events`, documentato in [docs/EVENTS_PUBLIC_API.md](docs/EVENTS_PUBLIC_API.md).
+
+## 👥 Contatti (GDPR)
+- L’area `/admin/contacts` offre lista deduplicata per email, filtri sui consensi e strumenti di esportazione/stampa per la conformità privacy. Dettagli operativi in [docs/ADMIN.md › Contatti](docs/ADMIN.md#contatti).
+- I consensi raccolti tramite prenotazioni ed eventi email-only vengono esposti nelle colonne “Privacy” e “News”, utili per audit e campagne marketing compliant.
+
 ---
 
 ## Payments (Revolut)
@@ -160,8 +169,9 @@ pnpm dev                     # http://localhost:3000
 **Pubblico (legacy)**  
 `GET /api/booking-config` · `POST /api/bookings` · `POST /api/bookings/prepay`
 
-**Pubblico (nuovo)**  
+**Pubblico (nuovo)**
 `GET /api/catalog`
+[`GET /api/events`](docs/EVENTS_PUBLIC_API.md)
 
 **Admin (legacy)**  
 Menu dishes, tiers, settings…

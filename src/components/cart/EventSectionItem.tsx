@@ -24,7 +24,13 @@ export default function EventSectionItem({
     ? null
     : startDate.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
 
-  const canAddToCart = !emailOnly && typeof onAddToCart === 'function';
+  const now = new Date();
+  const isActive = event.active;
+  const isFuture = Number.isNaN(startDate.getTime()) ? false : startDate.getTime() >= now.getTime();
+  const hasPrice = typeof event.priceCents === 'number' && event.priceCents > 0;
+
+  const isPurchasable = isActive && !emailOnly && hasPrice && isFuture;
+  const canAddToCart = isPurchasable && typeof onAddToCart === 'function';
 
   return (
     <div className="border rounded-3 p-3 mb-3">
@@ -37,19 +43,12 @@ export default function EventSectionItem({
           <div className="text-primary fw-semibold">{priceLabel}</div>
         </div>
 
-        {emailOnly ? (
-          <Link
-            href={`/eventi/${encodeURIComponent(event.slug)}`}
-            className="btn btn-outline-primary"
-          >
-            Prenota via email
-          </Link>
-        ) : canAddToCart ? (
+        {canAddToCart ? (
           <button
             type="button"
             className="btn btn-primary"
             onClick={() => onAddToCart?.()}
-            disabled={disabled || pending || !onAddToCart}
+            disabled={disabled || pending}
           >
             {pending ? 'Attendere…' : 'Aggiungi al carrello'}
           </button>
@@ -58,6 +57,7 @@ export default function EventSectionItem({
             href={`/eventi/${encodeURIComponent(event.slug)}`}
             className="btn btn-outline-secondary"
           >
+            {/* TODO: valutare CTA alternativa per eventi non acquistabili */}
             Dettagli evento
           </Link>
         )}

@@ -2,7 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useCart } from '@/hooks/useCart';
+import { pendingKeyForEvent, pendingKeyForProduct, useCart } from '@/hooks/useCart';
 
 import EventSectionItem from './EventSectionItem';
 import type {
@@ -45,7 +45,7 @@ export default function SectionAccordion() {
   const [error, setError] = useState<string | null>(null);
   const [openSection, setOpenSection] = useState<CatalogSectionDTO['key'] | null>(null);
   const [openDetails, setOpenDetails] = useState<Record<number, boolean>>({});
-  const [localPending, setLocalPending] = useState<Record<number, boolean>>({});
+  const [localPending, setLocalPending] = useState<Record<string, boolean>>({});
 
   // Carica il catalogo
   useEffect(() => {
@@ -97,9 +97,11 @@ export default function SectionAccordion() {
    */
   const handleAddToCart = useCallback(
     async (p: CatalogProduct) => {
+      const pendingKey = pendingKeyForProduct(p.id);
       try {
-        setLocalPending((m) => ({ ...m, [p.id]: true }));
+        setLocalPending((m) => ({ ...m, [pendingKey]: true }));
         await addItem({
+          kind: 'product',
           productId: p.id,
           qty: 1,
           nameSnapshot: p.name,
@@ -111,7 +113,7 @@ export default function SectionAccordion() {
       } finally {
         setLocalPending((m) => {
           const next = { ...m };
-          delete next[p.id];
+          delete next[pendingKey];
           return next;
         });
       }
@@ -120,28 +122,23 @@ export default function SectionAccordion() {
   );
 
   const handleAddEventToCart = useCallback(
-    async (event: CatalogEvent & { productId: number }) => {
+    async (event: CatalogEvent) => {
+      const pendingKey = pendingKeyForEvent(event.id);
       try {
-        setLocalPending((m) => ({ ...m, [event.productId]: true }));
-        const emailOnlyFlag =
-          (event as CatalogEvent & { emailOnly?: boolean }).emailOnly ?? event.flags.emailOnly;
+        setLocalPending((m) => ({ ...m, [pendingKey]: true }));
         await addItem({
-          productId: event.productId,
-          qty: 1,
-          nameSnapshot: event.title,
-          priceCentsSnapshot: event.priceCents,
-          meta: {
-            type: 'event',
-            eventId: event.id,
-            emailOnly: emailOnlyFlag,
-          },
+          kind: 'event',
+          eventItemId: event.id,
+          title: event.title,
+          priceCents: event.priceCents,
+          quantity: 1,
         });
       } catch (e) {
         console.error('[SectionAccordion] add event error', e);
       } finally {
         setLocalPending((m) => {
           const next = { ...m };
-          delete next[event.productId];
+          delete next[pendingKey];
           return next;
         });
       }
@@ -199,10 +196,10 @@ export default function SectionAccordion() {
               section.products
                 .filter((item): item is CatalogEvent => item.type === 'event')
                 .map((event) => {
-                  const hasProductId = typeof event.productId === 'number';
-                  const pendingStatus = hasProductId
-                    ? pending[event.productId] || localPending[event.productId]
-                    : false;
+                  const eventPendingKey = pendingKeyForEvent(event.id);
+                  const pendingStatus = Boolean(
+                    pending[eventPendingKey] || localPending[eventPendingKey]
+                  );
 
                   return (
                     <EventSectionItem
@@ -211,11 +208,7 @@ export default function SectionAccordion() {
                       priceLabel={currencyFormatter.format(event.priceCents / 100)}
                       pending={pendingStatus}
                       disabled={cartLoading}
-                      onAddToCart={
-                        !event.flags.emailOnly && hasProductId
-                          ? () => handleAddEventToCart({ ...event, productId: event.productId! })
-                          : undefined
-                      }
+                      onAddToCart={() => handleAddEventToCart(event)}
                     />
                   );
                 })

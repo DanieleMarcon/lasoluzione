@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { assertAdmin } from '@/lib/admin/session';
 import { prisma } from '@/lib/prisma';
 
@@ -18,20 +19,11 @@ async function resolveSectionId(sectionParam: string) {
   return prisma.catalogSection.findUnique({ where: { key: trimmed } });
 }
 
-function serializeAssignment(row: {
-  sectionId: number;
-  eventItemId: string;
-  displayOrder: number;
-  featured: boolean;
-  showInHome: boolean;
-  eventItem: {
-    id: string;
-    slug: string;
-    title: string;
-    startAt: Date;
-    priceCents: number;
-  };
-}) {
+type SectionEventWithItem = Prisma.SectionEventItemGetPayload<{
+  include: { eventItem: true };
+}>;
+
+function serializeAssignment(row: SectionEventWithItem) {
   return {
     sectionId: row.sectionId,
     eventItemId: row.eventItemId,
@@ -56,7 +48,7 @@ export async function GET(request: Request, context: { params: { sectionId: stri
     return NextResponse.json({ ok: false, error: 'section_not_found' }, { status: 404 });
   }
 
-  const assignments = await prisma.sectionEventItem.findMany({
+  const assignments: SectionEventWithItem[] = await prisma.sectionEventItem.findMany({
     where: { sectionId: section.id },
     orderBy: [{ displayOrder: 'asc' }, { eventItemId: 'asc' }],
     include: { eventItem: true },
@@ -64,7 +56,7 @@ export async function GET(request: Request, context: { params: { sectionId: stri
 
   return NextResponse.json({
     ok: true,
-    data: assignments.map((assignment) => ({
+    data: assignments.map((assignment: SectionEventWithItem) => ({
       sectionId: assignment.sectionId,
       eventId: assignment.eventItemId,
       order: assignment.displayOrder,
@@ -152,7 +144,7 @@ export async function POST(request: Request, context: { params: { sectionId: str
   const showInHome = typeof rawShowInHome === 'boolean' ? rawShowInHome : rawShowInHome === 'true';
 
   const row = await prisma.sectionEventItem.upsert({
-    where: { sectionId_eventId: { sectionId: section.id, eventItemId: resolvedEventId } },
+    where: { sectionId_eventItemId: { sectionId: section.id, eventItemId: resolvedEventId } },
     create: {
       sectionId: section.id,
       eventItemId: resolvedEventId,
@@ -188,7 +180,7 @@ export async function DELETE(request: Request, context: { params: { sectionId: s
 
   await prisma.sectionEventItem.delete({
     where: {
-      sectionId_eventId: {
+      sectionId_eventItemId: {
         sectionId: section.id,
         eventItemId,
       },

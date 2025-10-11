@@ -227,12 +227,12 @@ model SectionEventItem {
   featured     Boolean @default(false)
   showInHome   Boolean @default(false)
 
-  section   CatalogSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  eventItem EventItem      @relation(fields: [eventItemId], references: [id])
+  section   CatalogSection @relation(fields: [sectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  eventItem EventItem      @relation(fields: [eventItemId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@id([sectionId, eventItemId])
-  @@unique([sectionId, eventItemId], name: "sectionId_eventId")
   @@index([sectionId, displayOrder])
+  @@map("SectionEventItem")
 }
 
 /**

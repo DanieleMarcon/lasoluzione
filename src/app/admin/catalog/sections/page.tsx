@@ -52,7 +52,7 @@ export default async function AdminCatalogSectionsPage() {
       })
     : [];
 
-  const eventModel = (prisma as any)?.sectionEventItem;
+  const eventModel = (prisma as any).sectionEventItem ?? (prisma as any).sectionEvent;
   const eventLinks = sectionIds.length && eventModel
     ? await eventModel.findMany({
         where: { sectionId: { in: sectionIds } },

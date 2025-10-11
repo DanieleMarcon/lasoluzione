@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 
 import { prisma } from '@/lib/prisma'
 import { assertAdmin } from '@/lib/admin/session'
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(req: Request) {
   try {
-        await assertAdmin()
+    await assertAdmin()
 
     const { searchParams } = new URL(req.url)
     const qRaw = (searchParams.get('q') || '').trim()
@@ -19,16 +20,20 @@ export async function GET(req: Request) {
       return NextResponse.json({ items: [] }, { status: 200 })
     }
     const q = qRaw.toLowerCase()
+    const filters: Prisma.EventItemWhereInput[] = []
+
+    if (q) {
+      filters.push({ slug: { contains: q } })
+    }
+
+    if (qRaw) {
+      filters.push({ title: { contains: qRaw } })
+    }
 
     const items = await prisma.eventItem.findMany({
       where: {
         active: true,
-        OR: [
-          // slug in genere è lowercase: questo dà di fatto case-insensitive
-          q ? { slug: { contains: q } } : undefined,
-          // fallback sul titolo senza `mode` (SQLite non lo supporta)
-          qRaw ? { title: { contains: qRaw } } : undefined,
-        ].filter(Boolean) as any,
+        ...(filters.length ? { OR: filters } : {}),
       },
       orderBy: { startAt: 'asc' },
       take,

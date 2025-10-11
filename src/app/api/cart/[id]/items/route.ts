@@ -7,18 +7,72 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // Body per ADD/UPDATE riga carrello
-const upsertSchema = z.object({
-  productId: z.coerce.number().int().positive(),
-  qty: z.coerce.number().int().min(0).optional(), // 0 => rimozione
-  nameSnapshot: z.string().trim().min(1).optional(),
-  priceCentsSnapshot: z.coerce.number().int().min(0).optional(),
-  imageUrlSnapshot: z.string().url().optional(),
-  // meta opzionale (se null, per compat ora lo ignoriamo)
-  meta: z.union([z.record(z.any()), z.null()]).optional(),
-});
+const upsertSchema = z
+  .object({
+    productId: z.coerce.number().int().positive().optional(),
+    eventItemId: z.string().cuid().optional(),
+    qty: z.coerce.number().int().min(0).optional(), // 0 => rimozione
+    nameSnapshot: z.string().trim().min(1).optional(),
+    priceCentsSnapshot: z.coerce.number().int().min(0).optional(),
+    imageUrlSnapshot: z.string().url().optional(),
+    // meta opzionale (se null, per compat ora lo ignoriamo)
+    meta: z.union([z.record(z.any()), z.null()]).optional(),
+  })
+  .superRefine((data, ctx) => {
+    const hasProduct = typeof data.productId === 'number';
+    const hasEvent = typeof data.eventItemId === 'string' && data.eventItemId.length > 0;
+    if (hasProduct === hasEvent) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'product_or_event_required',
+      });
+    }
+  });
 
 type RouteContext = { params: { id: string } };
 type SumItem = { priceCentsSnapshot: number; qty: number };
+
+type EventItemSummary = {
+  id: string;
+  slug: string;
+  title: string;
+  priceCents: number;
+};
+
+async function ensureEventProduct(eventItem: EventItemSummary) {
+  const existing = await prisma.product.findFirst({
+    where: { sourceType: 'event_item', sourceId: eventItem.id },
+    select: { id: true },
+  });
+
+  if (existing) {
+    await prisma.product.update({
+      where: { id: existing.id },
+      data: {
+        name: eventItem.title,
+        priceCents: eventItem.priceCents,
+        active: true,
+        sourceType: 'event_item',
+        sourceId: eventItem.id,
+      },
+    });
+    return existing.id;
+  }
+
+  const slug = `event-item-${eventItem.id}`;
+  const created = await prisma.product.create({
+    data: {
+      slug,
+      name: eventItem.title,
+      priceCents: eventItem.priceCents,
+      active: true,
+      sourceType: 'event_item',
+      sourceId: eventItem.id,
+    },
+  });
+
+  return created.id;
+}
 
 async function recalcTotal(cartId: string) {
   const items: SumItem[] = await prisma.cartItem.findMany({
@@ -59,70 +113,141 @@ export async function POST(request: Request, ctx: RouteContext) {
     return NextResponse.json({ ok: false, error: 'cart_not_found' }, { status: 404 });
   }
 
-  // qty = 0 -> delete
-  if ((payload.qty ?? 1) <= 0) {
-    await prisma.cartItem.deleteMany({ where: { cartId, productId: payload.productId } });
-    await recalcTotal(cartId);
-    return NextResponse.json({ ok: true, data: null });
-  }
+  const hasEventItem = typeof payload.eventItemId === 'string' && payload.eventItemId.length > 0;
+  const requestedQty = payload.qty ?? 1;
 
-  const product = await prisma.product.findUnique({
-    where: { id: payload.productId },
-    select: {
-      priceCents: true,
-      name: true,
-      imageUrl: true,
-      slug: true,
-      sourceType: true,
-    },
-  });
-
-  if (!product) {
-    return NextResponse.json({ ok: false, error: 'product_not_found' }, { status: 404 });
-  }
-
+  let productId: number;
+  let snapshotName: string;
+  let snapshotPrice: number;
+  let snapshotImage: string | null = payload.imageUrlSnapshot ?? null;
   let eventMeta: { type: 'event'; eventId: string; emailOnly: boolean } | null = null;
-  let snapshotPrice = product.priceCents;
-  let rawName = payload.nameSnapshot ?? product.name ?? 'Prodotto';
 
-  const eventInstance = await prisma.eventInstance.findFirst({
-    where: { productId: payload.productId },
-    select: { slug: true },
-  });
-
-  let eventSlug: string | null = null;
-  if (eventInstance?.slug) {
-    eventSlug = eventInstance.slug;
-  } else if (typeof product.sourceType === 'string' && product.sourceType.includes('event')) {
-    eventSlug = product.slug;
-  }
-
-  if (eventSlug) {
-    const eventItem = await prisma.eventItem.findUnique({
-      where: { slug: eventSlug },
-      select: { id: true, title: true, priceCents: true, emailOnly: true },
+  if (hasEventItem) {
+    const eventId = payload.eventItemId!;
+    const existingEventProduct = await prisma.product.findFirst({
+      where: { sourceType: 'event_item', sourceId: eventId },
+      select: { id: true },
     });
 
-    if (eventItem) {
-      snapshotPrice = eventItem.priceCents;
-      rawName = eventItem.title ?? rawName;
-      eventMeta = {
-        type: 'event',
-        eventId: eventItem.id,
-        emailOnly: eventItem.emailOnly,
-      };
+    if (requestedQty <= 0) {
+      if (existingEventProduct) {
+        await prisma.cartItem.deleteMany({ where: { cartId, productId: existingEventProduct.id } });
+        await recalcTotal(cartId);
+      }
+      return NextResponse.json({ ok: true, data: null });
     }
+
+    const eventItem = await prisma.eventItem.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        priceCents: true,
+        emailOnly: true,
+        active: true,
+        startAt: true,
+      },
+    });
+
+    if (!eventItem) {
+      return NextResponse.json({ ok: false, error: 'event_not_found' }, { status: 404 });
+    }
+
+    const now = new Date();
+    if (!eventItem.active) {
+      return NextResponse.json({ ok: false, error: 'event_not_active' }, { status: 400 });
+    }
+    if (eventItem.emailOnly) {
+      return NextResponse.json({ ok: false, error: 'event_email_only' }, { status: 400 });
+    }
+    if (eventItem.priceCents <= 0) {
+      return NextResponse.json({ ok: false, error: 'event_not_purchasable' }, { status: 400 });
+    }
+    if (eventItem.startAt.getTime() < now.getTime()) {
+      return NextResponse.json({ ok: false, error: 'event_in_past' }, { status: 400 });
+    }
+
+    productId = existingEventProduct?.id ?? (await ensureEventProduct(eventItem));
+
+    const rawName =
+      typeof payload.nameSnapshot === 'string' && payload.nameSnapshot.trim().length > 0
+        ? payload.nameSnapshot.trim()
+        : eventItem.title;
+
+    snapshotName = rawName.length > 0 ? rawName : 'Evento';
+    snapshotPrice = payload.priceCentsSnapshot ?? eventItem.priceCents;
+    eventMeta = { type: 'event', eventId: eventItem.id, emailOnly: eventItem.emailOnly };
+  } else {
+    const baseProductId = payload.productId!;
+
+    if (requestedQty <= 0) {
+      await prisma.cartItem.deleteMany({ where: { cartId, productId: baseProductId } });
+      await recalcTotal(cartId);
+      return NextResponse.json({ ok: true, data: null });
+    }
+
+    const product = await prisma.product.findUnique({
+      where: { id: baseProductId },
+      select: {
+        priceCents: true,
+        name: true,
+        imageUrl: true,
+        slug: true,
+        sourceType: true,
+      },
+    });
+
+    if (!product) {
+      return NextResponse.json({ ok: false, error: 'product_not_found' }, { status: 404 });
+    }
+
+    productId = baseProductId;
+
+    let rawName = payload.nameSnapshot ?? product.name ?? 'Prodotto';
+    snapshotPrice = payload.priceCentsSnapshot ?? product.priceCents;
+
+    const eventInstance = await prisma.eventInstance.findFirst({
+      where: { productId: baseProductId },
+      select: { slug: true },
+    });
+
+    let eventSlug: string | null = null;
+    if (eventInstance?.slug) {
+      eventSlug = eventInstance.slug;
+    } else if (typeof product.sourceType === 'string' && product.sourceType.includes('event')) {
+      eventSlug = product.slug;
+    }
+
+    if (eventSlug) {
+      const eventItem = await prisma.eventItem.findUnique({
+        where: { slug: eventSlug },
+        select: { id: true, title: true, priceCents: true, emailOnly: true },
+      });
+
+      if (eventItem) {
+        snapshotPrice = eventItem.priceCents;
+        rawName = eventItem.title ?? rawName;
+        eventMeta = {
+          type: 'event',
+          eventId: eventItem.id,
+          emailOnly: eventItem.emailOnly,
+        };
+      }
+    }
+
+    snapshotName =
+      typeof rawName === 'string' && rawName.trim().length > 0
+        ? rawName.trim()
+        : 'Prodotto';
+    snapshotImage = snapshotImage ?? product.imageUrl ?? null;
   }
 
-  const snapshotName =
-    typeof rawName === 'string' && rawName.trim().length > 0
-      ? rawName.trim()
-      : 'Prodotto';
-  const snapshotImage = payload.imageUrlSnapshot ?? product.imageUrl ?? null;
+  const snapshotImageValue = snapshotImage;
 
   // Trova item esistente
   const existing = await prisma.cartItem.findFirst({
-    where: { cartId, productId: payload.productId },
+    where: { cartId, productId },
   });
 
   if (existing) {
@@ -131,7 +256,7 @@ export async function POST(request: Request, ctx: RouteContext) {
       qty: payload.qty ?? existing.qty,
       nameSnapshot: snapshotName,
       priceCentsSnapshot: snapshotPrice,
-      imageUrlSnapshot: snapshotImage,
+      imageUrlSnapshot: snapshotImageValue,
     };
     if (eventMeta) {
       data.meta = eventMeta;
@@ -151,11 +276,11 @@ export async function POST(request: Request, ctx: RouteContext) {
   // CREATE item
   const dataCreate: any = {
     cartId,
-    productId: payload.productId,
-    qty: payload.qty ?? 1,
+    productId,
+    qty: requestedQty,
     nameSnapshot: snapshotName,
     priceCentsSnapshot: snapshotPrice,
-    imageUrlSnapshot: snapshotImage,
+    imageUrlSnapshot: snapshotImageValue,
   };
   if (eventMeta) {
     dataCreate.meta = eventMeta;

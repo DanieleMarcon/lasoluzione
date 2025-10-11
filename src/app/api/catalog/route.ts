@@ -25,6 +25,7 @@ type CatalogEventDTO = {
   id: string;
   slug: string;
   title: string;
+  active: boolean;
   priceCents: number;
   startAt: string;
   endAt: string | null;
@@ -126,6 +127,7 @@ export async function GET(request: NextRequest) {
         id: link.eventItem.id,
         slug: link.eventItem.slug,
         title: link.eventItem.title,
+        active: link.eventItem.active,
         priceCents: link.eventItem.priceCents,
         startAt: link.eventItem.startAt.toISOString(),
         endAt: link.eventItem.endAt ? link.eventItem.endAt.toISOString() : null,

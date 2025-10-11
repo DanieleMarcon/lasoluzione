@@ -52,8 +52,9 @@ export default async function AdminCatalogSectionsPage() {
       })
     : [];
 
-  const eventLinks = sectionIds.length
-    ? await prisma.sectionEventItem.findMany({
+  const eventModel = (prisma as any)?.sectionEventItem;
+  const eventLinks = sectionIds.length && eventModel
+    ? await eventModel.findMany({
         where: { sectionId: { in: sectionIds } },
         orderBy: [{ sectionId: 'asc' }, { displayOrder: 'asc' }],
       })

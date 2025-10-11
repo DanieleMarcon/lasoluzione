@@ -24,7 +24,7 @@
 | POST | /api/bookings | pubblico | `bookings/route.ts`【F:src/app/api/bookings/route.ts†L14-L191】 | Booking, EventTier | Nessun auth; validazione Zod | Crea prenotazioni confermate, invia email, valida tier e menu. |
 | POST | /api/bookings/prepay | pubblico | `bookings/prepay/route.ts`【F:src/app/api/bookings/prepay/route.ts†L13-L166】 | Booking, EventTier | Nessun auth | Flusso pending con `prepayToken` e ordine fittizio. |
 | POST | /api/bookings/email-only | pubblico | `bookings/email-only/route.ts`【F:src/app/api/bookings/email-only/route.ts†L30-L129】 | EventInstance, Booking, Product, BookingVerification | Nessun auth; usa rate log | Richiede `allowEmailOnlyBooking`, crea booking pending e token email. |
-| GET | /api/bookings/confirm | pubblico | `bookings/confirm/route.ts`【F:src/app/api/bookings/confirm/route.ts†L1-L15】 | — | Nessun auth | Deprecato, risponde `410` e invita a usare `/api/payments/email-verify`. |
+| GET | /api/bookings/confirm | pubblico | `bookings/confirm/route.ts`【F:src/app/api/bookings/confirm/route.ts†L1-L209】 | Booking, BookingVerification, Order | Nessun auth | Consuma token email-only, conferma booking e reindirizza a `/checkout/success`. |
 | POST | /api/bookings/resend-confirmation | pubblico | `bookings/resend-confirmation/route.ts`【F:src/app/api/bookings/resend-confirmation/route.ts†L13-L137】 | Booking, BookingVerification | Nessun auth; rate-limit via `assertCooldownOrThrow` | Rigenera token per pending con rate limiting per email/IP. |
 | POST | /api/bookings/fake-confirm | pubblico (dev) | `bookings/fake-confirm/route.ts`【F:src/app/api/bookings/fake-confirm/route.ts†L15-L95】 | Booking | Nessun auth; usa mailer | Simula conferma pagamento anticipato (sandbox). |
 | POST | /api/bookings/fake-cancel | pubblico (dev) | `bookings/fake-cancel/route.ts`【F:src/app/api/bookings/fake-cancel/route.ts†L13-L44】 | Booking | Nessun auth | Simula annullo di pagamento anticipato. |
@@ -59,7 +59,7 @@
 - `bookings/route.ts` — Endpoint principale creazione prenotazioni con validazioni tier/menu.【F:src/app/api/bookings/route.ts†L14-L191】
 - `bookings/prepay/route.ts` — Variante pending con token per pagamento anticipato.【F:src/app/api/bookings/prepay/route.ts†L13-L166】
 - `bookings/email-only/route.ts` — Flusso eventi senza pagamento basato su `EventInstance` e token email.【F:src/app/api/bookings/email-only/route.ts†L30-L129】
-- `bookings/confirm|resend|fake-*` — Conferma token legacy (ora deprecata), resend rate-limited e simulazioni sandbox.【F:src/app/api/bookings/confirm/route.ts†L1-L15】【F:src/app/api/bookings/resend-confirmation/route.ts†L39-L137】【F:src/app/api/bookings/fake-confirm/route.ts†L15-L95】
+- `bookings/confirm|resend|fake-*` — Conferma token email-only, resend rate-limited e simulazioni sandbox.【F:src/app/api/bookings/confirm/route.ts†L1-L209】【F:src/app/api/bookings/resend-confirmation/route.ts†L39-L137】【F:src/app/api/bookings/fake-confirm/route.ts†L15-L95】
 - `cart/route.ts` & `[id]/route.ts` — Gestione carrello (creazione, ricalcolo totale).【F:src/app/api/cart/route.ts†L1-L41】【F:src/app/api/cart/[id]/route.ts†L13-L40】
 - `catalog/route.ts` — Costruzione vetrina sezioni e prodotti attivi.【F:src/app/api/catalog/route.ts†L9-L100】
 - `newsletter/route.ts` — Stub raccolta email con TODO double opt-in.【F:src/app/api/newsletter/route.ts†L1-L11】

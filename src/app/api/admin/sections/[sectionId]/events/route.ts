@@ -1,19 +1,33 @@
 import { NextResponse } from 'next/server';
-import type { EventItem } from '@prisma/client';
 import { assertAdmin } from '@/lib/admin/session';
 import { prisma } from '@/lib/prisma';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Tipi fallback per evitare TS2694 quando il client Prisma non è ancora aggiornato
+/**
+ * Tipi fallback per evitare errori TS quando il client Prisma non è ancora aggiornato.
+ * Coprono esattamente i campi che usiamo nel codice.
+ */
+type EventItemLite = {
+  id: string;
+  slug: string;
+  title: string;
+  startAt: Date;
+  endAt: Date | null;
+  priceCents: number;
+  active: boolean;
+  emailOnly: boolean;
+  showOnHome: boolean;
+};
+
 type SectionEventWithItem = {
   sectionId: number;
   eventItemId: string;
   displayOrder: number;
   featured: boolean;
   showInHome: boolean;
-  eventItem: EventItem & { startAt: Date; endAt: Date | null };
+  eventItem: EventItemLite;
 };
 
 async function resolveSectionId(sectionParam: string) {
@@ -25,7 +39,6 @@ async function resolveSectionId(sectionParam: string) {
       if (section) return section;
     }
   }
-
   return prisma.catalogSection.findUnique({ where: { key: trimmed } });
 }
 
@@ -46,7 +59,10 @@ function serializeAssignment(row: SectionEventWithItem) {
   };
 }
 
-export async function GET(request: Request, context: { params: { sectionId: string } }) {
+export async function GET(
+  _request: Request,
+  context: { params: { sectionId: string } }
+) {
   await assertAdmin();
 
   const section = await resolveSectionId(context.params.sectionId.trim());
@@ -54,15 +70,15 @@ export async function GET(request: Request, context: { params: { sectionId: stri
     return NextResponse.json({ ok: false, error: 'section_not_found' }, { status: 404 });
   }
 
-  const assignments: SectionEventWithItem[] = await prisma.sectionEventItem.findMany({
+  const assignments = (await prisma.sectionEventItem.findMany({
     where: { sectionId: section.id },
     orderBy: [{ displayOrder: 'asc' }, { eventItemId: 'asc' }],
     include: { eventItem: true },
-  });
+  })) as unknown as SectionEventWithItem[];
 
   return NextResponse.json({
     ok: true,
-    data: assignments.map((assignment: SectionEventWithItem) => ({
+    data: assignments.map((assignment) => ({
       sectionId: assignment.sectionId,
       eventId: assignment.eventItemId,
       order: assignment.displayOrder,
@@ -83,7 +99,10 @@ export async function GET(request: Request, context: { params: { sectionId: stri
   });
 }
 
-export async function POST(request: Request, context: { params: { sectionId: string } }) {
+export async function POST(
+  request: Request,
+  context: { params: { sectionId: string } }
+) {
   await assertAdmin();
 
   const section = await resolveSectionId(context.params.sectionId.trim());
@@ -94,10 +113,9 @@ export async function POST(request: Request, context: { params: { sectionId: str
   let body: unknown;
   try {
     body = await request.json();
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'payload non valido' }, { status: 400 });
   }
-
   if (!body || typeof body !== 'object') {
     return NextResponse.json({ error: 'payload non valido' }, { status: 400 });
   }
@@ -122,34 +140,34 @@ export async function POST(request: Request, context: { params: { sectionId: str
     typeof rawEventItemId === 'string' && rawEventItemId.trim().length > 0
       ? rawEventItemId.trim()
       : typeof rawEventId === 'string' && rawEventId.trim().length > 0
-        ? rawEventId.trim()
-        : Number.isFinite(rawEventId as number)
-          ? String(rawEventId)
-          : null;
+      ? rawEventId.trim()
+      : Number.isFinite(rawEventId as number)
+      ? String(rawEventId)
+      : null;
 
   if (!resolvedEventId) {
     return NextResponse.json({ error: 'eventId mancante/non valido' }, { status: 400 });
   }
 
-  if (!(await prisma.eventItem.findUnique({ where: { id: resolvedEventId } }))) {
+  const exists = await prisma.eventItem.findUnique({ where: { id: resolvedEventId } });
+  if (!exists) {
     return NextResponse.json({ ok: false, error: 'event_not_found' }, { status: 404 });
   }
 
-
   const rawDisplayOrderInput = rawDisplayOrder ?? rawOrder ?? 999;
-
   const displayOrderValue =
     typeof rawDisplayOrderInput === 'number'
       ? rawDisplayOrderInput
       : typeof rawDisplayOrderInput === 'string' && rawDisplayOrderInput.trim().length > 0
-        ? Number(rawDisplayOrderInput)
-        : Number.NaN;
+      ? Number(rawDisplayOrderInput)
+      : Number.NaN;
 
   const displayOrder = Number.isFinite(displayOrderValue) ? displayOrderValue : 999;
   const featured = typeof rawFeatured === 'boolean' ? rawFeatured : rawFeatured === 'true';
-  const showInHome = typeof rawShowInHome === 'boolean' ? rawShowInHome : rawShowInHome === 'true';
+  const showInHome =
+    typeof rawShowInHome === 'boolean' ? rawShowInHome : rawShowInHome === 'true';
 
-  const row = await prisma.sectionEventItem.upsert({
+  const row = (await prisma.sectionEventItem.upsert({
     where: { sectionId_eventItemId: { sectionId: section.id, eventItemId: resolvedEventId } },
     create: {
       sectionId: section.id,
@@ -164,12 +182,15 @@ export async function POST(request: Request, context: { params: { sectionId: str
       showInHome,
     },
     include: { eventItem: true },
-  });
+  })) as unknown as SectionEventWithItem;
 
   return NextResponse.json({ ok: true, row: serializeAssignment(row) });
 }
 
-export async function DELETE(request: Request, context: { params: { sectionId: string } }) {
+export async function DELETE(
+  request: Request,
+  context: { params: { sectionId: string } }
+) {
   await assertAdmin();
 
   const section = await resolveSectionId(context.params.sectionId.trim());
@@ -192,10 +213,6 @@ export async function DELETE(request: Request, context: { params: { sectionId: s
       },
     },
   });
-
-  // Post-fix commands:
-  // pnpm prisma generate
-  // rm -rf .next && pnpm dev
 
   return NextResponse.json({ ok: true });
 }

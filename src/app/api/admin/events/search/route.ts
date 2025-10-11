@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server'
 
 import { prisma } from '@/lib/prisma'
+import { assertAdmin } from '@/lib/admin/session'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: Request) {
   try {
+    await assertAdmin()
+
     const { searchParams } = new URL(req.url)
     const qRaw = (searchParams.get('q') || '').trim()
     const take = Math.min(Math.max(parseInt(searchParams.get('take') || '20', 10) || 20, 1), 50)

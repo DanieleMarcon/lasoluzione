@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { prisma } from '@/lib/prisma';
+import { prismaHasEventItem } from '@/utils/dev-guards';
 
 type CatalogProductDTO = {
   type: 'product';
@@ -50,6 +51,13 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  if (!prismaHasEventItem()) {
+    return NextResponse.json(
+      { error: 'Prisma client senza EventItem: esegui migrate + generate' },
+      { status: 503 }
+    );
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const sectionFilter = searchParams.get('section');

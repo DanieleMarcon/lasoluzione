@@ -231,6 +231,7 @@ model SectionEventItem {
   eventItem EventItem      @relation(fields: [eventItemId], references: [id])
 
   @@id([sectionId, eventItemId])
+  @@unique([sectionId, eventItemId], name: "sectionId_eventId")
   @@index([sectionId, displayOrder])
 }
 

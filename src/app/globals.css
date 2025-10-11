@@ -1,9 +1,14 @@
-/* src/app/globals.css */
+/* src/app/globals.css — Tailwind v4 */
+@import "tailwindcss";
 
-/* Non usare @import "tailwindcss"; in un progetto Next/Tailwind moderno */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Se hai stile aggiuntivo per il sito, importalo DOPO i layer di Tailwind */
+/* I TUOI STILI AGGIUNTIVI (dopo Tailwind) */
 @import url('./(site)/globals.css');
+
+/* Esempio: puoi aggiungere qui variabili o override globali */
+/* :root { */
+  /* --brand: #111827;  */
+/* } */
+
+html, body {
+  height: 100%;
+}

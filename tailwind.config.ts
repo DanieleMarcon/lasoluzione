@@ -1,16 +1,13 @@
+// tailwind.config.ts — Tailwind v4
 import type { Config } from 'tailwindcss';
 
-const config = {
-  content: [
-    './src/app/**/*.{ts,tsx,js,jsx,mdx}',
-    './src/components/**/*.{ts,tsx,js,jsx,mdx}',
-    './src/**/*.{ts,tsx,js,jsx,mdx}',
-  ],
+const config: Config = {
+  // In v4 niente "content": la scansione è automatica
   theme: {
     extend: {
       colors: {
         primary: {
-          50: '#eff6ff',
+          50:  '#eff6ff',
           100: '#dbeafe',
           200: '#bfdbfe',
           300: '#93c5fd',
@@ -25,6 +22,6 @@ const config = {
     },
   },
   plugins: [],
-} satisfies Config;
+};
 
 export default config;

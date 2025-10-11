@@ -15,6 +15,9 @@ export async function GET(req: Request) {
     const take = Math.min(Math.max(parseInt(searchParams.get('take') || '20', 10) || 20, 1), 50)
 
     // normalizza query: usiamo lo slug (lowercase) per avere matching "pratico" su SQLite
+    if (!qRaw) {
+      return NextResponse.json({ items: [] }, { status: 200 })
+    }
     const q = qRaw.toLowerCase()
 
     const items = await prisma.eventItem.findMany({

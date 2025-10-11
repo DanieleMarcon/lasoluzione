@@ -93,7 +93,7 @@ function buildVerifyLink(token: string): string {
     process.env.BASE_URL ??
     'http://localhost:3000';
   const normalized = base.replace(/\/$/, '');
-  return `${normalized}/api/payments/email-verify?token=${encodeURIComponent(token)}`;
+  return `${normalized}/api/bookings/confirm?token=${encodeURIComponent(token)}`;
 }
 
 function formatWhenLabel(startAt: Date | null, endAt: Date | null): string {

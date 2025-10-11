@@ -86,7 +86,7 @@ export async function GET(request: Request) {
     where.OR = [
       { title: { contains: search, mode: 'insensitive' } },
       { slug: { contains: search, mode: 'insensitive' } },
-    ];
+    ] as unknown as Prisma.EventItemWhereInput[];
   }
 
   if (activeFilter === 'true') where.active = true;

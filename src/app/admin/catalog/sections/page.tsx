@@ -37,6 +37,14 @@ type SectionRow = {
   events: SectionEventRow[];
 };
 
+type SectionEventLinkRow = {
+  sectionId: number;
+  eventItemId: string;
+  displayOrder: number;
+  featured: boolean;
+  showInHome: boolean;
+};
+
 export default async function AdminCatalogSectionsPage() {
   await assertAdmin();
 
@@ -53,11 +61,11 @@ export default async function AdminCatalogSectionsPage() {
     : [];
 
   const eventModel = (prisma as any).sectionEventItem ?? (prisma as any).sectionEvent;
-  const eventLinks = sectionIds.length && eventModel
-    ? await eventModel.findMany({
+  const eventLinks: SectionEventLinkRow[] = sectionIds.length && eventModel
+    ? ((await eventModel.findMany({
         where: { sectionId: { in: sectionIds } },
         orderBy: [{ sectionId: 'asc' }, { displayOrder: 'asc' }],
-      })
+      })) as SectionEventLinkRow[])
     : [];
 
   const productIds = Array.from(new Set(links.map((l) => l.productId)));
@@ -115,7 +123,7 @@ export default async function AdminCatalogSectionsPage() {
 
     const sectionEventLinks = eventsBySection.get(section.id) ?? [];
     const eventRows: SectionEventRow[] = sectionEventLinks
-      .map((link) => {
+      .map((link): SectionEventRow | null => {
         const event = eventById.get(link.eventItemId);
         if (!event) return null;
         return {
@@ -130,7 +138,11 @@ export default async function AdminCatalogSectionsPage() {
         } satisfies SectionEventRow;
       })
       .filter((row): row is SectionEventRow => row !== null)
-      .sort((a, b) => (a.order !== b.order ? a.order - b.order : a.title.localeCompare(b.title, 'it', { sensitivity: 'base' })));
+      .sort((a, b) =>
+        a.order !== b.order
+          ? a.order - b.order
+          : a.title.localeCompare(b.title, 'it', { sensitivity: 'base' })
+      );
 
     return {
       id: section.id,

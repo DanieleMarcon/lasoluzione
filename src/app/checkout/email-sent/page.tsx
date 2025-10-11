@@ -19,17 +19,38 @@ function mapResendError(code?: string | null): string {
   }
 }
 
+function mapVerifyError(code?: string | null): string {
+  switch (code) {
+    case 'token_expired':
+      return 'Il link di conferma è scaduto. Richiedi un nuovo invio della mail.';
+    case 'token_missing':
+      return 'Il collegamento seguito non è completo. Controlla di aver copiato l’indirizzo corretto.';
+    case 'email_mismatch':
+    case 'order_not_found':
+    case 'token_invalid':
+      return 'Il link di conferma non è più valido. Richiedi un nuovo invio della mail.';
+    case 'config_error':
+      return 'Non è stato possibile confermare la prenotazione. Riprova tra poco o contattaci.';
+    default:
+      return 'Impossibile confermare la prenotazione con questo link. Richiedi un nuovo invio della mail.';
+  }
+}
+
 export default function CheckoutEmailSentPage() {
   const searchParams = useSearchParams();
   const bookingIdParam = searchParams.get('bookingId');
+  const verifyErrorParam = searchParams.get('error');
   const bookingId = useMemo(() => {
     if (!bookingIdParam) return null;
     const parsed = Number(bookingIdParam);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }, [bookingIdParam]);
 
-  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [message, setMessage] = useState<string | null>(null);
+  const initialStatus: 'idle' | 'loading' | 'success' | 'error' = verifyErrorParam ? 'error' : 'idle';
+  const initialMessage = verifyErrorParam ? mapVerifyError(verifyErrorParam) : null;
+
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(initialStatus);
+  const [message, setMessage] = useState<string | null>(initialMessage);
   const feedbackRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -39,11 +60,18 @@ export default function CheckoutEmailSentPage() {
   }, [status, message]);
 
   useEffect(() => {
-    if (!bookingId && bookingIdParam) {
+    if (verifyErrorParam) {
+      setStatus('error');
+      setMessage(mapVerifyError(verifyErrorParam));
+    }
+  }, [verifyErrorParam]);
+
+  useEffect(() => {
+    if (!verifyErrorParam && !bookingId && bookingIdParam) {
       setStatus('error');
       setMessage('Il collegamento non è valido.');
     }
-  }, [bookingId, bookingIdParam]);
+  }, [bookingId, bookingIdParam, verifyErrorParam]);
 
   const handleResend = useCallback(async () => {
     if (!bookingId) {

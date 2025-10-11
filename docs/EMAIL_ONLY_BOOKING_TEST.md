@@ -36,7 +36,7 @@ Verificare end-to-end il percorso di prenotazione senza pagamento, assicurandosi
 - Rotte disponibili:
   - `POST /api/bookings/email-only`
   - `POST /api/bookings/resend-confirmation`
-  - `GET /api/bookings/confirm?token=...`
+  - `GET /api/payments/email-verify?token=...`
 - Logger A7 attivo (output JSON in console).
 - Base URL pubblico: `NEXT_PUBLIC_BASE_URL` o `APP_BASE_URL` (tipicamente `http://localhost:3000`).
 
@@ -56,11 +56,11 @@ Verificare end-to-end il percorso di prenotazione senza pagamento, assicurandosi
 5. Validare:
    - Log console: record JSON `{"action":"booking.create","outcome":"ok",...}` con `bookingId` ed `eventInstanceId`.
    - DB: `Booking.status = 'pending'` e riga correlata in `BookingVerification` con `expiresAt` futuro e `usedAt = null`.
-   - Mailbox: due email (cliente: "Conferma la tua prenotazione" con link `/checkout/confirm?token=...`; admin: "Prenotazione in attesa").
+- Mailbox: due email (cliente: "Conferma la tua prenotazione" con link `/api/payments/email-verify?token=...`; admin: "Prenotazione in attesa").
    - Fallback: recuperare `token` da `BookingVerification` e costruire manualmente l'URL se necessario.
 
 ### 3. Conferma via link
-1. Aprire il link di conferma dalla mail (`/checkout/confirm?token=...`).
+1. Aprire il link di conferma dalla mail (`/api/payments/email-verify?token=...`).
 2. Atteso: pagina di esito positivo (prenotazione confermata).
 3. Verificare:
    - DB: `Booking.status` passa da `pending` a `confirmed`; `BookingVerification.usedAt` valorizzato.
@@ -102,7 +102,7 @@ Verificare end-to-end il percorso di prenotazione senza pagamento, assicurandosi
 ### 7. Criteri di accettazione
 - CTA "Prenota senza pagare" visibile solo con `allowEmailOnlyBooking` attivo.
 - `POST /api/bookings/email-only` crea `Booking.pending`, genera `BookingVerification` e invia email richiesta (cliente) + pending (admin).
-- Link `/checkout/confirm?token=...` conferma la prenotazione e invia email di conferma a cliente e admin.
+- Link `/api/payments/email-verify?token=...` conferma la prenotazione e invia email di conferma a cliente e admin.
 - Rate-limit resend: seconda richiesta <90s → 429 + `Retry-After`; >90s → 200.
 - Idempotenza: secondo click → stato `used`; token scaduto → `expired`.
 - Admin mostra correttamente `pending` → `confirmed`.

@@ -14,10 +14,10 @@ Cliente ↦ POST /api/payments/checkout
   └─ risposta { state: 'confirmed', bookingId, orderId, nextUrl }
         (non viene generato token verify lato checkout perché conferma immediata)
 
-Email cliente: link Conferma → GET /api/bookings/confirm?token=...
+Email cliente: link Conferma → GET /api/payments/email-verify?token=...
   ├─ Valida token (consumeBookingToken)
   ├─ Aggiorna Booking.status='confirmed', Order.status='confirmed', Cart.status='locked'
-  └─ Redirect a `/checkout/success?orderId=...&bookingId=...` dopo `/api/bookings/confirm`
+  └─ Redirect a `/checkout/success?orderId=...&bookingId=...` dopo `/api/payments/email-verify`
 ```
 Nel nuovo flusso email-only collegato al carrello (API `email-verify`):
 ```
@@ -25,8 +25,9 @@ POST /api/payments/checkout (totale 0) ─┐
                                        ▼
                        Booking creato/aggiornato + mail verify
                                        ▼
-Cliente clicca link email → GET /api/bookings/confirm?token
-  ├─ Valida token (`BookingVerification`) e booking associato
+Cliente clicca link email → GET /api/payments/email-verify?token
+  ├─ Valida token + carica cart/order
+  ├─ Determina se email-only: se `cart.totalCents <= 0` o meta `emailOnly`
   ├─ Aggiorna Booking.status='confirmed', Order.status='confirmed', Cart.status='locked'
   ├─ Invia `sendBookingConfirmedCustomer` + `sendBookingConfirmedAdmin`
   └─ Redirect a `/checkout/success?orderId=...&bookingId=...`

@@ -46,7 +46,7 @@
 | `/prenota` | `src/app/prenota/page.tsx` | Wizard legacy oppure carrello/catalogo se `NEXT_PUBLIC_CART_ENABLED=true` | Pubblica |
 | `/checkout` | `src/app/checkout/page.tsx` | Form checkout cliente + gestione stati verifica/pagamento | Pubblica |
 | `/checkout/email-sent` | `src/app/checkout/email-sent/page.tsx` | Conferma invio mail con possibilità di reinvio | Pubblica |
-| `/checkout/confirm` | `src/app/checkout/confirm/page.tsx` | Reindirizza token checkout (JWT) verso `/api/payments/email-verify` | Pubblica |
+| `/checkout/confirm` | `src/app/checkout/confirm/page.tsx` | Consuma token prenotazione legacy (`/api/bookings/confirm`) | Pubblica |
 | `/checkout/return` | `src/app/checkout/return/page.tsx` | Poll stato pagamento dopo redirect provider | Pubblica |
 | `/checkout/cancel` | `src/app/checkout/cancel/page.tsx` | Pagamento annullato | Pubblica |
 | `/checkout/success` | `src/app/checkout/success/page.tsx` | Success page (svuota carrello client) | Pubblica |
@@ -78,11 +78,11 @@
 | POST | `/api/orders` | `src/app/api/orders/route.ts` | Crea ordine da carrello (idempotente su `cartId`) |
 | POST | `/api/orders/finalize` | `src/app/api/orders/finalize/route.ts` | Segna ordine pagato e invia email |
 | POST | `/api/payments/checkout` | `src/app/api/payments/checkout/route.ts` | Flusso checkout: verifica email → conferma/pagamento |
-| GET | `/api/payments/email-verify` | `src/app/api/payments/email-verify/route.ts` | Consuma token JWT checkout, conferma email-only |
+| GET | `/api/payments/email-verify` | `src/app/api/payments/email-verify/route.ts` | Consuma token verifica, conferma email-only |
 | GET/POST | `/api/payments/order-status` | `src/app/api/payments/order-status/route.ts` | Poll stato ordine (locale + Revolut) |
 | POST | `/api/bookings` | `src/app/api/bookings/route.ts` | Prenotazioni legacy (con mail) |
 | POST | `/api/bookings/email-only` | `src/app/api/bookings/email-only/route.ts` | Prenotazione evento con sola email |
-| GET | `/api/bookings/confirm` | `src/app/api/bookings/confirm/route.ts` | Conferma booking email-only via token e reindirizza a success |
+| GET | `/api/bookings/confirm` | `src/app/api/bookings/confirm/route.ts` | Consuma token legacy per conferma booking |
 | POST | `/api/bookings/resend-confirmation` | `src/app/api/bookings/resend-confirmation/route.ts` | Reinvio mail verifica booking |
 | POST | `/api/bookings/fake-confirm` | `src/app/api/bookings/fake-confirm/route.ts` | Conferma simulata (fake-payment) |
 | POST | `/api/bookings/fake-cancel` | `src/app/api/bookings/fake-cancel/route.ts` | Annulla simulato |

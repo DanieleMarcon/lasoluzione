@@ -42,11 +42,11 @@
 | POST | `/api/orders` | `{ cartId, email, name, phone, notes? }` | `{ ok: true, data: { orderId, status, … } }` | `400 invalid_payload`, `404 cart_not_found`, `400 cart_empty` |
 | POST | `/api/orders/finalize` | `{ orderId }` | `{ ok: true, orderId }` | `400 missing_order`, `500 finalize_failed` |
 | POST | `/api/payments/checkout` | Checkout payload (cliente, consensi, items dal carrello, `verifyToken?`) | Stati: `{ state: 'verify_sent' | 'confirmed' | 'paid_redirect', ... }` | `400 cart_not_found/cart_empty`, `500 verify_email_failed`, `500 server_error` |
-| GET | `/api/payments/email-verify?token=` | Query `token` (JWT) | Redirect `302` verso `/checkout?verified=1` o `/checkout/success` (email-only da checkout) + cookie `order_verify_token` | `400 Token non valido o scaduto` |
+| GET | `/api/payments/email-verify?token=` | Query `token` | Redirect `302` verso `/checkout?verified=1` o `/checkout/success` (email-only) + cookie `order_verify_token` | `400 Token non valido o scaduto` |
 | GET/POST | `/api/payments/order-status` | Query `orderId` o `ref` | `{ ok: true, data: { status, orderId } }` | `404 order_not_found`, `500 status_error` |
 | POST | `/api/bookings` | Payload wizard legacy (tipo, data, persone, menu) | `{ ok: true, bookingId }` | `400 Dati non validi`, `409 requiresPrepay`, `409 tier_unavailable` |
 | POST | `/api/bookings/email-only` | `{ eventSlug|eventInstanceId, customer{name,email,phone}, people, notes?, agreePrivacy, agreeMarketing }` | `{ ok: true, bookingId, verificationToken }` | `400 event_slug_not_found`, `400 email_only_not_allowed`, `400 invalid_people`, `500 verify_email_failed` |
-| GET | `/api/bookings/confirm?token=` | Query `token`, `bookingId?` | Redirect `302` verso `/checkout/success` (ok) o `/checkout/email-sent?error=...` (errore) | `302` → errore con `error=token_invalid|token_expired`, `302` → success |
+| GET | `/api/bookings/confirm?token=` | Query `token` | `410 deprecated_route` | Reindirizzare a `/api/payments/email-verify` |
 | POST | `/api/bookings/resend-confirmation` | `{ bookingId }` | `{ ok: true }` | `400 invalid_payload`, `404 booking_not_found`, `429 rate_limited` |
 | POST | `/api/bookings/fake-confirm` | `{ token }` | `{ ok: true, bookingId }` | `400 invalid_token` |
 | POST | `/api/bookings/fake-cancel` | `{ token }` | `{ ok: true }` | `400 invalid_token` |

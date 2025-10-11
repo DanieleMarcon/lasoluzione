@@ -159,8 +159,7 @@ export async function sendBookingVerifyEmail(params: {
 
   const transporter = await ensureTransport();
   const confirmParams = new URLSearchParams({ token: params.token });
-  confirmParams.append('bookingId', String(params.bookingId));
-  const confirmPath = `/api/bookings/confirm?${confirmParams.toString()}`;
+  const confirmPath = `/api/payments/email-verify?${confirmParams.toString()}`;
   const confirmUrl = buildAbsoluteUrl(params.baseUrl, confirmPath);
   const safeTitle = params.eventTitle?.trim() ? escapeHtml(params.eventTitle.trim()) : 'La Soluzione';
   const whenLabel = params.whenLabel?.trim();

@@ -25,7 +25,7 @@ export default function CheckoutConfirmPage() {
       return;
     }
 
-    const confirmUrl = `/api/payments/email-verify?token=${encodeURIComponent(trimmedToken)}`;
+    const confirmUrl = `/api/bookings/confirm?token=${encodeURIComponent(trimmedToken)}`;
     window.location.replace(confirmUrl);
   }, [token, bookingId, router]);
 

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import type { Prisma } from '@prisma/client'
 
 import { prisma } from '@/lib/prisma'
 import { assertAdmin } from '@/lib/admin/session'
@@ -20,7 +19,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ items: [] }, { status: 200 })
     }
     const q = qRaw.toLowerCase()
-    const filters: Prisma.EventItemWhereInput[] = []
+    const filters: Array<Record<string, unknown>> = []
 
     if (q) {
       filters.push({ slug: { contains: q } })

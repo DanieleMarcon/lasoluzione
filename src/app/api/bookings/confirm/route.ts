@@ -203,11 +203,13 @@ export async function GET(req: Request) {
     });
   }
 
-  logger.info({
-    action: 'booking.confirm.emails_sent',
-    bookingId: updated.id,
-    email: updated.email,
-  });
+  logger.info(
+    JSON.stringify({
+      action: 'booking.confirm.emails_sent',
+      bookingId: updated.id,
+      email: updated.email,
+    }),
+  );
 
   logger.info('booking.confirm', {
     action: 'booking.confirm',

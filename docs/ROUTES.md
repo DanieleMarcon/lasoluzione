@@ -7,7 +7,7 @@
 | `/prenota` | `src/app/prenota/page.tsx` | Wizard legacy oppure catalogo+carrello in base a `NEXT_PUBLIC_CART_ENABLED` | Pubblica | Importa `BookingWizard`, `SectionAccordion`, `CartSidebar` |
 | `/checkout` | `src/app/checkout/page.tsx` | Form checkout (email, recap carrello, consensi) + gestione stati verify/pagamento | Pubblica | Usa `useCart`, sessionStorage `order_verify_token`, redirect in base alla risposta API |
 | `/checkout/email-sent` | `src/app/checkout/email-sent/page.tsx` | Conferma invio email, consente resend via `/api/bookings/resend-confirmation` | Pubblica | Gestisce stato UI e messaggi localizzati |
-| `/checkout/confirm` | `src/app/checkout/confirm/page.tsx` | Consumazione token legacy (GET `/api/bookings/confirm`) | Pubblica | Supporta stati `success`, `expired`, `already_used`, `invalid` |
+| `/checkout/confirm` | `src/app/checkout/confirm/page.tsx` | Reindirizzamento verso `/api/payments/email-verify` | Pubblica | Messaggio di attesa durante la conferma |
 | `/checkout/return` | `src/app/checkout/return/page.tsx` | Poll `/api/payments/order-status` dopo redirect provider | Pubblica | Reindirizza a `/checkout/success` su esito `paid/completed` |
 | `/checkout/cancel` | `src/app/checkout/cancel/page.tsx` | Messaggio di annullamento pagamento | Pubblica | Link rapido per tornare al carrello |
 | `/checkout/success` | `src/app/checkout/success/page.tsx` | Messaggio conferma + ID ordine/booking | Pubblica | Chiama `useCart().clearCartToken()` |
@@ -46,7 +46,7 @@
 | GET/POST | `/api/payments/order-status` | Query `orderId` o `ref` | `{ ok: true, data: { status, orderId } }` | `404 order_not_found`, `500 status_error` |
 | POST | `/api/bookings` | Payload wizard legacy (tipo, data, persone, menu) | `{ ok: true, bookingId }` | `400 Dati non validi`, `409 requiresPrepay`, `409 tier_unavailable` |
 | POST | `/api/bookings/email-only` | `{ eventSlug|eventInstanceId, customer{name,email,phone}, people, notes?, agreePrivacy, agreeMarketing }` | `{ ok: true, bookingId, verificationToken }` | `400 event_slug_not_found`, `400 email_only_not_allowed`, `400 invalid_people`, `500 verify_email_failed` |
-| GET | `/api/bookings/confirm?token=` | Query `token` | `{ ok: true, state: 'confirmed' }` | `{ ok: false, state: 'expired'|'used'|'invalid' }` |
+| GET | `/api/bookings/confirm?token=` | Query `token` | `410 deprecated_route` | Reindirizzare a `/api/payments/email-verify` |
 | POST | `/api/bookings/resend-confirmation` | `{ bookingId }` | `{ ok: true }` | `400 invalid_payload`, `404 booking_not_found`, `429 rate_limited` |
 | POST | `/api/bookings/fake-confirm` | `{ token }` | `{ ok: true, bookingId }` | `400 invalid_token` |
 | POST | `/api/bookings/fake-cancel` | `{ token }` | `{ ok: true }` | `400 invalid_token` |

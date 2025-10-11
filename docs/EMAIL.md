@@ -10,7 +10,7 @@
 | Funzione | Trigger | Destinatario | Contenuto |
 | --- | --- | --- | --- |
 | `sendOrderEmailVerifyLink({ to, name, verifyUrl })` | POST `/api/payments/checkout` (totale > 0 e email non ancora verificata) | Cliente | Email con link di verifica (`verifyUrl` → `/api/payments/email-verify`) |
-| `sendBookingVerifyEmail({ to, bookingId, token, eventTitle, whenLabel, baseUrl })` | Checkout email-only (`totalCents <= 0`) oppure `/api/bookings/email-only` | Cliente | Mail con bottone “Conferma prenotazione” che chiama `/api/bookings/confirm?token=...` |
+| `sendBookingVerifyEmail({ to, bookingId, token, eventTitle, whenLabel, baseUrl })` | Checkout email-only (`totalCents <= 0`) oppure `/api/bookings/email-only` | Cliente | Mail con bottone “Conferma prenotazione” che chiama `/api/payments/email-verify?token=...` |
 | `sendBookingConfirmedCustomer` | `/api/payments/email-verify` quando conferma email-only | Cliente | Conferma prenotazione con riepilogo persone/evento |
 | `sendBookingConfirmedAdmin` | `/api/payments/email-verify` (email-only) | Admin (`MAIL_TO_BOOKINGS`) | Avviso prenotazione confermata |
 | `sendOrderPaymentEmail({ to, orderId, amountCents, hostedPaymentUrl })` | Checkout con importo > 0 dopo creazione ordine Revolut | Cliente | Invita a completare pagamento (bottone + link fallback). Salva esito in `paymentRef` |

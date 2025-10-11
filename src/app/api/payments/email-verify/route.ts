@@ -48,6 +48,41 @@ function resolveBaseUrl(): string {
   return raw.replace(/\/$/, '');
 }
 
+const BOOKING_CONFIRM_ERROR_PATH = '/checkout/email-sent';
+
+type VerifyErrorCode =
+  | 'token_missing'
+  | 'token_invalid'
+  | 'token_expired'
+  | 'order_not_found'
+  | 'email_mismatch'
+  | 'config_error';
+
+type RedirectContext = {
+  bookingId?: string | null;
+  cartId?: string | null;
+  email?: string | null;
+};
+
+function redirectToVerifyError(code: VerifyErrorCode, context: RedirectContext = {}) {
+  const baseUrl = resolveBaseUrl();
+  const params = new URLSearchParams({ error: code });
+  if (context.bookingId) {
+    params.append('bookingId', context.bookingId);
+  }
+  const redirectUrl = `${baseUrl}${BOOKING_CONFIRM_ERROR_PATH}?${params.toString()}`;
+  logger.warn('order.verify.invalid', {
+    action: 'order.verify',
+    outcome: 'invalid',
+    reason: code,
+    cartId: context.cartId ?? null,
+    email: context.email ?? null,
+  });
+  const response = NextResponse.redirect(redirectUrl, { status: 302 });
+  response.cookies.delete(VERIFY_COOKIE);
+  return response;
+}
+
 function formatWhenLabel(startAt: Date | null, endAt: Date | null): string {
   if (!startAt) return '';
   const label = formatEventSchedule(startAt, endAt ?? undefined);
@@ -283,42 +318,55 @@ async function evaluateEmailOnly(cart: CartWithItems): Promise<EmailOnlyFlagEval
 }
 
 export async function GET(request: Request) {
+  let bookingIdParam: string | null = null;
+  let cartId: string | null = null;
+  let emailFromToken: string | null = null;
   try {
     const url = new URL(request.url);
+    bookingIdParam = url.searchParams.get('bookingId');
     const token = url.searchParams.get('token');
 
     if (!token) {
-      return new NextResponse('Token non valido o scaduto', { status: 400 });
+      return redirectToVerifyError('token_missing', { bookingId: bookingIdParam });
     }
 
     const secret = process.env.NEXTAUTH_SECRET;
     if (!secret) {
       console.error('[payments][email-verify] missing NEXTAUTH_SECRET');
-      return new NextResponse('Token non valido o scaduto', { status: 400 });
+      return redirectToVerifyError('config_error', { bookingId: bookingIdParam });
     }
 
     const verification = verifyJwt<OrderVerifyTokenPayload>(token, secret);
     if (!verification.valid) {
-      return new NextResponse('Token non valido o scaduto', { status: 400 });
+      const reason = verification.reason === 'expired' ? 'token_expired' : 'token_invalid';
+      return redirectToVerifyError(reason, { bookingId: bookingIdParam });
     }
 
     const payload = verification.payload || ({} as OrderVerifyTokenPayload);
-    const cartId = typeof payload.cartId === 'string' ? payload.cartId : null;
-    const email = typeof payload.email === 'string' ? payload.email : null;
+    cartId = typeof payload.cartId === 'string' ? payload.cartId : null;
+    emailFromToken = typeof payload.email === 'string' ? payload.email : null;
 
-    if (!cartId || !email) {
-      return new NextResponse('Token non valido o scaduto', { status: 400 });
+    if (!cartId || !emailFromToken) {
+      return redirectToVerifyError('token_invalid', { bookingId: bookingIdParam });
     }
 
     const order = await prisma.order.findUnique({ where: { cartId } });
 
     if (!order) {
-      return new NextResponse('Token non valido o scaduto', { status: 400 });
+      return redirectToVerifyError('order_not_found', {
+        bookingId: bookingIdParam,
+        cartId,
+        email: emailFromToken,
+      });
     }
 
-    const emailMatches = order.email?.toLowerCase() === email.toLowerCase();
+    const emailMatches = order.email?.toLowerCase() === emailFromToken.toLowerCase();
     if (!emailMatches) {
-      return new NextResponse('Token non valido o scaduto', { status: 400 });
+      return redirectToVerifyError('email_mismatch', {
+        bookingId: bookingIdParam,
+        cartId,
+        email: emailFromToken,
+      });
     }
 
     const cart = await prisma.cart.findUnique({
@@ -490,6 +538,10 @@ export async function GET(request: Request) {
     return response;
   } catch (error) {
     console.error('[payments][email-verify] error', error);
-    return new NextResponse('Token non valido o scaduto', { status: 400 });
+    return redirectToVerifyError('token_invalid', {
+      bookingId: bookingIdParam,
+      cartId,
+      email: emailFromToken,
+    });
   }
 }

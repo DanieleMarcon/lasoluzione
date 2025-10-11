@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 import { assertAdmin } from '@/lib/admin/session';
 import { prisma } from '@/lib/prisma';
-import { eventItemCreateSchema } from '@/lib/validators/eventItem';
+import { prismaHasEventItem } from '@/utils/dev-guards';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,6 +19,28 @@ const querySchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
   size: z.coerce.number().int().min(1).max(100).optional(),
 });
+
+const bodySchema = z.object({
+  title: z.string().trim().min(2),
+  slug: z.string().trim().min(2),
+  description: z.string().optional().nullable(),
+  startAt: z.coerce.date(),
+  endAt: z.coerce.date().optional().nullable(),
+  price: z.union([z.number(), z.string()]).optional(),
+  priceCents: z.number().int().nonnegative().optional(),
+  allowEmailOnlyBooking: z.boolean().default(false),
+  showOnHome: z.boolean().default(false),
+  active: z.boolean().default(true),
+  capacity: z.number().int().min(1).optional().nullable(),
+});
+
+function euroLikeToCents(v?: number | string): number {
+  if (v === undefined) return 0;
+  if (typeof v === 'number') return Math.round(v * 100);
+  const norm = v.replace(/\./g, '').replace(',', '.');
+  const n = Number(norm);
+  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+}
 
 function toAdminEventItemDTO(event: EventItem) {
   return {
@@ -99,65 +121,83 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   await assertAdmin();
 
-  let payload: z.infer<typeof eventItemCreateSchema>;
+  if (!prismaHasEventItem()) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'missing_eventitem_model',
+        message: 'Prisma client senza EventItem. Esegui migrate + generate.',
+      },
+      { status: 503 },
+    );
+  }
+
+  const rawPayload = await request.json().catch(() => ({}));
+  const parsed = bodySchema.safeParse(rawPayload);
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { ok: false, error: 'payload_non_valido', details: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+
+  const {
+    title,
+    slug,
+    description,
+    startAt,
+    endAt,
+    price,
+    priceCents,
+    allowEmailOnlyBooking,
+    showOnHome,
+    active,
+    capacity,
+  } = parsed.data;
+
+  if (endAt && endAt <= startAt) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'invalid_range',
+        message: 'La data di fine deve essere successiva a quella di inizio.',
+      },
+      { status: 400 },
+    );
+  }
+
+  const cents = priceCents ?? euroLikeToCents(price);
+
   try {
-    payload = eventItemCreateSchema.parse(await request.json());
-  } catch (error) {
-    if (error instanceof z.ZodError) {
+    const created = await prisma.eventItem.create({
+      data: {
+        slug: slug.trim(),
+        title: title.trim(),
+        description: description?.trim() ? description.trim() : null,
+        startAt,
+        endAt: endAt ?? null,
+        active,
+        showOnHome,
+        emailOnly: allowEmailOnlyBooking,
+        capacity: capacity ?? null,
+        priceCents: cents,
+      },
+    });
+
+    return NextResponse.json({ ok: true, data: toAdminEventItemDTO(created) }, { status: 201 });
+  } catch (error: any) {
+    if (error?.code === 'P2002') {
       return NextResponse.json(
-        { ok: false, error: 'validation_error', details: error.flatten() },
-        { status: 400 },
+        { ok: false, error: 'slug_conflict', message: 'Slug già in uso' },
+        { status: 409 },
       );
     }
-    throw error;
-  }
 
-  const existingSlug = await prisma.eventItem.findUnique({ where: { slug: payload.slug } });
-  if (existingSlug) {
+    console.error('[POST /api/admin/events] error', error);
     return NextResponse.json(
-      { ok: false, error: 'slug_conflict', message: 'Slug già in uso' },
-      { status: 409 },
+      { ok: false, error: 'create_failed', message: 'Impossibile creare evento' },
+      { status: 500 },
     );
   }
-
-  const startDate = new Date(payload.startAt);
-  const endDate = payload.endAt ? new Date(payload.endAt) : null;
-
-  if (Number.isNaN(startDate.getTime())) {
-    return NextResponse.json(
-      { ok: false, error: 'invalid_start', message: 'Data di inizio non valida' },
-      { status: 400 },
-    );
-  }
-
-  if (endDate && Number.isNaN(endDate.getTime())) {
-    return NextResponse.json(
-      { ok: false, error: 'invalid_end', message: 'Data di fine non valida' },
-      { status: 400 },
-    );
-  }
-
-  if (endDate && endDate <= startDate) {
-    return NextResponse.json(
-      { ok: false, error: 'invalid_range', message: 'La fine deve essere successiva all\'inizio' },
-      { status: 400 },
-    );
-  }
-
-  const created = await prisma.eventItem.create({
-    data: {
-      slug: payload.slug,
-      title: payload.title.trim(),
-      description: payload.description?.trim() ? payload.description.trim() : null,
-      startAt: startDate,
-      endAt: endDate,
-      active: payload.active,
-      showOnHome: payload.showOnHome,
-      emailOnly: payload.emailOnly,
-      capacity: payload.capacity ?? null,
-      priceCents: payload.priceCents,
-    },
-  });
-
-  return NextResponse.json({ ok: true, data: toAdminEventItemDTO(created) }, { status: 201 });
 }

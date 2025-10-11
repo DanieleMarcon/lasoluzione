@@ -101,8 +101,8 @@ function redirectToVerifyError(code: VerifyErrorCode, context: RedirectContext =
     bookingId: context.bookingId ?? null,
   });
   const response = NextResponse.redirect(redirectUrl, { status: 302 });
-  response.headers.set('Cache-Control', 'no-store');
-  return response;
+  response.headers.set('x-redirect-to', redirectUrl);
+  return setDebugHeaders(response, 'app/api/bookings/confirm/route.ts');
 }
 
 function toDate(value: unknown): Date | null {
@@ -341,6 +341,7 @@ async function evaluateEmailOnly(cart: CartWithItems): Promise<EmailOnlyFlagEval
 
 function setDebugHeaders(response: NextResponse, handler: string) {
   response.headers.set('x-handler', handler);
+  response.headers.set('x-route-phase', 'confirm-handler');
   response.headers.set('Cache-Control', 'no-store');
   return response;
 }
@@ -529,7 +530,7 @@ async function handleBookingVerificationToken(token: string, bookingIdParam: str
   const successUrl = `${baseUrl}/checkout/success?${params.toString()}`;
 
   const response = NextResponse.redirect(successUrl);
-  response.headers.set('Cache-Control', 'no-store');
+  response.headers.set('x-redirect-to', successUrl);
   return { handled: true as const, response: setDebugHeaders(response, 'app/api/bookings/confirm/route.ts') };
 }
 
@@ -614,7 +615,7 @@ async function handleLegacyOrderVerification(
   const redirectUrl = `${baseUrl}/checkout?verified=1`;
 
   const response = NextResponse.redirect(redirectUrl);
-  response.headers.set('Cache-Control', 'no-store');
+  response.headers.set('x-redirect-to', redirectUrl);
   response.cookies.set({
     name: VERIFY_COOKIE,
     value: token,
@@ -627,7 +628,7 @@ async function handleLegacyOrderVerification(
 
   logger.info('order.verify.ok', { orderId: order.id, email: order.email, emailOnly: false });
 
-  return response;
+  return setDebugHeaders(response, 'app/api/bookings/confirm/route.ts');
 }
 
 async function handleLegacyEmailOnlyConfirmation(
@@ -754,13 +755,13 @@ async function handleLegacyEmailOnlyConfirmation(
   const successUrl = `${baseUrl}/checkout/success?${params.toString()}`;
 
   const response = NextResponse.redirect(successUrl);
-  response.headers.set('Cache-Control', 'no-store');
+  response.headers.set('x-redirect-to', successUrl);
   response.cookies.delete(VERIFY_COOKIE);
 
   logger.info('order.confirmed.email_only', { orderId: order.id, bookingId, email: order.email });
   logger.info('order.verify.ok', { orderId: order.id, email: order.email, emailOnly: true });
 
-  return response;
+  return setDebugHeaders(response, 'app/api/bookings/confirm/route.ts');
 }
 
 export async function GET(request: Request) {

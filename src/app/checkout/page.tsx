@@ -1,12 +1,12 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 import { useCart } from '@/hooks/useCart';
 import { formatCurrency } from '@/lib/formatCurrency';
 
-type VerificationStatus = 'idle' | 'pending' | 'verified';
+type VerificationStatus = 'idle' | 'pending';
 
 type FormValues = {
   email: string;
@@ -40,16 +40,12 @@ function itemProductId(i: any): number | string | undefined {
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { cart, loading, error } = useCart();
 
   const [formValues, setFormValues] = useState<FormValues>(INITIAL_VALUES);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>('idle');
-
-  // ritorno dal link di verifica (?verified=1)
-  const verifiedParam = searchParams.get('verified') === '1';
 
   const cartItems: any[] = cart?.items ?? [];
   const totalCents = cart?.totalCents ?? 0;
@@ -64,15 +60,9 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    if (verifiedParam) {
-      window.sessionStorage.removeItem('order_verify_token');
-      setVerificationStatus('verified');
-      return;
-    }
-
     const stored = window.sessionStorage.getItem('order_verify_token');
-    if (stored) setVerificationStatus('pending');
-  }, [verifiedParam]);
+    setVerificationStatus(stored ? 'pending' : 'idle');
+  }, []);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -288,19 +278,6 @@ export default function CheckoutPage() {
                 <p className="text-sm font-semibold text-amber-900">Verifica email inviata</p>
                 <p className="mt-1 text-sm text-amber-900">
                   Ti abbiamo inviato una mail di verifica. Controlla la casella di posta e segui il link per completare l’ordine.
-                </p>
-              </div>
-            )}
-
-            {verificationStatus === 'verified' && (
-              <div
-                className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3"
-                role="status"
-                aria-live="polite"
-              >
-                <p className="text-sm font-semibold text-emerald-900">Email verificata</p>
-                <p className="mt-1 text-sm text-emerald-900">
-                  Grazie! Puoi completare il checkout confermando nuovamente l’ordine.
                 </p>
               </div>
             )}

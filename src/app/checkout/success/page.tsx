@@ -14,6 +14,9 @@ export default function CheckoutSuccessPage() {
 
   useEffect(() => {
     clearCartToken();
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem('order_verify_token');
+    }
   }, [clearCartToken]);
 
   return (

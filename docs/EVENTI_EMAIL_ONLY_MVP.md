@@ -56,7 +56,7 @@ Invio → POST /api/bookings/email-only → redirect a
 
 Conferma via email
 
-L’utente riceve una mail con link GET /api/payments/email-verify?token=…
+L’utente riceve una mail con link GET /api/bookings/confirm?token=…
 
 Apertura link ⇒ Booking: pending → confirmed
 
@@ -91,7 +91,7 @@ Body (esempio):
 
 Esito: { "ok": true, "bookingId": "<id>" } e invio email con token.
 
-GET /api/payments/email-verify?token=...
+GET /api/bookings/confirm?token=...
 
 Consuma il token → marca usedAt e conferma la prenotazione.
 
@@ -138,7 +138,7 @@ Auth e Middleware invariati.
 ## Checkout unificato (carrello)
 - Il form del checkout raccoglie i consensi privacy/marketing tramite due checkbox aggiuntive (privacy obbligatoria, marketing opzionale).
 - Se `totalCents === 0` il checkout crea un ordine `pending` e una prenotazione `pending` con i consensi salvati, invia **solo** la mail “Conferma la tua prenotazione” e attende il click sul link di verifica prima di inviare le email d’ordine.
-- Dopo la conferma via `/api/payments/email-verify?token=…` la prenotazione passa a `confirmed`, l’ordine diventa `confirmed` e vengono spedite le due mail d’ordine (cliente + admin) riusando i template esistenti.
+- Dopo la conferma via `/api/bookings/confirm?token=…` la prenotazione passa a `confirmed`, l’ordine diventa `confirmed` e vengono spedite le due mail d’ordine (cliente + admin) riusando i template esistenti.
 - Se `totalCents > 0` il flusso di pagamento Revolut resta invariato; i consensi vengono comunque salvati con l’ordine (o aggiornati sulla prenotazione esistente).
 - Esempio payload verso `POST /api/payments/checkout`:
 
@@ -157,4 +157,4 @@ Auth e Middleware invariati.
 - **Fase 1** — Invio immediato della mail di verifica al cliente con link `Conferma la tua prenotazione`; nessuna notifica admin viene spedita in questa fase.
 - **Fase 2** — Al click sul link di verifica il booking passa a `confirmed`, parte la mail “Prenotazione confermata” al cliente e viene inviata la notifica “Nuova prenotazione confermata” all’admin (se `MAIL_TO_BOOKINGS` è configurata).
 - Il payload del form resta invariato e include sempre `agreePrivacy: true` (obbligatorio) e `agreeMarketing` opzionale.
-- URL di conferma utilizzato: `/api/payments/email-verify?token=...` (la CTA punta allo stesso endpoint anche quando viene costruito con `NEXT_PUBLIC_BASE_URL`/`APP_BASE_URL`).
+- URL di conferma utilizzato: `/api/bookings/confirm?token=...` (la CTA punta allo stesso endpoint anche quando viene costruito con `NEXT_PUBLIC_BASE_URL`/`APP_BASE_URL`).

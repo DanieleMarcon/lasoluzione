@@ -5,7 +5,7 @@
 1. Assicurati che il carrello contenga prodotti gratuiti (`totalCents = 0`).
 2. Vai su `/checkout`, compila form con consensi privacy/marketing.
 3. Invia → attendi risposta `state: 'confirmed'` e redirect a `/checkout/email-sent`.
-4. Apri la mail “Conferma prenotazione” → clicca link (dovrebbe puntare a `/api/payments/email-verify`).
+4. Apri la mail “Conferma prenotazione” → clicca link (dovrebbe puntare a `/api/bookings/confirm`).
 5. Verifica redirect automatico su `/checkout/success?orderId=...&bookingId=...` e che il carrello sia svuotato.
 6. Controlla database: `Booking.status = confirmed`, `Order.status = confirmed`, `Cart.status = locked`.
 
@@ -23,8 +23,8 @@
 
 ## Edge case da coprire
 - Carrello vuoto → `/checkout` deve mostrare messaggio “Il carrello è vuoto” e bloccare submit.
-- Token verifica scaduto → `/api/payments/email-verify` deve rispondere 400, client mostra errore e consente reinvio.
-- Token riutilizzato → `/api/payments/email-verify` reindirizza comunque a `/checkout?verified=1` ma senza conferma; `/checkout` deve richiedere nuovo invio.
+- Token verifica scaduto → `/api/bookings/confirm` deve reindirizzare a `/checkout/email-sent?error=token_expired` e consentire il reinvio.
+- Token riutilizzato → `/api/bookings/confirm` mostra errore e richiede nuovo invio dalla pagina `/checkout/email-sent`.
 - Mancanza SMTP → `/api/payments/checkout` deve rispondere `verify_email_failed` (email-only) o `email: { ok: false, skipped: true }` (pagamento) senza crashare.
 - Admin non whitelisted → accesso a `/admin` reindirizza a `/admin/not-authorized`.
 
@@ -46,13 +46,13 @@ curl -X POST http://localhost:3000/api/payments/checkout \
 ```
 Risultato atteso: `state: verify_sent | confirmed | paid_redirect` a seconda del totale.
 
-### GET /api/payments/email-verify
+### GET /api/bookings/confirm
 ```bash
-curl -I "http://localhost:3000/api/payments/email-verify?token=<TOKEN>"
+curl -I "http://localhost:3000/api/bookings/confirm?token=<TOKEN>"
 ```
 - 302 → `Location: /checkout/success?...` (email-only confermato).
-- 302 → `Location: /checkout?verified=1` + cookie `order_verify_token` (pagamento richiesto).
-- 400 → token invalido/scaduto.
+- 302 → `Location: /checkout?verified=1` + cookie `order_verify_token` (pagamento richiesto via `/api/payments/email-verify`).
+- 302 → `Location: /checkout/email-sent?...` (token scaduto/invalidato).
 
 ### POST /api/orders/finalize
 ```bash

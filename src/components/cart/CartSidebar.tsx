@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useMemo } from 'react';
 
-import { useCart } from '@/hooks/useCart';
+import { pendingKeyForProduct, useCart } from '@/hooks/useCart';
 import { formatCurrency } from '@/lib/formatCurrency';
 
 export default function CartSidebar() {
@@ -76,7 +76,7 @@ export default function CartSidebar() {
         <div style={{ display: 'grid', gap: '0.75rem' }}>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.75rem' }}>
             {items.map((item) => {
-              const isPending = Boolean(pending[item.productId]);
+              const isPending = Boolean(pending[pendingKeyForProduct(item.productId)]);
               return (
                 <li
                   key={item.id}

@@ -20,6 +20,7 @@ export type CatalogEventDTO = {
   id: string;
   slug: string;
   title: string;
+  active: boolean;
   priceCents: number;
   startAt: string;
   endAt: string | null;

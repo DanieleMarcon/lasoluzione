@@ -4,11 +4,20 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react';
 
 import type { CartDTO } from '@/types/cart';
 
+export function pendingKeyForProduct(productId: number): string {
+  return `product:${productId}`;
+}
+
+export function pendingKeyForEvent(eventItemId: string): string {
+  return `event:${eventItemId}`;
+}
+
 const CART_STORAGE_KEY = 'lasoluzione_cart_token';
 
 type CartResponse = { ok: boolean; data?: CartDTO; error?: string };
 
-type AddPayload = {
+type ProductAddPayload = {
+  kind: 'product';
   productId: number;
   qty?: number;
   nameSnapshot?: string;
@@ -17,12 +26,22 @@ type AddPayload = {
   meta?: Record<string, unknown> | null;
 };
 
+type EventAddPayload = {
+  kind: 'event';
+  eventItemId: string;
+  title: string;
+  priceCents: number;
+  quantity?: number;
+};
+
+type AddPayload = ProductAddPayload | EventAddPayload;
+
 type CartStoreState = {
   cart: CartDTO | null;
   cartToken: string | null;
   loading: boolean;
   error: string | null;
-  pending: Record<number, boolean>;
+  pending: Record<string, boolean>;
   initialized: boolean;
 };
 
@@ -143,13 +162,13 @@ async function ensureCart(): Promise<CartDTO | null> {
   return cartStore.state.cart;
 }
 
-function flagPending(productId: number, nextValue: boolean) {
+function flagPending(key: string, nextValue: boolean) {
   setState((prev) => {
     const nextPending = { ...prev.pending };
     if (nextValue) {
-      nextPending[productId] = true;
+      nextPending[key] = true;
     } else {
-      delete nextPending[productId];
+      delete nextPending[key];
     }
     return { pending: nextPending };
   });
@@ -159,21 +178,36 @@ async function addItemToCart(payload: AddPayload): Promise<void> {
   const cart = await ensureCart();
   if (!cart) return;
 
-  flagPending(payload.productId, true);
+  const pendingKey =
+    payload.kind === 'product'
+      ? pendingKeyForProduct(payload.productId)
+      : pendingKeyForEvent(payload.eventItemId);
+
+  flagPending(pendingKey, true);
   setState({ error: null });
 
   try {
+    const bodyPayload =
+      payload.kind === 'product'
+        ? {
+            productId: payload.productId,
+            qty: payload.qty ?? 1,
+            nameSnapshot: payload.nameSnapshot,
+            priceCentsSnapshot: payload.priceCentsSnapshot,
+            imageUrlSnapshot: payload.imageUrlSnapshot,
+            meta: payload.meta,
+          }
+        : {
+            eventItemId: payload.eventItemId,
+            qty: payload.quantity ?? 1,
+            nameSnapshot: payload.title,
+            priceCentsSnapshot: payload.priceCents,
+          };
+
     const res = await fetch(`/api/cart/${encodeURIComponent(cart.id)}/items`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        productId: payload.productId,
-        qty: payload.qty ?? 1,
-        nameSnapshot: payload.nameSnapshot,
-        priceCentsSnapshot: payload.priceCentsSnapshot,
-        imageUrlSnapshot: payload.imageUrlSnapshot,
-        meta: payload.meta,
-      }),
+      body: JSON.stringify(bodyPayload),
     });
     const body = await parseResponse(res);
     if (!res.ok || !body?.ok) {
@@ -186,7 +220,7 @@ async function addItemToCart(payload: AddPayload): Promise<void> {
     setState({ error: message });
     throw error;
   } finally {
-    flagPending(payload.productId, false);
+    flagPending(pendingKey, false);
   }
 }
 
@@ -195,7 +229,8 @@ async function updateItemQty(productId: number, qty: number): Promise<void> {
   const cart = await ensureCart();
   if (!cart) return;
 
-  flagPending(productId, true);
+  const pendingKey = pendingKeyForProduct(productId);
+  flagPending(pendingKey, true);
   setState({ error: null });
 
   try {
@@ -215,7 +250,7 @@ async function updateItemQty(productId: number, qty: number): Promise<void> {
     setState({ error: message });
     throw error;
   } finally {
-    flagPending(productId, false);
+    flagPending(pendingKey, false);
   }
 }
 
@@ -223,7 +258,8 @@ async function removeItemFromCart(productId: number): Promise<void> {
   const cart = await ensureCart();
   if (!cart) return;
 
-  flagPending(productId, true);
+  const pendingKey = pendingKeyForProduct(productId);
+  flagPending(pendingKey, true);
   setState({ error: null });
 
   try {
@@ -241,7 +277,7 @@ async function removeItemFromCart(productId: number): Promise<void> {
     setState({ error: message });
     throw error;
   } finally {
-    flagPending(productId, false);
+    flagPending(pendingKey, false);
   }
 }
 
@@ -282,7 +318,7 @@ export type UseCart = {
   addItem: (payload: AddPayload) => Promise<void>;
   updateItem: (productId: number, qty: number) => Promise<void>;
   removeItem: (productId: number) => Promise<void>;
-  pending: Record<number, boolean>;
+  pending: Record<string, boolean>;
   clearCartToken: () => void;
 };
 

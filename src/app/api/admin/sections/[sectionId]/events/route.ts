@@ -1,10 +1,20 @@
 import { NextResponse } from 'next/server';
-import type { Prisma } from '@prisma/client';
+import type { EventItem } from '@prisma/client';
 import { assertAdmin } from '@/lib/admin/session';
 import { prisma } from '@/lib/prisma';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+// Tipi fallback per evitare TS2694 quando il client Prisma non è ancora aggiornato
+type SectionEventWithItem = {
+  sectionId: number;
+  eventItemId: string;
+  displayOrder: number;
+  featured: boolean;
+  showInHome: boolean;
+  eventItem: EventItem & { startAt: Date; endAt: Date | null };
+};
 
 async function resolveSectionId(sectionParam: string) {
   const trimmed = sectionParam.trim();
@@ -18,10 +28,6 @@ async function resolveSectionId(sectionParam: string) {
 
   return prisma.catalogSection.findUnique({ where: { key: trimmed } });
 }
-
-type SectionEventWithItem = Prisma.SectionEventItemGetPayload<{
-  include: { eventItem: true };
-}>;
 
 function serializeAssignment(row: SectionEventWithItem) {
   return {

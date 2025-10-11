@@ -397,6 +397,64 @@ export async function sendBookingConfirmedAdmin(params: {
   });
 }
 
+function resolveMailerBaseUrl(inputBaseUrl?: string | null): string {
+  if (inputBaseUrl && inputBaseUrl.trim()) {
+    return inputBaseUrl.trim().replace(/\/$/, '');
+  }
+
+  const rawBaseUrl =
+    process.env.NEXT_PUBLIC_BASE_URL ??
+    process.env.APP_BASE_URL ??
+    process.env.BASE_URL ??
+    '';
+
+  return rawBaseUrl.trim().replace(/\/$/, '');
+}
+
+export async function sendBookingConfirmationToCustomer(input: {
+  bookingId: number;
+  orderId?: string | null;
+  customerName?: string;
+  customerEmail: string;
+  customerPhone?: string;
+  people?: number;
+  eventTitle?: string;
+  whenLabel?: string;
+  baseUrl?: string;
+}) {
+  await sendBookingConfirmedCustomer({
+    to: input.customerEmail,
+    bookingId: input.bookingId,
+    eventTitle: input.eventTitle ?? 'La Soluzione',
+    whenLabel: input.whenLabel ?? '',
+    people: input.people ?? 1,
+    baseUrl: resolveMailerBaseUrl(input.baseUrl),
+  });
+}
+
+export async function sendBookingNotificationToAdmin(input: {
+  bookingId: number;
+  orderId?: string | null;
+  adminEmail: string;
+  customerName?: string;
+  customerEmail: string;
+  customerPhone?: string;
+  people?: number;
+  eventTitle?: string;
+  whenLabel?: string;
+}) {
+  await sendBookingConfirmedAdmin({
+    to: input.adminEmail,
+    bookingId: input.bookingId,
+    customerName: input.customerName ?? 'Cliente',
+    customerEmail: input.customerEmail,
+    customerPhone: input.customerPhone ?? '',
+    eventTitle: input.eventTitle ?? 'La Soluzione',
+    whenLabel: input.whenLabel ?? '',
+    people: input.people ?? 1,
+  });
+}
+
 function logBookingEmail(
   label: string,
   booking: BookingForNotification,

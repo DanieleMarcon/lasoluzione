@@ -5,7 +5,10 @@ import { prisma } from '@/lib/prisma';
 import { verifyJwt } from '@/lib/jwt';
 import { logger } from '@/lib/logger';
 import { formatEventSchedule } from '@/lib/date';
-import { sendBookingConfirmedAdmin, sendBookingConfirmedCustomer } from '@/lib/mailer';
+import {
+  sendBookingConfirmationToCustomer,
+  sendBookingNotificationToAdmin,
+} from '@/lib/mailer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,6 +57,16 @@ type BookingWithOrder = Prisma.BookingGetPayload<{
   };
 }>;
 
+type OrderWithCart = Prisma.OrderGetPayload<{
+  include: {
+    cart: {
+      include: {
+        items: true;
+      };
+    };
+  };
+}>;
+
 type VerifyErrorCode =
   | 'token_missing'
   | 'token_invalid'
@@ -82,12 +95,27 @@ function resolveBaseUrl(): string {
   return raw.replace(/\/$/, '');
 }
 
+const DEFAULT_BOOKING_ADMIN_EMAIL = 'info@lasoluzione.eu';
+// TODO: validate BOOKING_ADMIN_EMAIL via a centralized env schema.
+const BOOKING_ADMIN_EMAIL =
+  process.env.BOOKING_ADMIN_EMAIL ??
+  process.env.MAIL_TO_BOOKINGS ??
+  DEFAULT_BOOKING_ADMIN_EMAIL;
+
 function redirectToVerifyError(code: VerifyErrorCode, context: RedirectContext = {}) {
   const baseUrl = resolveBaseUrl();
   const params = new URLSearchParams({ error: code });
   if (context.bookingId) {
     params.append('bookingId', context.bookingId);
   }
+  const bookingIdForLog =
+    typeof context.bookingId === 'string'
+      ? Number.parseInt(context.bookingId, 10)
+      : context.bookingId ?? null;
+  const bookingIdLog =
+    typeof bookingIdForLog === 'number' && Number.isFinite(bookingIdForLog)
+      ? bookingIdForLog
+      : null;
   const redirectUrl = `${baseUrl}/checkout/email-sent?${params.toString()}`;
   logger.warn('booking.verify.invalid', {
     action: 'booking.verify',
@@ -95,17 +123,15 @@ function redirectToVerifyError(code: VerifyErrorCode, context: RedirectContext =
     reason: code,
     cartId: context.cartId ?? null,
     email: context.email ?? null,
-    bookingId: context.bookingId ?? null,
+    bookingId: bookingIdLog,
   });
   const response = NextResponse.redirect(redirectUrl, { status: 302 });
   response.headers.set('x-redirect-to', redirectUrl);
   return setDebugHeaders(response, 'app/api/bookings/confirm/route.ts');
 }
 
-function buildSuccessRedirect(
-  baseUrl: string,
-  params: { bookingId?: number | null; orderId?: string | null },
-) {
+function buildSuccessRedirect(params: { bookingId?: number | null; orderId?: string | null }) {
+  const baseUrl = resolveBaseUrl();
   const searchParams = new URLSearchParams();
   if (params.orderId) {
     searchParams.append('orderId', params.orderId);
@@ -114,9 +140,13 @@ function buildSuccessRedirect(
     searchParams.append('bookingId', String(params.bookingId));
   }
   const query = searchParams.toString();
-  const successUrl = query ? `${baseUrl}/checkout/success?${query}` : `${baseUrl}/checkout/success`;
+  const successUrl =
+    query ? `${baseUrl}/checkout/success?${query}` : `${baseUrl}/checkout/success`;
   const response = NextResponse.redirect(successUrl, { status: 303 });
   response.headers.set('x-redirect-to', successUrl);
+  response.headers.set('x-handler', 'app/api/bookings/confirm/route.ts');
+  response.headers.set('x-route-phase', 'confirm-handler');
+  response.headers.set('Cache-Control', 'no-store');
   return response;
 }
 
@@ -243,6 +273,74 @@ function mapItems(items: CartItemRow[]) {
 function sumPeople(items: CartItemRow[]): number {
   const total = items.reduce((acc, item) => acc + (Number.isFinite(item.qty) ? item.qty : 0), 0);
   return total > 0 ? total : 1;
+}
+
+function resolveBookingEmailContext(booking: BookingWithOrder) {
+  const cartItems = (booking.order?.cart?.items ?? []) as CartItemRow[];
+  const eventInfo = extractEventInfo(cartItems);
+  const fallbackItem = cartItems[0];
+  const eventTitle =
+    eventInfo?.title ??
+    booking.tierLabel ??
+    (typeof fallbackItem?.nameSnapshot === 'string' && fallbackItem.nameSnapshot.trim()
+      ? fallbackItem.nameSnapshot
+      : 'La Soluzione');
+  const whenLabel = formatWhenLabel(eventInfo?.startAt ?? booking.date, eventInfo?.endAt ?? null);
+  const peopleFromBooking = Number.isFinite(booking.people) ? booking.people : 0;
+  const derivedPeople =
+    peopleFromBooking && peopleFromBooking > 0 ? peopleFromBooking : sumPeople(cartItems);
+
+  return {
+    eventTitle,
+    whenLabel,
+    people: derivedPeople > 0 ? derivedPeople : 1,
+    customerName: booking.name?.trim() ? booking.name : undefined,
+    customerEmail: booking.email,
+    customerPhone: booking.phone?.trim() ? booking.phone : undefined,
+  };
+}
+
+function buildBookingCreateInputFromOrder({
+  order,
+  cartItems,
+  payload,
+}: {
+  order: OrderWithCart;
+  cartItems: CartItemRow[];
+  payload: OrderVerifyTokenPayload;
+}): Prisma.BookingCreateInput {
+  const mappedItems = mapItems(cartItems);
+  const people = sumPeople(cartItems);
+  const eventInfo = extractEventInfo(cartItems);
+  const primaryItem = cartItems[0];
+  const bookingDate = eventInfo?.startAt ?? new Date();
+  const bookingType = eventInfo ? 'evento' : 'pranzo';
+  const tierLabel =
+    eventInfo?.title ??
+    (typeof primaryItem?.nameSnapshot === 'string' && primaryItem.nameSnapshot.trim()
+      ? primaryItem.nameSnapshot
+      : 'La Soluzione');
+  const tierPriceCents = primaryItem?.priceCentsSnapshot ?? null;
+
+  return {
+    date: bookingDate,
+    people,
+    name: order.name,
+    email: order.email,
+    phone: order.phone ?? '',
+    notes: order.notes ?? null,
+    agreePrivacy: true,
+    agreeMarketing: payload.agreeMarketing === true,
+    status: 'confirmed',
+    type: bookingType as any,
+    order: { connect: { id: order.id } },
+    lunchItemsJson: mappedItems as unknown as Prisma.InputJsonValue,
+    subtotalCents: order.totalCents,
+    totalCents: order.totalCents,
+    tierLabel,
+    tierPriceCents,
+    prepayToken: null,
+  };
 }
 
 type EmailOnlyFlagEvaluation = {
@@ -395,6 +493,14 @@ async function handleBookingVerificationToken(token: string, bookingIdParam: str
     const now = new Date();
     const alreadyConfirmed = booking.status === 'confirmed';
 
+    logger.info('booking.confirm.start', {
+      action: 'booking.confirm',
+      bookingId: booking.id,
+      orderId: booking.orderId ?? null,
+      source: 'booking_token',
+      cartId: booking.order?.cartId ?? booking.order?.cart?.id ?? null,
+    });
+
     if (verification.expiresAt <= now && !alreadyConfirmed) {
       return { status: 'expired', bookingId: booking.id };
     }
@@ -427,31 +533,39 @@ async function handleBookingVerificationToken(token: string, bookingIdParam: str
       },
     });
 
-    if (booking.orderId) {
-      try {
-        await tx.order.update({
-          where: { id: booking.orderId },
-          data: {
-            status: 'confirmed',
-            email: booking.email,
-            name: booking.name,
-            phone: booking.phone,
-            notes: booking.notes ?? null,
-          },
-        });
-      } catch (error) {
-        console.error('[bookings][confirm] order update failed', error);
-        throw error;
+    if (booking.order) {
+      const orderUpdateData: Prisma.OrderUpdateInput = {
+        status: 'confirmed',
+      };
+
+      if (booking.email?.trim()) {
+        orderUpdateData.email = booking.email;
       }
 
-      const relatedOrder = await tx.order.findUnique({
-        where: { id: booking.orderId },
-        include: { cart: true },
+      if (booking.name?.trim()) {
+        orderUpdateData.name = booking.name;
+      }
+
+      if (booking.phone?.trim()) {
+        orderUpdateData.phone = booking.phone;
+      } else if (booking.order.phone === null) {
+        orderUpdateData.phone = null;
+      }
+
+      if (typeof booking.notes === 'string') {
+        orderUpdateData.notes = booking.notes;
+      } else if (booking.notes === null) {
+        orderUpdateData.notes = null;
+      }
+
+      await tx.order.update({
+        where: { id: booking.order.id },
+        data: orderUpdateData,
       });
 
-      if (relatedOrder?.cartId) {
+      if (booking.order.cartId) {
         await tx.cart.update({
-          where: { id: relatedOrder.cartId },
+          where: { id: booking.order.cartId },
           data: { status: 'locked' },
         });
       }
@@ -484,49 +598,70 @@ async function handleBookingVerificationToken(token: string, bookingIdParam: str
       const response = redirectToVerifyError('token_expired', {
         bookingId: txResult.bookingId ? String(txResult.bookingId) : bookingIdParam,
       });
-      return { handled: true as const, response: setDebugHeaders(response, 'app/api/bookings/confirm/route.ts') };
+      return {
+        handled: true as const,
+        response: setDebugHeaders(response, 'app/api/bookings/confirm/route.ts'),
+      };
     }
 
     const response = redirectToVerifyError('token_invalid', {
       bookingId: txResult.bookingId ? String(txResult.bookingId) : bookingIdParam,
     });
-    return { handled: true as const, response: setDebugHeaders(response, 'app/api/bookings/confirm/route.ts') };
+    return {
+      handled: true as const,
+      response: setDebugHeaders(response, 'app/api/bookings/confirm/route.ts'),
+    };
   }
 
   const booking = txResult.booking;
-  const cartItems = (booking.order?.cart?.items ?? []) as CartItemRow[];
-  const eventInfo = extractEventInfo(cartItems);
-  const baseUrl = resolveBaseUrl();
-  const whenLabel = formatWhenLabel(eventInfo?.startAt ?? booking.date, eventInfo?.endAt ?? null);
-  const eventTitle = eventInfo?.title ?? booking.tierLabel ?? 'La Soluzione';
+  const { eventTitle, whenLabel, people, customerName, customerEmail, customerPhone } =
+    resolveBookingEmailContext(booking);
 
   if (txResult.sendEmails) {
+    const baseUrl = resolveBaseUrl();
+    let customerEmailSent = false;
+    let adminEmailSent = false;
+
     try {
-      await sendBookingConfirmedCustomer({
-        to: booking.email,
+      await sendBookingConfirmationToCustomer({
         bookingId: booking.id,
+        orderId: booking.orderId ?? undefined,
+        customerName,
+        customerEmail,
+        customerPhone,
+        people,
         eventTitle,
         whenLabel,
-        people: booking.people,
         baseUrl,
       });
+      customerEmailSent = true;
     } catch (error) {
       console.error('[bookings][confirm] booking confirmation customer email failed', error);
     }
 
     try {
-      await sendBookingConfirmedAdmin({
-        to: process.env.MAIL_TO_BOOKINGS ?? '',
+      await sendBookingNotificationToAdmin({
         bookingId: booking.id,
-        customerName: booking.name,
-        customerEmail: booking.email,
-        customerPhone: booking.phone ?? '',
+        orderId: booking.orderId ?? undefined,
+        adminEmail: BOOKING_ADMIN_EMAIL,
+        customerName,
+        customerEmail,
+        customerPhone,
+        people,
         eventTitle,
         whenLabel,
-        people: booking.people,
       });
+      adminEmailSent = true;
     } catch (error) {
       console.error('[bookings][confirm] booking confirmation admin email failed', error);
+    }
+
+    if (customerEmailSent || adminEmailSent) {
+      logger.info('booking.confirm.emails_sent', {
+        bookingId: booking.id,
+        orderId: booking.orderId ?? null,
+        email: booking.email,
+      });
     }
   }
 
@@ -538,11 +673,11 @@ async function handleBookingVerificationToken(token: string, bookingIdParam: str
     cartLocked: booking.order?.cart?.status === 'locked',
   });
 
-  const response = buildSuccessRedirect(baseUrl, {
+  const response = buildSuccessRedirect({
     bookingId: booking.id,
     orderId: booking.orderId ?? null,
   });
-  return { handled: true as const, response: setDebugHeaders(response, 'app/api/bookings/confirm/route.ts') };
+  return { handled: true as const, response };
 }
 
 async function handleLegacyOrderVerification(
@@ -623,134 +758,94 @@ async function handleLegacyOrderVerification(
   const txResult = await prisma.$transaction(async (tx) => {
     const currentOrder = await tx.order.findUnique({
       where: { id: order.id },
+      include: {
+        cart: { include: { items: true } },
+      },
     });
 
     if (!currentOrder) {
       return { status: 'order_missing' as const };
     }
 
-    let bookingId: number | null = null;
-    let shouldSendEmails = false;
+    const currentCartItems = (currentOrder.cart?.items ?? []) as CartItemRow[];
 
-    if (emailOnly) {
-      if (!cart || cartItems.length === 0) {
-        console.error('[bookings][confirm] cart not found or empty during email-only confirmation', {
-          orderId: order.id,
-          cartId: order.cartId,
-        });
-      } else {
-        const mappedItems = mapItems(cartItems);
-        const people = sumPeople(cartItems);
-        const eventInfo = extractEventInfo(cartItems);
-        const primaryItem = cartItems[0];
-        const bookingDate = eventInfo?.startAt ?? new Date();
-        const bookingType = eventInfo ? 'evento' : 'pranzo';
-        const tierLabel = eventInfo?.title ?? primaryItem?.nameSnapshot ?? 'La Soluzione';
-        const tierPriceCents = primaryItem?.priceCentsSnapshot ?? null;
-        const marketingConsent = payload.agreeMarketing === true;
-
-        const bookingData = {
-          date: bookingDate,
-          people,
-          name: order.name,
-          email: order.email,
-          phone: order.phone ?? '',
-          notes: order.notes ?? null,
-          agreePrivacy: true,
-          agreeMarketing: marketingConsent,
-          status: 'confirmed' as const,
-          type: bookingType as any,
-          order: { connect: { id: order.id } },
-          lunchItemsJson: mappedItems as any,
-          subtotalCents: order.totalCents,
-          totalCents: order.totalCents,
-          tierLabel,
-          tierPriceCents,
-          prepayToken: null,
-        };
-
-        const existingBooking = await tx.booking.findFirst({
-          where: { orderId: order.id },
-          orderBy: { id: 'desc' },
-        });
-
-        const savedBooking = existingBooking
-          ? await tx.booking.update({
-              where: { id: existingBooking.id },
-              data: bookingData,
-            })
-          : await tx.booking.create({ data: bookingData });
-
-        bookingId = savedBooking.id;
-        shouldSendEmails =
-          order.status !== 'confirmed' || existingBooking?.status !== 'confirmed';
-
-        await tx.bookingVerification.deleteMany({ where: { bookingId: savedBooking.id } });
-      }
-    } else {
-      const existingBooking = await tx.booking.findFirst({
-        where: { orderId: order.id },
-        orderBy: { id: 'desc' },
-      });
-
-      if (existingBooking) {
-        bookingId = existingBooking.id;
-        if (existingBooking.status !== 'confirmed' || existingBooking.prepayToken) {
-          await tx.booking.update({
-            where: { id: existingBooking.id },
-            data: { status: 'confirmed', prepayToken: null },
-          });
-          shouldSendEmails = existingBooking.status !== 'confirmed';
-        }
-
-        await tx.bookingVerification.deleteMany({ where: { bookingId: existingBooking.id } });
-      }
-    }
-
-    await tx.order.update({
-      where: { id: order.id },
-      data: {
-        status: 'confirmed',
-        email: order.email,
-        name: order.name,
-        phone: order.phone,
-        notes: order.notes ?? null,
+    let bookingRecord = await tx.booking.findFirst({
+      where: { orderId: currentOrder.id },
+      orderBy: { id: 'desc' },
+      include: {
+        order: {
+          include: {
+            cart: { include: { items: true } },
+          },
+        },
       },
     });
 
-    if (order.cartId) {
+    let shouldSendEmails = false;
+
+    if (!bookingRecord) {
+      const createInput = buildBookingCreateInputFromOrder({
+        order: currentOrder,
+        cartItems: currentCartItems.length ? currentCartItems : cartItems,
+        payload,
+      });
+
+      bookingRecord = await tx.booking.create({
+        data: createInput,
+        include: {
+          order: {
+            include: {
+              cart: { include: { items: true } },
+            },
+          },
+        },
+      });
+      await tx.bookingVerification.deleteMany({ where: { bookingId: bookingRecord.id } });
+      shouldSendEmails = true;
+    } else {
+      if (bookingRecord.status !== 'confirmed' || bookingRecord.prepayToken) {
+        await tx.booking.update({
+          where: { id: bookingRecord.id },
+          data: { status: 'confirmed', prepayToken: null },
+        });
+        shouldSendEmails = bookingRecord.status !== 'confirmed';
+      }
+
+      await tx.bookingVerification.deleteMany({ where: { bookingId: bookingRecord.id } });
+
+      bookingRecord = (await tx.booking.findUnique({
+        where: { id: bookingRecord.id },
+        include: {
+          order: {
+            include: {
+              cart: { include: { items: true } },
+            },
+          },
+        },
+      })) as BookingWithOrder | null;
+    }
+
+    await tx.order.update({
+      where: { id: currentOrder.id },
+      data: {
+        status: 'confirmed',
+        email: currentOrder.email,
+        name: currentOrder.name,
+        phone: currentOrder.phone,
+        notes: currentOrder.notes ?? null,
+      },
+    });
+
+    if (currentOrder.cartId) {
       await tx.cart.update({
-        where: { id: order.cartId },
+        where: { id: currentOrder.cartId },
         data: { status: 'locked' },
       });
     }
 
-    const bookingRecord = bookingId
-      ? await tx.booking.findUnique({
-          where: { id: bookingId },
-          include: {
-            order: {
-              include: {
-                cart: { include: { items: true } },
-              },
-            },
-          },
-        })
-      : await tx.booking.findFirst({
-          where: { orderId: order.id },
-          orderBy: { id: 'desc' },
-          include: {
-            order: {
-              include: {
-                cart: { include: { items: true } },
-              },
-            },
-          },
-        });
-
     return {
       status: 'ok' as const,
-      booking: bookingRecord as BookingWithOrder | null,
+      booking: bookingRecord,
       shouldSendEmails,
     };
   });
@@ -764,40 +859,64 @@ async function handleLegacyOrderVerification(
   }
 
   const booking = txResult.booking;
-  const baseUrl = resolveBaseUrl();
+
+  if (booking) {
+    logger.info('booking.confirm.start', {
+      action: 'booking.confirm',
+      bookingId: booking.id,
+      orderId: booking.orderId ?? null,
+      source: 'legacy_token',
+      cartId: booking.order?.cartId ?? booking.order?.cart?.id ?? null,
+    });
+  }
 
   if (txResult.shouldSendEmails && booking) {
-    const cartItemsForEmail = (booking.order?.cart?.items ?? []) as CartItemRow[];
-    const eventInfo = extractEventInfo(cartItemsForEmail);
-    const whenLabel = formatWhenLabel(eventInfo?.startAt ?? booking.date, eventInfo?.endAt ?? null);
-    const eventTitle = eventInfo?.title ?? booking.tierLabel ?? 'La Soluzione';
+    const { eventTitle, whenLabel, people, customerName, customerEmail, customerPhone } =
+      resolveBookingEmailContext(booking);
+    const baseUrl = resolveBaseUrl();
+    let customerEmailSent = false;
+    let adminEmailSent = false;
 
     try {
-      await sendBookingConfirmedCustomer({
-        to: booking.email,
+      await sendBookingConfirmationToCustomer({
         bookingId: booking.id,
+        orderId: booking.orderId ?? undefined,
+        customerName,
+        customerEmail,
+        customerPhone,
+        people,
         eventTitle,
         whenLabel,
-        people: booking.people,
         baseUrl,
       });
+      customerEmailSent = true;
     } catch (error) {
       console.error('[bookings][confirm] booking confirmation customer email failed', error);
     }
 
     try {
-      await sendBookingConfirmedAdmin({
-        to: process.env.MAIL_TO_BOOKINGS ?? '',
+      await sendBookingNotificationToAdmin({
         bookingId: booking.id,
-        customerName: booking.name,
-        customerEmail: booking.email,
-        customerPhone: booking.phone ?? '',
+        orderId: booking.orderId ?? undefined,
+        adminEmail: BOOKING_ADMIN_EMAIL,
+        customerName,
+        customerEmail,
+        customerPhone,
+        people,
         eventTitle,
         whenLabel,
-        people: booking.people,
       });
+      adminEmailSent = true;
     } catch (error) {
       console.error('[bookings][confirm] booking confirmation admin email failed', error);
+    }
+
+    if (customerEmailSent || adminEmailSent) {
+      logger.info('booking.confirm.emails_sent', {
+        bookingId: booking.id,
+        orderId: booking.orderId ?? null,
+        email: booking.email,
+      });
     }
   }
 
@@ -821,12 +940,12 @@ async function handleLegacyOrderVerification(
 
   logger.info('order.verify.ok', { orderId: order.id, email: order.email, emailOnly });
 
-  const response = buildSuccessRedirect(baseUrl, {
+  const response = buildSuccessRedirect({
     bookingId: booking?.id ?? null,
     orderId: order.id,
   });
 
-  return setDebugHeaders(response, 'app/api/bookings/confirm/route.ts');
+  return response;
 }
 
 export async function GET(request: Request) {

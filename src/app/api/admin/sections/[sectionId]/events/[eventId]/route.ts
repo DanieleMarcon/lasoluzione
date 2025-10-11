@@ -1,46 +1,42 @@
 import { NextResponse } from 'next/server';
-import { Prisma } from '@prisma/client';
-import { z } from 'zod';
 
 import { assertAdmin } from '@/lib/admin/session';
 import { prisma } from '@/lib/prisma';
-import { eventItemIdSchema } from '@/lib/validators/eventItem';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const paramsSchema = z.object({
-  sectionId: z.string().trim().min(1, 'Sezione obbligatoria'),
-  eventId: eventItemIdSchema,
-});
+async function resolveSectionId(sectionParam: string) {
+  const numeric = Number.parseInt(sectionParam, 10);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    const section = await prisma.catalogSection.findUnique({ where: { id: numeric } });
+    if (section) return section;
+  }
+
+  return prisma.catalogSection.findUnique({ where: { key: sectionParam } });
+}
 
 export async function DELETE(request: Request, context: { params: { sectionId: string; eventId: string } }) {
   await assertAdmin();
 
-  const parsedParams = paramsSchema.safeParse(context.params);
-  if (!parsedParams.success) {
-    return NextResponse.json({ ok: false, error: 'invalid_params' }, { status: 400 });
+  const section = await resolveSectionId(context.params.sectionId.trim());
+  if (!section) {
+    return NextResponse.json({ ok: false, error: 'section_not_found' }, { status: 404 });
   }
 
-  const { sectionId, eventId } = parsedParams.data;
+  const eventItemId = context.params.eventId;
+  if (!eventItemId) {
+    return NextResponse.json({ ok: false, error: 'eventItemId_required' }, { status: 400 });
+  }
 
-  try {
-    await prisma.sectionEvent.delete({
-      where: {
-        sectionId_eventId: {
-          sectionId,
-          eventId,
-        },
+  await prisma.sectionEventItem.delete({
+    where: {
+      sectionId_eventItemId: {
+        sectionId: section.id,
+        eventItemId,
       },
-    });
+    },
+  });
 
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-      return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 });
-    }
-
-    console.error('[admin][sections][events][delete]', error);
-    return NextResponse.json({ ok: false, error: 'delete_failed' }, { status: 500 });
-  }
+  return NextResponse.json({ ok: true });
 }

@@ -15,6 +15,17 @@ type SectionProductRow = {
   showInHome: boolean;
 };
 
+type SectionEventRow = {
+  eventId: string;
+  title: string;
+  slug: string;
+  startAt: string;
+  priceCents: number;
+  order: number;
+  featured: boolean;
+  showInHome: boolean;
+};
+
 type SectionRow = {
   id: number;
   key: string;
@@ -23,20 +34,22 @@ type SectionRow = {
   enableDateTime: boolean;
   displayOrder: number;
   products: SectionProductRow[];
+  events: SectionEventRow[];
 };
 
 type SectionSearchResult = {
-  id: number;
+  id: number | string;
   name: string;
   priceCents: number;
   slug: string;
+  startAt?: string;
 };
 
 type SectionSearchState = {
   term: string;
   loading: boolean;
   results: SectionSearchResult[];
-  selectedProductId: number | null;
+  selectedItemId: number | string | null;
 };
 
 type AssignmentDraft = {
@@ -55,15 +68,22 @@ export default function SectionsPageClient({ initialSections }: { initialSection
     return draft;
   });
   const [sectionSaving, setSectionSaving] = useState<Record<number, boolean>>({});
-  const [assignmentDrafts, setAssignmentDrafts] = useState<Record<number, Record<number, AssignmentDraft>>>(() => {
-    const draft: Record<number, Record<number, AssignmentDraft>> = {};
+  const [assignmentDrafts, setAssignmentDrafts] = useState<Record<number, Record<string, AssignmentDraft>>>(() => {
+    const draft: Record<number, Record<string, AssignmentDraft>> = {};
     for (const s of initialSections) {
       draft[s.id] = {};
       for (const p of s.products) {
-        draft[s.id][p.productId] = {
+        draft[s.id][String(p.productId)] = {
           order: p.order,
           featured: p.featured,
           showInHome: p.showInHome,
+        };
+      }
+      for (const event of s.events ?? []) {
+        draft[s.id][event.eventId] = {
+          order: event.order,
+          featured: event.featured,
+          showInHome: event.showInHome,
         };
       }
     }
@@ -79,31 +99,34 @@ export default function SectionsPageClient({ initialSections }: { initialSection
     setSectionSaving((prev) => ({ ...prev, [sectionId]: loading }));
   }, []);
 
-  const setAssignmentLoading = useCallback((sectionId: number, productId: number, loading: boolean) => {
-    const key = `${sectionId}:${productId}`;
+  const setAssignmentLoading = useCallback((sectionId: number, itemId: number | string, loading: boolean) => {
+    const key = `${sectionId}:${itemId}`;
     setAssignmentSaving((prev) => ({ ...prev, [key]: loading }));
   }, []);
 
   const getAssignmentDraft = useCallback(
-    (sectionId: number, productId: number): AssignmentDraft => {
+    (sectionId: number, itemId: number | string): AssignmentDraft => {
+      const key = String(itemId);
       const sectionDraft = assignmentDrafts[sectionId];
-      if (sectionDraft && sectionDraft[productId]) return sectionDraft[productId];
+      if (sectionDraft && sectionDraft[key]) return sectionDraft[key];
       const section = sections.find((s) => s.id === sectionId);
-      const product = section?.products.find((p) => p.productId === productId);
+      const product = section?.products.find((p) => String(p.productId) === key);
+      const event = section?.events.find((e) => e.eventId === key);
       return {
-        order: product?.order ?? 0,
-        featured: product?.featured ?? false,
-        showInHome: product?.showInHome ?? false,
+        order: product?.order ?? event?.order ?? 0,
+        featured: product?.featured ?? event?.featured ?? false,
+        showInHome: product?.showInHome ?? event?.showInHome ?? false,
       };
     },
     [assignmentDrafts, sections]
   );
 
-  const updateAssignmentDraft = (sectionId: number, productId: number, patch: Partial<AssignmentDraft>) => {
+  const updateAssignmentDraft = (sectionId: number, itemId: number | string, patch: Partial<AssignmentDraft>) => {
     setAssignmentDrafts((prev) => {
       const sectionDraft = { ...(prev[sectionId] ?? {}) };
-      const current = getAssignmentDraft(sectionId, productId);
-      sectionDraft[productId] = {
+      const key = String(itemId);
+      const current = getAssignmentDraft(sectionId, key);
+      sectionDraft[key] = {
         order: patch.order ?? current.order,
         featured: patch.featured ?? current.featured,
         showInHome: patch.showInHome ?? current.showInHome,
@@ -121,7 +144,7 @@ export default function SectionsPageClient({ initialSections }: { initialSection
 
   const updateSearchState = (sectionId: number, patch: Partial<SectionSearchState>) => {
     setSearchState((prev) => {
-      const current: SectionSearchState = prev[sectionId] ?? { term: '', loading: false, results: [], selectedProductId: null };
+      const current: SectionSearchState = prev[sectionId] ?? { term: '', loading: false, results: [], selectedItemId: null };
       return { ...prev, [sectionId]: { ...current, ...patch } };
     });
   };
@@ -198,7 +221,7 @@ export default function SectionsPageClient({ initialSections }: { initialSection
     saveSection(sectionId, { displayOrder: next });
   };
 
-  const handleAssignmentSave = async (sectionId: number, productId: number) => {
+  const handleProductAssignmentSave = async (sectionId: number, productId: number) => {
     const draft = getAssignmentDraft(sectionId, productId);
     const payload = {
       productId,
@@ -230,7 +253,7 @@ export default function SectionsPageClient({ initialSections }: { initialSection
 
       setAssignmentDrafts((prev) => {
         const sec = { ...(prev[sectionId] ?? {}) };
-        sec[productId] = payload;
+        sec[String(productId)] = payload;
         return { ...prev, [sectionId]: sec };
       });
 
@@ -243,7 +266,7 @@ export default function SectionsPageClient({ initialSections }: { initialSection
     }
   };
 
-  const removeAssignment = async (sectionId: number, productId: number) => {
+  const removeProductAssignment = async (sectionId: number, productId: number) => {
     const ok = window.confirm('Rimuovere il prodotto dalla sezione?');
     if (!ok) return;
 
@@ -260,7 +283,7 @@ export default function SectionsPageClient({ initialSections }: { initialSection
 
       setAssignmentDrafts((prev) => {
         const sec = { ...(prev[sectionId] ?? {}) };
-        delete sec[productId];
+        delete sec[String(productId)];
         return { ...prev, [sectionId]: sec };
       });
 
@@ -275,41 +298,69 @@ export default function SectionsPageClient({ initialSections }: { initialSection
 
   const updateSearchStateSafe = (sectionId: number, patch: Partial<SectionSearchState>) => {
     setSearchState((prev) => {
-      const current: SectionSearchState = prev[sectionId] ?? { term: '', loading: false, results: [], selectedProductId: null };
+      const current: SectionSearchState = prev[sectionId] ?? { term: '', loading: false, results: [], selectedItemId: null };
       return { ...prev, [sectionId]: { ...current, ...patch } };
     });
   };
 
-  const searchProducts = async (sectionId: number) => {
+  const searchItems = async (sectionId: number) => {
+    const section = sections.find((s) => s.id === sectionId);
     const state = searchState[sectionId];
     const term = state?.term?.trim() ?? '';
     if (!term) {
-      updateSearchStateSafe(sectionId, { results: [], selectedProductId: null });
+      updateSearchStateSafe(sectionId, { results: [], selectedItemId: null });
       return;
     }
 
     updateSearchStateSafe(sectionId, { loading: true });
     try {
-      const params = new URLSearchParams({ q: term, active: 'true', pageSize: '20' });
-      const res = await fetch(`/api/admin/products?${params.toString()}`, { cache: 'no-store' });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body?.ok) {
-        toast.error('Ricerca prodotti non riuscita');
-        updateSearchStateSafe(sectionId, { loading: false });
-        return;
+      if (section?.key === 'eventi') {
+        const params = new URLSearchParams({ q: term, take: '20' });
+        const res = await fetch(`/api/admin/events/search?${params.toString()}`, { cache: 'no-store' });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || !body?.items) {
+          toast.error('Ricerca eventi non riuscita');
+          updateSearchStateSafe(sectionId, { loading: false });
+          return;
+        }
+
+        const assignedIds = new Set((section?.events ?? []).map((e) => e.eventId));
+        const results: SectionSearchResult[] = (body.items as any[])
+          .filter((item) => item?.id && !assignedIds.has(item.id))
+          .map((item) => ({
+            id: String(item.id),
+            name: item.title as string,
+            priceCents: Number(item.priceCents) || 0,
+            slug: item.slug as string,
+            startAt: item.startAt as string,
+          }));
+
+        updateSearchStateSafe(sectionId, {
+          loading: false,
+          results,
+          selectedItemId: results.length > 0 ? results[0].id : null,
+        });
+      } else {
+        const params = new URLSearchParams({ q: term, active: 'true', pageSize: '20' });
+        const res = await fetch(`/api/admin/products?${params.toString()}`, { cache: 'no-store' });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || !body?.ok) {
+          toast.error('Ricerca prodotti non riuscita');
+          updateSearchStateSafe(sectionId, { loading: false });
+          return;
+        }
+
+        const assignedIds = new Set((section?.products ?? []).map((p) => p.productId));
+        const results: SectionSearchResult[] = (body.data as any[])
+          .filter((p) => !assignedIds.has(p.id))
+          .map((p) => ({ id: p.id as number, name: p.name as string, priceCents: p.priceCents as number, slug: p.slug as string }));
+
+        updateSearchStateSafe(sectionId, {
+          loading: false,
+          results,
+          selectedItemId: results.length > 0 ? results[0].id : null,
+        });
       }
-
-      const section = sections.find((s) => s.id === sectionId);
-      const assignedIds = new Set((section?.products ?? []).map((p) => p.productId));
-      const results: SectionSearchResult[] = (body.data as any[])
-        .filter((p) => !assignedIds.has(p.id))
-        .map((p) => ({ id: p.id, name: p.name, priceCents: p.priceCents, slug: p.slug }));
-
-      updateSearchStateSafe(sectionId, {
-        loading: false,
-        results,
-        selectedProductId: results.length > 0 ? results[0].id : null,
-      });
     } catch (e) {
       console.error('[admin][sections] product search error', e);
       toast.error('Errore durante la ricerca');
@@ -319,7 +370,7 @@ export default function SectionsPageClient({ initialSections }: { initialSection
 
   const assignProduct = async (sectionId: number) => {
     const state = searchState[sectionId];
-    const productId = state?.selectedProductId ?? null;
+    const productId = typeof state?.selectedItemId === 'number' ? state.selectedItemId : null;
     if (!productId) {
       toast.error('Seleziona un prodotto da assegnare');
       return;
@@ -369,13 +420,13 @@ export default function SectionsPageClient({ initialSections }: { initialSection
 
       setAssignmentDrafts((prev) => {
         const sec = { ...(prev[sectionId] ?? {}) };
-        sec[productId] = { order: newProduct.order, featured: newProduct.featured, showInHome: newProduct.showInHome };
+        sec[String(productId)] = { order: newProduct.order, featured: newProduct.featured, showInHome: newProduct.showInHome };
         return { ...prev, [sectionId]: sec };
       });
 
       updateSearchStateSafe(sectionId, {
         results: (state?.results ?? []).filter((r) => r.id !== productId),
-        selectedProductId: null,
+        selectedItemId: null,
       });
 
       toast.success('Prodotto assegnato alla sezione');
@@ -387,7 +438,176 @@ export default function SectionsPageClient({ initialSections }: { initialSection
     }
   };
 
+  const assignEvent = async (sectionId: number) => {
+    const state = searchState[sectionId];
+    const eventId = state?.selectedItemId ? String(state.selectedItemId) : null;
+    if (!eventId) {
+      toast.error('Seleziona un evento da assegnare');
+      return;
+    }
+
+    const section = sections.find((s) => s.id === sectionId);
+    const existing = section?.events.find((e) => e.eventId === eventId);
+    if (existing) {
+      toast.error('Evento già presente nella sezione');
+      return;
+    }
+
+    const result = state?.results.find((r) => String(r.id) === eventId);
+    const defaultOrder = section?.events.length ?? 0;
+
+    setAssigning((prev) => ({ ...prev, [sectionId]: true }));
+    try {
+      const payload = { eventItemId: eventId, displayOrder: defaultOrder };
+      const res = await fetch(`/api/admin/sections/${sectionId}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.ok) {
+        toast.error("Impossibile assegnare l'evento");
+        return;
+      }
+
+      const row = body.row as {
+        displayOrder: number;
+        featured: boolean;
+        showInHome: boolean;
+        eventItem: { id: string; title: string; slug: string; priceCents: number; startAt: string };
+      };
+
+      const newEvent: SectionEventRow = {
+        eventId: row.eventItem.id,
+        title: row.eventItem.title,
+        slug: row.eventItem.slug,
+        startAt: row.eventItem.startAt,
+        priceCents: row.eventItem.priceCents,
+        order: row.displayOrder,
+        featured: row.featured,
+        showInHome: row.showInHome,
+      };
+
+      updateSectionState(sectionId, (s) => {
+        const next = [...(s.events ?? []), newEvent].sort((a, b) =>
+          a.order !== b.order ? a.order - b.order : a.title.localeCompare(b.title, 'it', { sensitivity: 'base' })
+        );
+        return { ...s, events: next };
+      });
+
+      setAssignmentDrafts((prev) => {
+        const sec = { ...(prev[sectionId] ?? {}) };
+        sec[newEvent.eventId] = { order: newEvent.order, featured: newEvent.featured, showInHome: newEvent.showInHome };
+        return { ...prev, [sectionId]: sec };
+      });
+
+      updateSearchStateSafe(sectionId, {
+        results: (state?.results ?? []).filter((r) => String(r.id) !== eventId),
+        selectedItemId: null,
+      });
+
+      toast.success('Evento assegnato alla sezione');
+    } catch (e) {
+      console.error('[admin][sections] assign event error', e);
+      toast.error("Errore durante l'assegnazione");
+    } finally {
+      setAssigning((prev) => ({ ...prev, [sectionId]: false }));
+    }
+  };
+
+  const handleEventAssignmentSave = async (sectionId: number, eventId: string) => {
+    const draft = getAssignmentDraft(sectionId, eventId);
+    const payload = {
+      eventItemId: eventId,
+      displayOrder: Math.max(0, Math.round(draft.order)),
+      featured: draft.featured,
+      showInHome: draft.showInHome,
+    };
+
+    setAssignmentLoading(sectionId, eventId, true);
+    try {
+      const res = await fetch(`/api/admin/sections/${sectionId}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.ok) {
+        toast.error("Impossibile salvare l'evento assegnato");
+        return;
+      }
+
+      updateSectionState(sectionId, (s) => {
+        const events = (s.events ?? []).map((event) =>
+          event.eventId === eventId
+            ? { ...event, order: payload.displayOrder, featured: payload.featured, showInHome: payload.showInHome }
+            : event
+        );
+        const sorted = [...events].sort((a, b) =>
+          a.order !== b.order ? a.order - b.order : a.title.localeCompare(b.title, 'it', { sensitivity: 'base' })
+        );
+        return { ...s, events: sorted };
+      });
+
+      setAssignmentDrafts((prev) => {
+        const sec = { ...(prev[sectionId] ?? {}) };
+        sec[eventId] = {
+          order: payload.displayOrder,
+          featured: payload.featured,
+          showInHome: payload.showInHome,
+        };
+        return { ...prev, [sectionId]: sec };
+      });
+
+      toast.success('Evento aggiornato');
+    } catch (e) {
+      console.error('[admin][sections] event assignment save error', e);
+      toast.error('Errore di rete durante il salvataggio');
+    } finally {
+      setAssignmentLoading(sectionId, eventId, false);
+    }
+  };
+
+  const removeEventAssignment = async (sectionId: number, eventId: string) => {
+    const ok = window.confirm('Rimuovere l\'evento dalla sezione?');
+    if (!ok) return;
+
+    setAssignmentLoading(sectionId, eventId, true);
+    try {
+      const params = new URLSearchParams({ eventItemId: eventId });
+      const res = await fetch(`/api/admin/sections/${sectionId}/events?${params.toString()}`, { method: 'DELETE' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.ok) {
+        toast.error("Impossibile rimuovere l'evento");
+        return;
+      }
+
+      updateSectionState(sectionId, (s) => ({
+        ...s,
+        events: (s.events ?? []).filter((event) => event.eventId !== eventId),
+      }));
+
+      setAssignmentDrafts((prev) => {
+        const sec = { ...(prev[sectionId] ?? {}) };
+        delete sec[eventId];
+        return { ...prev, [sectionId]: sec };
+      });
+
+      toast.success('Evento rimosso dalla sezione');
+    } catch (e) {
+      console.error('[admin][sections] event assignment remove error', e);
+      toast.error('Errore di rete durante la rimozione');
+    } finally {
+      setAssignmentLoading(sectionId, eventId, false);
+    }
+  };
+
   const formatPrice = (cents: number) => (cents / 100).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+  const formatDate = (iso: string) => {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
+  };
 
   return (
     <div style={{ display: 'grid', gap: '2rem' }}>
@@ -404,8 +624,9 @@ export default function SectionsPageClient({ initialSections }: { initialSection
             term: '',
             loading: false,
             results: [],
-            selectedProductId: null,
+            selectedItemId: null,
           };
+          const isEventSection = section.key === 'eventi';
           return (
             <section
               key={section.id}
@@ -467,15 +688,22 @@ export default function SectionsPageClient({ initialSections }: { initialSection
 
               <div style={{ display: 'grid', gap: '1rem' }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>Prodotti assegnati</h3>
-                  <p style={{ margin: '0.25rem 0 0', color: '#6b7280', fontSize: '0.9rem' }}>Ordina i prodotti e scegli visibilità in home.</p>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>
+                    {isEventSection ? 'Eventi assegnati' : 'Prodotti assegnati'}
+                  </h3>
+                  <p style={{ margin: '0.25rem 0 0', color: '#6b7280', fontSize: '0.9rem' }}>
+                    {isEventSection
+                      ? 'Ordina gli eventi e scegli visibilità in home.'
+                      : 'Ordina i prodotti e scegli visibilità in home.'}
+                  </p>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
                     <thead style={{ backgroundColor: '#f9fafb', textAlign: 'left', fontSize: '0.85rem', color: '#6b7280' }}>
                       <tr>
                         <th style={tableHeaderCell}>Ordine</th>
-                        <th style={tableHeaderCell}>Prodotto</th>
+                        <th style={tableHeaderCell}>{isEventSection ? 'Evento' : 'Prodotto'}</th>
+                        {isEventSection ? <th style={tableHeaderCell}>Data</th> : null}
                         <th style={tableHeaderCell}>Prezzo</th>
                         <th style={tableHeaderCell}>Featured</th>
                         <th style={tableHeaderCell}>Home</th>
@@ -483,84 +711,157 @@ export default function SectionsPageClient({ initialSections }: { initialSection
                       </tr>
                     </thead>
                     <tbody>
-                      {section.products.length === 0 ? (
+                      {(isEventSection ? section.events.length === 0 : section.products.length === 0) ? (
                         <tr>
-                          <td colSpan={6} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
-                            Nessun prodotto assegnato.
+                          <td colSpan={isEventSection ? 7 : 6} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
+                            {isEventSection ? 'Nessun evento assegnato.' : 'Nessun prodotto assegnato.'}
                           </td>
                         </tr>
                       ) : (
-                        section.products.map((product) => {
-                          const draft = getAssignmentDraft(section.id, product.productId);
-                          const key = `${section.id}:${product.productId}`;
-                          const loading = assignmentSaving[key] ?? false;
-                          const isDirty =
-                            draft.order !== product.order || draft.featured !== product.featured || draft.showInHome !== product.showInHome;
-                          return (
-                            <tr key={product.productId} style={{ borderTop: '1px solid #f1f5f9' }}>
-                              <td style={tableCell}>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={draft.order}
-                                  onChange={(e) => {
-                                    const value = Number.parseInt(e.target.value, 10);
-                                    updateAssignmentDraft(section.id, product.productId, { order: Number.isNaN(value) ? 0 : value });
-                                  }}
-                                  style={{ ...inputStyle, maxWidth: 96 }}
-                                />
-                              </td>
-                              <td style={{ ...tableCell, fontWeight: 600 }}>
-                                <div style={{ display: 'grid' }}>
-                                  <span>{product.productName}</span>
-                                  <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>#{product.productId}</span>
-                                </div>
-                              </td>
-                              <td style={tableCell}>{formatPrice(product.priceCents)}</td>
-                              <td style={tableCell}>
-                                <label style={checkboxLabel}>
-                                  <input
-                                    type="checkbox"
-                                    checked={draft.featured}
-                                    onChange={(e) => updateAssignmentDraft(section.id, product.productId, { featured: e.target.checked })}
-                                  />
-                                  <span>Sì</span>
-                                </label>
-                              </td>
-                              <td style={tableCell}>
-                                <label style={checkboxLabel}>
-                                  <input
-                                    type="checkbox"
-                                    checked={draft.showInHome}
-                                    onChange={(e) => updateAssignmentDraft(section.id, product.productId, { showInHome: e.target.checked })}
-                                  />
-                                  <span>In home</span>
-                                </label>
-                              </td>
-                              <td style={tableCell}>
-                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAssignmentSave(section.id, product.productId)}
-                                    disabled={loading || !isDirty}
-                                    style={linkButtonStyle}
-                                  >
-                                    Salva
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeAssignment(section.id, product.productId)}
-                                    disabled={loading}
-                                    style={dangerButtonStyle}
-                                  >
-                                    Rimuovi
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
+                        (isEventSection
+                          ? section.events.map((event) => {
+                              const draft = getAssignmentDraft(section.id, event.eventId);
+                              const key = `${section.id}:${event.eventId}`;
+                              const loading = assignmentSaving[key] ?? false;
+                              const isDirty =
+                                draft.order !== event.order || draft.featured !== event.featured || draft.showInHome !== event.showInHome;
+                              return (
+                                <tr key={event.eventId} style={{ borderTop: '1px solid #f1f5f9' }}>
+                                  <td style={tableCell}>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      value={draft.order}
+                                      onChange={(e) => {
+                                        const value = Number.parseInt(e.target.value, 10);
+                                        updateAssignmentDraft(section.id, event.eventId, { order: Number.isNaN(value) ? 0 : value });
+                                      }}
+                                      style={{ ...inputStyle, maxWidth: 96 }}
+                                    />
+                                  </td>
+                                  <td style={{ ...tableCell, fontWeight: 600 }}>
+                                    <div style={{ display: 'grid' }}>
+                                      <span>{event.title}</span>
+                                      <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>{event.slug}</span>
+                                    </div>
+                                  </td>
+                                  <td style={tableCell}>{formatDate(event.startAt)}</td>
+                                  <td style={tableCell}>{formatPrice(event.priceCents)}</td>
+                                  <td style={tableCell}>
+                                    <label style={checkboxLabel}>
+                                      <input
+                                        type="checkbox"
+                                        checked={draft.featured}
+                                        onChange={(e) => updateAssignmentDraft(section.id, event.eventId, { featured: e.target.checked })}
+                                      />
+                                      <span>Sì</span>
+                                    </label>
+                                  </td>
+                                  <td style={tableCell}>
+                                    <label style={checkboxLabel}>
+                                      <input
+                                        type="checkbox"
+                                        checked={draft.showInHome}
+                                        onChange={(e) => updateAssignmentDraft(section.id, event.eventId, { showInHome: e.target.checked })}
+                                      />
+                                      <span>In home</span>
+                                    </label>
+                                  </td>
+                                  <td style={tableCell}>
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleEventAssignmentSave(section.id, event.eventId)}
+                                        disabled={loading || !isDirty}
+                                        style={linkButtonStyle}
+                                      >
+                                        Salva
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeEventAssignment(section.id, event.eventId)}
+                                        disabled={loading}
+                                        style={dangerButtonStyle}
+                                      >
+                                        Rimuovi
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          : section.products.map((product) => {
+                              const draft = getAssignmentDraft(section.id, product.productId);
+                              const key = `${section.id}:${product.productId}`;
+                              const loading = assignmentSaving[key] ?? false;
+                              const isDirty =
+                                draft.order !== product.order || draft.featured !== product.featured || draft.showInHome !== product.showInHome;
+                              return (
+                                <tr key={product.productId} style={{ borderTop: '1px solid #f1f5f9' }}>
+                                  <td style={tableCell}>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      value={draft.order}
+                                      onChange={(e) => {
+                                        const value = Number.parseInt(e.target.value, 10);
+                                        updateAssignmentDraft(section.id, product.productId, { order: Number.isNaN(value) ? 0 : value });
+                                      }}
+                                      style={{ ...inputStyle, maxWidth: 96 }}
+                                    />
+                                  </td>
+                                  <td style={{ ...tableCell, fontWeight: 600 }}>
+                                    <div style={{ display: 'grid' }}>
+                                      <span>{product.productName}</span>
+                                      <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>#{product.productId}</span>
+                                    </div>
+                                  </td>
+                                  <td style={tableCell}>{formatPrice(product.priceCents)}</td>
+                                  <td style={tableCell}>
+                                    <label style={checkboxLabel}>
+                                      <input
+                                        type="checkbox"
+                                        checked={draft.featured}
+                                        onChange={(e) => updateAssignmentDraft(section.id, product.productId, { featured: e.target.checked })}
+                                      />
+                                      <span>Sì</span>
+                                    </label>
+                                  </td>
+                                  <td style={tableCell}>
+                                    <label style={checkboxLabel}>
+                                      <input
+                                        type="checkbox"
+                                        checked={draft.showInHome}
+                                        onChange={(e) => updateAssignmentDraft(section.id, product.productId, { showInHome: e.target.checked })}
+                                      />
+                                      <span>In home</span>
+                                    </label>
+                                  </td>
+                                  <td style={tableCell}>
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleProductAssignmentSave(section.id, product.productId)}
+                                        disabled={loading || !isDirty}
+                                        style={linkButtonStyle}
+                                      >
+                                        Salva
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeProductAssignment(section.id, product.productId)}
+                                        disabled={loading}
+                                        style={dangerButtonStyle}
+                                      >
+                                        Rimuovi
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            }))
                       )}
                     </tbody>
                   </table>
@@ -569,15 +870,19 @@ export default function SectionsPageClient({ initialSections }: { initialSection
 
               <div style={{ display: 'grid', gap: '1rem' }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>Aggiungi prodotto</h3>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>
+                    {isEventSection ? 'Aggiungi evento' : 'Aggiungi prodotto'}
+                  </h3>
                   <p style={{ margin: '0.25rem 0 0', color: '#6b7280', fontSize: '0.9rem' }}>
-                    Cerca tra i prodotti attivi e assegna alla sezione.
+                    {isEventSection
+                      ? 'Cerca tra gli eventi attivi e assegna alla sezione.'
+                      : 'Cerca tra i prodotti attivi e assegna alla sezione.'}
                   </p>
                 </div>
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    searchProducts(section.id).catch((err) => console.error('[admin][sections] submit search error', err));
+                    searchItems(section.id).catch((err) => console.error('[admin][sections] submit search error', err));
                   }}
                   style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}
                 >
@@ -585,7 +890,7 @@ export default function SectionsPageClient({ initialSections }: { initialSection
                     type="text"
                     value={search.term}
                     onChange={(e) => updateSearchState(section.id, { term: e.target.value })}
-                    placeholder="Nome o slug prodotto"
+                    placeholder={isEventSection ? 'Titolo o slug evento' : 'Nome o slug prodotto'}
                     style={{ ...inputStyle, minWidth: 220, flex: '1 1 auto' }}
                   />
                   <button type="submit" style={secondaryButtonStyle} disabled={search.loading}>
@@ -595,32 +900,41 @@ export default function SectionsPageClient({ initialSections }: { initialSection
                 {search.results.length > 0 ? (
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
                     <select
-                      value={search.selectedProductId ?? ''}
-                      onChange={(e) =>
+                      value={search.selectedItemId != null ? String(search.selectedItemId) : ''}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (!value) {
+                          updateSearchState(section.id, { selectedItemId: null });
+                          return;
+                        }
                         updateSearchState(section.id, {
-                          selectedProductId: e.target.value ? Number.parseInt(e.target.value, 10) : null,
-                        })
-                      }
+                          selectedItemId: isEventSection ? value : Number.parseInt(value, 10),
+                        });
+                      }}
                       style={{ ...inputStyle, minWidth: 260 }}
                     >
-                      <option value="">Seleziona un prodotto</option>
+                      <option value="">{isEventSection ? 'Seleziona un evento' : 'Seleziona un prodotto'}</option>
                       {search.results.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} — {formatPrice(p.priceCents)}
+                        <option key={String(p.id)} value={String(p.id)}>
+                          {isEventSection && p.startAt
+                            ? `${p.name} — ${formatDate(p.startAt)}`
+                            : `${p.name} — ${formatPrice(p.priceCents)}`}
                         </option>
                       ))}
                     </select>
                     <button
                       type="button"
-                      onClick={() => assignProduct(section.id)}
-                      disabled={assigning[section.id] || !search.selectedProductId}
+                      onClick={() => (isEventSection ? assignEvent(section.id) : assignProduct(section.id))}
+                      disabled={assigning[section.id] || !search.selectedItemId}
                       style={primaryButtonStyle}
                     >
                       {assigning[section.id] ? 'Assegnazione…' : 'Assegna'}
                     </button>
                   </div>
                 ) : search.term.trim() && !search.loading ? (
-                  <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>Nessun prodotto trovato.</p>
+                  <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>
+                    {isEventSection ? 'Nessun evento trovato.' : 'Nessun prodotto trovato.'}
+                  </p>
                 ) : null}
               </div>
             </section>

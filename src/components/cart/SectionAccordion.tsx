@@ -190,7 +190,11 @@ export default function SectionAccordion() {
         {openSection === section.key ? (
           <div className="px-4 pb-4">
             {section.products.length === 0 ? (
-              <p className="text-muted">Nessun prodotto disponibile in questa sezione.</p>
+              <p className="text-muted">
+                {section.key === 'eventi'
+                  ? 'Nessun evento disponibile in questa sezione.'
+                  : 'Il menu non è al momento disponibile.'}
+              </p>
             ) : section.key === 'eventi' ? (
               section.products
                 .filter((item): item is CatalogEvent => item.type === 'event')

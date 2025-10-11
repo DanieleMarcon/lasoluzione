@@ -19,6 +19,10 @@ export default function EventSectionItem({
   pending = false,
 }: EventSectionItemProps) {
   const emailOnly = event.flags.emailOnly;
+  const startDate = new Date(event.startAt);
+  const startLabel = Number.isNaN(startDate.getTime())
+    ? null
+    : startDate.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
 
   const canAddToCart = !emailOnly && typeof onAddToCart === 'function';
 
@@ -29,6 +33,7 @@ export default function EventSectionItem({
           <h5 className="mb-2" style={{ fontSize: '1.1rem' }}>
             {event.title}
           </h5>
+          {startLabel ? <div className="text-muted small">{startLabel}</div> : null}
           <div className="text-primary fw-semibold">{priceLabel}</div>
         </div>
 

@@ -21,6 +21,9 @@ export type CatalogEventDTO = {
   slug: string;
   title: string;
   priceCents: number;
+  startAt: string;
+  endAt: string | null;
+  order: number;
   flags: {
     emailOnly: boolean;
     featured: boolean;

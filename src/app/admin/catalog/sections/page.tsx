@@ -15,6 +15,17 @@ type SectionProductRow = {
   showInHome: boolean;
 };
 
+type SectionEventRow = {
+  eventId: string;
+  title: string;
+  slug: string;
+  startAt: string;
+  priceCents: number;
+  order: number;
+  featured: boolean;
+  showInHome: boolean;
+};
+
 type SectionRow = {
   id: number;
   key: string;
@@ -23,6 +34,7 @@ type SectionRow = {
   enableDateTime: boolean;
   displayOrder: number;
   products: SectionProductRow[];
+  events: SectionEventRow[];
 };
 
 export default async function AdminCatalogSectionsPage() {
@@ -40,6 +52,13 @@ export default async function AdminCatalogSectionsPage() {
       })
     : [];
 
+  const eventLinks = sectionIds.length
+    ? await prisma.sectionEventItem.findMany({
+        where: { sectionId: { in: sectionIds } },
+        orderBy: [{ sectionId: 'asc' }, { displayOrder: 'asc' }],
+      })
+    : [];
+
   const productIds = Array.from(new Set(links.map((l) => l.productId)));
   const products = productIds.length
     ? await prisma.product.findMany({
@@ -48,13 +67,28 @@ export default async function AdminCatalogSectionsPage() {
       })
     : [];
 
+  const eventIds = Array.from(new Set(eventLinks.map((link) => link.eventItemId)));
+  const events = eventIds.length
+    ? await prisma.eventItem.findMany({
+        where: { id: { in: eventIds } },
+      })
+    : [];
+
   const productById = new Map(products.map((p) => [p.id, p] as const));
+  const eventById = new Map(events.map((event) => [event.id, event] as const));
   const linksBySection = new Map<number, typeof links>();
+  const eventsBySection = new Map<number, typeof eventLinks>();
 
   for (const link of links) {
     const bucket = linksBySection.get(link.sectionId);
     if (bucket) bucket.push(link);
     else linksBySection.set(link.sectionId, [link]);
+  }
+
+  for (const link of eventLinks) {
+    const bucket = eventsBySection.get(link.sectionId);
+    if (bucket) bucket.push(link);
+    else eventsBySection.set(link.sectionId, [link]);
   }
 
   const initialSections: SectionRow[] = sections.map((section) => {
@@ -78,6 +112,25 @@ export default async function AdminCatalogSectionsPage() {
           : a.productName.localeCompare(b.productName, 'it', { sensitivity: 'base' })
       );
 
+    const sectionEventLinks = eventsBySection.get(section.id) ?? [];
+    const eventRows: SectionEventRow[] = sectionEventLinks
+      .map((link) => {
+        const event = eventById.get(link.eventItemId);
+        if (!event) return null;
+        return {
+          eventId: link.eventItemId,
+          title: event.title,
+          slug: event.slug,
+          startAt: event.startAt.toISOString(),
+          priceCents: event.priceCents,
+          order: link.displayOrder,
+          featured: link.featured,
+          showInHome: link.showInHome,
+        } satisfies SectionEventRow;
+      })
+      .filter((row): row is SectionEventRow => row !== null)
+      .sort((a, b) => (a.order !== b.order ? a.order - b.order : a.title.localeCompare(b.title, 'it', { sensitivity: 'base' })));
+
     return {
       id: section.id,
       key: section.key,
@@ -86,6 +139,7 @@ export default async function AdminCatalogSectionsPage() {
       enableDateTime: section.enableDateTime,
       displayOrder: section.displayOrder,
       products: rows,
+      events: eventRows,
     };
   });
 

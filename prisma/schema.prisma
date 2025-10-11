@@ -152,6 +152,7 @@ model CatalogSection {
 
   // RELAZIONI
   products SectionProduct[]
+  events   SectionEventItem[]
 }
 
 model SectionProduct {
@@ -204,6 +205,8 @@ model EventItem {
   emailOnly   Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  sections SectionEventItem[]
 }
 
 model SectionEvent {
@@ -215,6 +218,20 @@ model SectionEvent {
 
   @@id([sectionId, eventId])
   @@index([eventId])
+}
+
+model SectionEventItem {
+  sectionId    Int
+  eventItemId  String
+  displayOrder Int     @default(999)
+  featured     Boolean @default(false)
+  showInHome   Boolean @default(false)
+
+  section   CatalogSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  eventItem EventItem      @relation(fields: [eventItemId], references: [id])
+
+  @@id([sectionId, eventItemId])
+  @@index([sectionId, displayOrder])
 }
 
 /**

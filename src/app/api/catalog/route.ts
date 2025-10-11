@@ -26,6 +26,9 @@ type CatalogEventDTO = {
   slug: string;
   title: string;
   priceCents: number;
+  startAt: string;
+  endAt: string | null;
+  order: number;
   flags: {
     emailOnly: boolean;
     featured: boolean;
@@ -106,51 +109,37 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const eventSectionKeys = sections.filter((section) => section.key === 'eventi').map((section) => section.key);
-    const eventsBySectionKey = new Map<string, CatalogEventDTO[]>();
+    const sectionEventItems = sectionIds.length
+      ? await prisma.sectionEventItem.findMany({
+          where: { sectionId: { in: sectionIds } },
+          orderBy: [{ sectionId: 'asc' }, { displayOrder: 'asc' }],
+          include: { eventItem: true },
+        })
+      : [];
 
-    if (eventSectionKeys.length > 0) {
-      const sectionEvents = await prisma.sectionEvent.findMany({
-        where: { sectionId: { in: eventSectionKeys } },
-        orderBy: [{ sectionId: 'asc' }, { order: 'asc' }],
-      });
+    const eventsBySectionId = new Map<number, CatalogEventDTO[]>();
 
-      const eventIds = Array.from(new Set(sectionEvents.map((link) => link.eventId)));
-      const eventItems = eventIds.length
-        ? await prisma.eventItem.findMany({
-            where: {
-              id: { in: eventIds },
-              active: true,
-            },
-          })
-        : [];
+    for (const link of sectionEventItems) {
+      if (!link.eventItem.active) continue;
+      const dto: CatalogEventDTO = {
+        type: 'event',
+        id: link.eventItem.id,
+        slug: link.eventItem.slug,
+        title: link.eventItem.title,
+        priceCents: link.eventItem.priceCents,
+        startAt: link.eventItem.startAt.toISOString(),
+        endAt: link.eventItem.endAt ? link.eventItem.endAt.toISOString() : null,
+        order: link.displayOrder,
+        flags: {
+          emailOnly: link.eventItem.emailOnly,
+          featured: link.featured,
+          showInHome: link.showInHome,
+        },
+      } satisfies CatalogEventDTO;
 
-      const eventMap = new Map(eventItems.map((event) => [event.id, event] as const));
-
-      for (const link of sectionEvents) {
-        const event = eventMap.get(link.eventId);
-        if (!event) continue;
-
-        const dto: CatalogEventDTO = {
-          type: 'event',
-          id: event.id,
-          slug: event.slug,
-          title: event.title,
-          priceCents: event.priceCents,
-          flags: {
-            emailOnly: event.emailOnly,
-            featured: link.featured,
-            showInHome: link.showInHome,
-          },
-        };
-
-        const bucket = eventsBySectionKey.get(link.sectionId);
-        if (bucket) {
-          bucket.push(dto);
-        } else {
-          eventsBySectionKey.set(link.sectionId, [dto]);
-        }
-      }
+      const bucket = eventsBySectionId.get(link.sectionId);
+      if (bucket) bucket.push(dto);
+      else eventsBySectionId.set(link.sectionId, [dto]);
     }
 
     const payload: CatalogDTO = {
@@ -166,7 +155,10 @@ export async function GET(request: NextRequest) {
         });
 
         if (section.key === 'eventi') {
-          const events = eventsBySectionKey.get(section.key) ?? [];
+          const events = eventsBySectionId.get(section.id) ?? [];
+          const sortedEvents = [...events].sort((a, b) =>
+            a.order !== b.order ? a.order - b.order : a.title.localeCompare(b.title, 'it', { sensitivity: 'base' })
+          );
           return {
             key: section.key as CatalogSectionDTO['key'],
             title: section.title,
@@ -174,7 +166,7 @@ export async function GET(request: NextRequest) {
             enableDateTime: section.enableDateTime,
             active: section.active,
             displayOrder: section.displayOrder,
-            products: events,
+            products: sortedEvents,
           } satisfies CatalogSectionDTO;
         }
 

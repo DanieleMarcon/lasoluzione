@@ -3,9 +3,10 @@ import EventsPageClient, { type AdminEvent } from '@/components/admin/events/Eve
 import { ToastProvider } from '@/components/admin/ui/toast';
 import { assertAdmin } from '@/lib/admin/session';
 import { prisma } from '@/lib/prisma';
-import { ensureEventItemModel } from '@/utils/dev-guards';
+import { prismaHasEventItem } from '@/utils/dev-guards';
 import type { EventItem } from '@prisma/client';
 
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -31,7 +32,17 @@ function toAdminEventItemDTO(event: EventItem) {
 export default async function AdminEventsPage() {
   await assertAdmin();
 
-  ensureEventItemModel();
+  if (!prismaHasEventItem()) {
+    return (
+      <div className="p-6">
+        <h1 className="text-xl font-semibold mb-2">Eventi</h1>
+        <p className="text-red-600">
+          Il client Prisma in uso non contiene <code>EventItem</code>. Esegui:{' '}
+          <code>pnpm run prisma:migrate && pnpm run prisma:gen</code> e riavvia il dev server.
+        </p>
+      </div>
+    );
+  }
 
   const [total, items] = await Promise.all([
     prisma.eventItem.count(),

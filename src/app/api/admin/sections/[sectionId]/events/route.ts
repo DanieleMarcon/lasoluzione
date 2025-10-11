@@ -85,12 +85,7 @@ export async function GET(request: Request, context: { params: { sectionId: stri
 export async function POST(request: Request, context: { params: { sectionId: string } }) {
   await assertAdmin();
 
-  const sectionIdNum = Number(context.params.sectionId);
-  if (!Number.isFinite(sectionIdNum)) {
-    return NextResponse.json({ error: 'sectionId non valido' }, { status: 400 });
-  }
-
-  const section = await prisma.catalogSection.findUnique({ where: { id: sectionIdNum } });
+  const section = await resolveSectionId(context.params.sectionId.trim());
   if (!section) {
     return NextResponse.json({ ok: false, error: 'section_not_found' }, { status: 404 });
   }
@@ -111,13 +106,15 @@ export async function POST(request: Request, context: { params: { sectionId: str
     eventItemId: rawEventItemId,
     featured: rawFeatured = false,
     showInHome: rawShowInHome = false,
-    displayOrder: rawDisplayOrder = 999,
+    displayOrder: rawDisplayOrder,
+    order: rawOrder,
   } = body as {
     eventId?: unknown;
     eventItemId?: unknown;
     featured?: unknown;
     showInHome?: unknown;
     displayOrder?: unknown;
+    order?: unknown;
   };
 
   const resolvedEventId =
@@ -137,11 +134,13 @@ export async function POST(request: Request, context: { params: { sectionId: str
     return NextResponse.json({ ok: false, error: 'event_not_found' }, { status: 404 });
   }
 
+  const rawDisplayOrderInput = rawDisplayOrder ?? rawOrder ?? 999;
+
   const displayOrderValue =
-    typeof rawDisplayOrder === 'number'
-      ? rawDisplayOrder
-      : typeof rawDisplayOrder === 'string' && rawDisplayOrder.trim().length > 0
-        ? Number(rawDisplayOrder)
+    typeof rawDisplayOrderInput === 'number'
+      ? rawDisplayOrderInput
+      : typeof rawDisplayOrderInput === 'string' && rawDisplayOrderInput.trim().length > 0
+        ? Number(rawDisplayOrderInput)
         : Number.NaN;
 
   const displayOrder = Number.isFinite(displayOrderValue) ? displayOrderValue : 999;

@@ -1,18 +1,9 @@
 import { NextResponse } from 'next/server';
-import { z } from 'zod';
-
 import { assertAdmin } from '@/lib/admin/session';
 import { prisma } from '@/lib/prisma';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const assignSchema = z.object({
-  eventItemId: z.string().min(1),
-  displayOrder: z.number().int().min(0).optional(),
-  featured: z.boolean().optional(),
-  showInHome: z.boolean().optional(),
-});
 
 async function resolveSectionId(sectionParam: string) {
   const numeric = Number.parseInt(sectionParam, 10);
@@ -94,51 +85,84 @@ export async function GET(request: Request, context: { params: { sectionId: stri
 export async function POST(request: Request, context: { params: { sectionId: string } }) {
   await assertAdmin();
 
-  const section = await resolveSectionId(context.params.sectionId.trim());
+  const sectionIdNum = Number(context.params.sectionId);
+  if (!Number.isFinite(sectionIdNum)) {
+    return NextResponse.json({ error: 'sectionId non valido' }, { status: 400 });
+  }
+
+  const section = await prisma.catalogSection.findUnique({ where: { id: sectionIdNum } });
   if (!section) {
     return NextResponse.json({ ok: false, error: 'section_not_found' }, { status: 404 });
   }
 
-  const json = await request.json().catch(() => ({}));
-  const normalized = {
-    ...json,
-    eventItemId: json?.eventItemId ?? json?.eventId,
-    displayOrder: json?.displayOrder ?? json?.order,
-  };
-  const parsed = assignSchema.safeParse(normalized);
-  if (!parsed.success) {
-    return NextResponse.json({ ok: false, error: 'validation_error', details: parsed.error.flatten() }, { status: 400 });
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch (error) {
+    return NextResponse.json({ error: 'payload non valido' }, { status: 400 });
   }
 
-  const { eventItemId, displayOrder = 0, featured = false, showInHome = false } = parsed.data;
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'payload non valido' }, { status: 400 });
+  }
 
-  const event = await prisma.eventItem.findUnique({ where: { id: eventItemId } });
-  if (!event) {
+  const {
+    eventId: rawEventId,
+    eventItemId: rawEventItemId,
+    featured: rawFeatured = false,
+    showInHome: rawShowInHome = false,
+    displayOrder: rawDisplayOrder = 999,
+  } = body as {
+    eventId?: unknown;
+    eventItemId?: unknown;
+    featured?: unknown;
+    showInHome?: unknown;
+    displayOrder?: unknown;
+  };
+
+  const resolvedEventId =
+    typeof rawEventItemId === 'string' && rawEventItemId.trim().length > 0
+      ? rawEventItemId.trim()
+      : typeof rawEventId === 'string' && rawEventId.trim().length > 0
+        ? rawEventId.trim()
+        : Number.isFinite(rawEventId as number)
+          ? String(rawEventId)
+          : null;
+
+  if (!resolvedEventId) {
+    return NextResponse.json({ error: 'eventId mancante/non valido' }, { status: 400 });
+  }
+
+  if (!(await prisma.eventItem.findUnique({ where: { id: resolvedEventId } }))) {
     return NextResponse.json({ ok: false, error: 'event_not_found' }, { status: 404 });
   }
 
+  const displayOrderValue =
+    typeof rawDisplayOrder === 'number'
+      ? rawDisplayOrder
+      : typeof rawDisplayOrder === 'string' && rawDisplayOrder.trim().length > 0
+        ? Number(rawDisplayOrder)
+        : Number.NaN;
+
+  const displayOrder = Number.isFinite(displayOrderValue) ? displayOrderValue : 999;
+  const featured = typeof rawFeatured === 'boolean' ? rawFeatured : rawFeatured === 'true';
+  const showInHome = typeof rawShowInHome === 'boolean' ? rawShowInHome : rawShowInHome === 'true';
+
   const row = await prisma.sectionEventItem.upsert({
-    where: {
-      sectionId_eventItemId: {
-        sectionId: section.id,
-        eventItemId,
-      },
+    where: { sectionId_eventId: { sectionId: section.id, eventItemId: resolvedEventId } },
+    create: {
+      sectionId: section.id,
+      eventItemId: resolvedEventId,
+      displayOrder,
+      featured,
+      showInHome,
     },
     update: {
       displayOrder,
       featured,
       showInHome,
     },
-    create: {
-      sectionId: section.id,
-      eventItemId,
-      displayOrder,
-      featured,
-      showInHome,
-    },
-    include: {
-      eventItem: true,
-    },
+    include: { eventItem: true },
   });
 
   return NextResponse.json({ ok: true, row: serializeAssignment(row) });

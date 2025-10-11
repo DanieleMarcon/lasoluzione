@@ -7,13 +7,16 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 async function resolveSectionId(sectionParam: string) {
-  const numeric = Number.parseInt(sectionParam, 10);
-  if (Number.isFinite(numeric) && numeric > 0) {
-    const section = await prisma.catalogSection.findUnique({ where: { id: numeric } });
-    if (section) return section;
+  const trimmed = sectionParam.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const numeric = Number.parseInt(trimmed, 10);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      const section = await prisma.catalogSection.findUnique({ where: { id: numeric } });
+      if (section) return section;
+    }
   }
 
-  return prisma.catalogSection.findUnique({ where: { key: sectionParam } });
+  return prisma.catalogSection.findUnique({ where: { key: trimmed } });
 }
 
 export async function DELETE(request: Request, context: { params: { sectionId: string; eventId: string } }) {

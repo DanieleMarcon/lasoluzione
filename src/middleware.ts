@@ -13,6 +13,11 @@ function parseWhitelist(input?: string) {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // BYPASS solo per debug/health
+  if (pathname.startsWith('/api/prisma-debug') || pathname.startsWith('/api/ping')) {
+    return NextResponse.next();
+  }
+
   // BYPASS: route che non vanno mai protette
   const bypass =
     pathname.startsWith('/api/auth') ||

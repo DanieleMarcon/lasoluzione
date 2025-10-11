@@ -1,7 +1,9 @@
 /* src/app/globals.css */
-@import "tailwindcss";
+
+/* Non usare @import "tailwindcss"; in un progetto Next/Tailwind moderno */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Se hai stile aggiuntivo per il sito, importalo DOPO i layer di Tailwind */
 @import url('./(site)/globals.css');

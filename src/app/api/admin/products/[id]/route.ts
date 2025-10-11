@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
@@ -123,12 +124,31 @@ export async function DELETE(request: Request, context: { params: { id: string }
 
   try {
     if (hard) {
+      const cleanupOps: Prisma.PrismaPromise<unknown>[] = [
+        prisma.sectionProduct.deleteMany({ where: { productId } }),
+        prisma.eventInstance.deleteMany({ where: { productId } }),
+        prisma.cartItem.deleteMany({ where: { productId } }),
+      ];
+
+      await prisma.$transaction(cleanupOps);
       await prisma.product.delete({ where: { id: productId } });
     } else {
       await prisma.product.update({ where: { id: productId }, data: { active: false } });
     }
     return NextResponse.json({ ok: true });
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'P2003') {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'referenced_entities',
+          message:
+            'Il prodotto è referenziato da altre entità. Riprova con hard=true o rimuovi prima i riferimenti (sezioni/eventi).',
+        },
+        { status: 409 },
+      );
+    }
+
     console.error('[DELETE /api/admin/products/[id]] error', error);
     return NextResponse.json({ ok: false, error: 'delete_failed' }, { status: 500 });
   }

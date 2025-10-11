@@ -11,7 +11,11 @@
     "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma --name align_event_item",
     "prisma:gen": "prisma generate --schema prisma/schema.prisma",
     "seed:single-event": "tsx prisma/seed.ts",
-    "backfill:events": "tsx scripts/backfill-events.ts"
+    "backfill:events": "tsx scripts/backfill-events.ts",
+    "diag:schemas": "rg -n --no-ignore -g '!node_modules' 'generator client|datasource db|model\\s+EventItem' -S prisma",
+    "diag:client:hasEventItem": "rg -n 'eventItem\\s*:' node_modules/.prisma/client/index.d.ts || echo 'eventItem NON presente'",
+    "diag:client:schema": "rg -n 'model\\s+EventItem' node_modules/.prisma/client/schema.prisma || echo 'EventItem NON presente nello schema client'",
+    "diag:why": "pnpm why @prisma/client prisma || true"
   },
   "dependencies": {
     "@auth/prisma-adapter": "2.10.0",

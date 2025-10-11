@@ -3,8 +3,7 @@ import { prisma } from '@/lib/prisma';
 
 export function ensureEventItemModel() {
   if (process.env.NODE_ENV === 'development') {
-    // in debug: non lanciare, lasciamo girare e usiamo /api/_debug/prisma
-    return;
+    return; // non bloccare in dev: usiamo l'endpoint /api/prisma-debug per capire cosa succede
   }
   if (!(prisma as any)?.eventItem?.findMany) {
     throw new Error(

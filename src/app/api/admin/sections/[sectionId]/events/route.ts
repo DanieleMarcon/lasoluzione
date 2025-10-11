@@ -188,12 +188,16 @@ export async function DELETE(request: Request, context: { params: { sectionId: s
 
   await prisma.sectionEventItem.delete({
     where: {
-      sectionId_eventItemId: {
+      sectionId_eventId: {
         sectionId: section.id,
         eventItemId,
       },
     },
   });
+
+  // Post-fix commands:
+  // pnpm prisma generate
+  // rm -rf .next && pnpm dev
 
   return NextResponse.json({ ok: true });
 }

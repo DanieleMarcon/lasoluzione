@@ -1,1 +1,0 @@
--- SQLite stores enums as TEXT; ensure existing Booking records accept new 'cena' values.

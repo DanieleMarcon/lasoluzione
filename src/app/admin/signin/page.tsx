@@ -1,8 +1,7 @@
 // src/app/admin/signin/page.tsx
 import type { Metadata } from 'next';
-import { auth } from '@/auth';
+import { auth } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-
 import EmailSignInForm from '@/components/admin/EmailSignInForm';
 
 type PageProps = {
@@ -17,7 +16,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminSignInPage({ searchParams }: PageProps) {
-  // Se l'utente ha già una sessione valida, portalo direttamente in dashboard
+  // Se sei già autenticato, vai direttamente in /admin
   const session = await auth();
   if (session?.user) {
     redirect('/admin');
@@ -71,8 +70,8 @@ export default async function AdminSignInPage({ searchParams }: PageProps) {
           </div>
         )}
 
-        {/* Se il tuo EmailSignInForm supporta un callbackUrl, puoi passargli "/admin".
-            Esempio: <EmailSignInForm callbackUrl="/admin" /> */}
+        {/* Se EmailSignInForm supporta callbackUrl, passalo per sicurezza */}
+        {/* <EmailSignInForm callbackUrl="/admin" /> */}
         <EmailSignInForm />
       </div>
     </div>

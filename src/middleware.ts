@@ -1,64 +1,36 @@
 // src/middleware.ts
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import { getToken } from 'next-auth/jwt';
-
-function parseWhitelist(input?: string) {
-  return (input || '')
-    .split(/[,;]+/)
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
+import { getToken } from 'next-auth/jwt'
 
 export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
+  const { pathname } = req.nextUrl
 
-  // BYPASS solo per debug/health
-  if (pathname.startsWith('/api/prisma-debug') || pathname.startsWith('/api/ping')) {
-    return NextResponse.next();
-  }
-
-  // BYPASS: route che non vanno mai protette
-  const bypass =
+  // Non toccare asset/statiche e le route di NextAuth o la pagina di signin
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/favicon') ||
     pathname.startsWith('/api/auth') ||
-    pathname.startsWith('/_next/') ||
-    pathname.startsWith('/static/') ||
-    pathname.startsWith('/public/') ||
-    pathname === '/admin/signin' ||
-    pathname === '/admin/not-authorized';
-
-  if (bypass) return NextResponse.next();
-
-  // Proteggi solo /admin e /api/admin
-  const needsAdmin = pathname.startsWith('/admin') || pathname.startsWith('/api/admin');
-
-  if (!needsAdmin) return NextResponse.next();
-
-  // Verifica sessione
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET! });
-  if (!token) {
-    const url = req.nextUrl.clone();
-    url.pathname = '/admin/signin';
-    url.searchParams.set('from', pathname);
-    return NextResponse.redirect(url);
+    pathname === '/admin/signin'
+  ) {
+    return NextResponse.next()
   }
 
-  // White-list email
-  const allowed = parseWhitelist(process.env.ADMIN_EMAILS);
-  const email = (token.email || '').toLowerCase();
-
-  if (allowed.length && (!email || !allowed.includes(email))) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn('[ADMIN GUARD] Email not allowed', { email, allowed });
+  // Proteggi tutto /admin (tranne /admin/signin escluso sopra)
+  if (pathname.startsWith('/admin')) {
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
+    if (!token) {
+      const url = req.nextUrl.clone()
+      url.pathname = '/admin/signin'
+      url.searchParams.set('from', pathname) // per eventuale redirect post-login
+      return NextResponse.redirect(url)
     }
-    const url = req.nextUrl.clone();
-    url.pathname = '/admin/not-authorized';
-    return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return NextResponse.next()
 }
 
+// Limitiamo il middleware alle sole route che ci interessano
 export const config = {
-  matcher: ['/admin/:path*', '/api/admin/:path*', '/api/auth/:path*'],
-};
+  matcher: ['/admin/:path*', '/api/auth/:path*'],
+}

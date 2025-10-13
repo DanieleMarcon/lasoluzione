@@ -1,29 +1,35 @@
 // src/app/admin/signin/page.tsx
-import type { Metadata } from 'next';
-import { auth } from '@/lib/auth';
-import { redirect } from 'next/navigation';
-import EmailSignInForm from '@/components/admin/EmailSignInForm';
+import type { Metadata } from 'next'
+import { redirect } from 'next/navigation'
+import { auth } from '@/lib/auth'
+import EmailSignInForm from '@/components/admin/EmailSignInForm'
 
 type PageProps = {
   searchParams?: {
-    error?: string;
-    from?: string;
-  };
-};
+    error?: string
+    from?: string
+  }
+}
 
 export const metadata: Metadata = {
   title: 'Accesso area admin – La Soluzione',
-};
+}
 
 export default async function AdminSignInPage({ searchParams }: PageProps) {
-  // Se sei già autenticato, vai direttamente in /admin
-  const session = await auth();
+  // Se già autenticato, vai direttamente alla dashboard admin
+  const session = await auth()
   if (session?.user) {
-    redirect('/admin');
+    redirect('/admin')
   }
 
-  const error = searchParams?.error;
-  const accessDenied = error === 'AccessDenied';
+  const error = searchParams?.error
+  const accessDenied = error === 'AccessDenied'
+  const configurationError = error === 'Configuration'
+  const genericError =
+    !!error && !accessDenied && !configurationError ? error : null
+
+  // se EmailSignInForm accetta callbackUrl, passiamo /admin o il "from"
+  const callbackUrl = searchParams?.from || '/admin'
 
   return (
     <div
@@ -70,10 +76,40 @@ export default async function AdminSignInPage({ searchParams }: PageProps) {
           </div>
         )}
 
-        {/* Se EmailSignInForm supporta callbackUrl, passalo per sicurezza */}
-        {/* <EmailSignInForm callbackUrl="/admin" /> */}
-        <EmailSignInForm />
+        {configurationError && (
+          <div
+            role="alert"
+            style={{
+              padding: '1rem',
+              borderRadius: 12,
+              backgroundColor: '#fff7ed',
+              color: '#9a3412',
+              fontSize: '0.95rem',
+            }}
+          >
+            C’è un problema di configurazione del login. Riprova più tardi.
+          </div>
+        )}
+
+        {genericError && (
+          <div
+            role="alert"
+            style={{
+              padding: '1rem',
+              borderRadius: 12,
+              backgroundColor: '#fef2f2',
+              color: '#991b1b',
+              fontSize: '0.95rem',
+            }}
+          >
+            Errore: {genericError}
+          </div>
+        )}
+
+        {/* Se il componente supporta callbackUrl usalo, altrimenti lascia senza prop */}
+        {/* @ts-expect-error - ignora se il componente non tipizza callbackUrl */}
+        <EmailSignInForm callbackUrl={callbackUrl} />
       </div>
     </div>
-  );
+  )
 }

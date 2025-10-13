@@ -1,19 +1,28 @@
 // src/app/admin/signin/page.tsx
 import type { Metadata } from 'next';
+import { auth } from '@/auth';
+import { redirect } from 'next/navigation';
 
 import EmailSignInForm from '@/components/admin/EmailSignInForm';
 
 type PageProps = {
   searchParams?: {
     error?: string;
+    from?: string;
   };
 };
 
 export const metadata: Metadata = {
-  title: 'Accesso area admin – La Soluzione'
+  title: 'Accesso area admin – La Soluzione',
 };
 
-export default function AdminSignInPage({ searchParams }: PageProps) {
+export default async function AdminSignInPage({ searchParams }: PageProps) {
+  // Se l'utente ha già una sessione valida, portalo direttamente in dashboard
+  const session = await auth();
+  if (session?.user) {
+    redirect('/admin');
+  }
+
   const error = searchParams?.error;
   const accessDenied = error === 'AccessDenied';
 
@@ -25,7 +34,7 @@ export default function AdminSignInPage({ searchParams }: PageProps) {
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: '#f3f4f6',
-        padding: '2rem'
+        padding: '2rem',
       }}
     >
       <div
@@ -37,7 +46,7 @@ export default function AdminSignInPage({ searchParams }: PageProps) {
           width: '100%',
           boxShadow: '0 10px 30px rgba(15, 23, 42, 0.12)',
           display: 'grid',
-          gap: '1.5rem'
+          gap: '1.5rem',
         }}
       >
         <header style={{ display: 'grid', gap: '0.25rem' }}>
@@ -55,13 +64,15 @@ export default function AdminSignInPage({ searchParams }: PageProps) {
               borderRadius: 12,
               backgroundColor: '#fef2f2',
               color: '#991b1b',
-              fontSize: '0.95rem'
+              fontSize: '0.95rem',
             }}
           >
             {"Questo indirizzo non è autorizzato ad accedere all'area admin."}
           </div>
         )}
 
+        {/* Se il tuo EmailSignInForm supporta un callbackUrl, puoi passargli "/admin".
+            Esempio: <EmailSignInForm callbackUrl="/admin" /> */}
         <EmailSignInForm />
       </div>
     </div>

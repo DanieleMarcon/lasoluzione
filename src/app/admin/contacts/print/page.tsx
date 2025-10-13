@@ -4,7 +4,7 @@ import {
   buildContactsFilters,
   fetchContactsData,
   resolveContactsPagination,
-} from '@/app/api/admin/contacts/route';
+} from '@/lib/admin/contacts-query';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -107,7 +107,7 @@ export default async function AdminContactsPrintPage({
     maxPageSize: PRINT_MAX_PAGE_SIZE,
   });
 
-  const contacts = normalizeRows(
+  const contacts: ContactPrintRow[] = normalizeRows(
     await fetchContactsData({
       whereClause: filters.whereClause,
       params: filters.params,
@@ -121,60 +121,28 @@ export default async function AdminContactsPrintPage({
   return (
     <div style={{ display: 'grid', gap: '1.5rem' }}>
       <style>{`
-        body {
-          background: #fff !important;
-          color: #111827;
-        }
-        body > div:first-of-type {
-          display: block !important;
-        }
+        body { background: #fff !important; color: #111827; }
+        body > div:first-of-type { display: block !important; }
         body > div:first-of-type > aside,
-        body > div:first-of-type > div > header {
-          display: none !important;
-        }
-        body > div:first-of-type > div {
-          width: 100%;
-        }
+        body > div:first-of-type > div > header { display: none !important; }
+        body > div:first-of-type > div { width: 100%; }
         body > div:first-of-type > div > main {
-          padding: 2rem !important;
-          max-width: 960px;
-          margin: 0 auto;
-          background: #fff;
+          padding: 2rem !important; max-width: 960px; margin: 0 auto; background: #fff;
         }
         @media print {
-          body > div:first-of-type > div > main {
-            padding: 0 !important;
-          }
-          .print-actions {
-            display: none !important;
-          }
-          table {
-            page-break-inside: avoid;
-          }
+          body > div:first-of-type > div > main { padding: 0 !important; }
+          .print-actions { display: none !important; }
+          table { page-break-inside: avoid; }
         }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        thead tr {
-          background: #f3f4f6;
-        }
-        th,
-        td {
-          border: 1px solid #e5e7eb;
-          padding: 0.55rem 0.75rem;
-          text-align: left;
-          font-size: 0.95rem;
+        table { width: 100%; border-collapse: collapse; }
+        thead tr { background: #f3f4f6; }
+        th, td {
+          border: 1px solid #e5e7eb; padding: 0.55rem 0.75rem; text-align: left; font-size: 0.95rem;
         }
         th {
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-          color: #374151;
+          font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: #374151;
         }
-        tbody tr:nth-child(even) {
-          background: #f9fafb;
-        }
+        tbody tr:nth-child(even) { background: #f9fafb; }
       `}</style>
 
       <div className="print-actions" style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -182,7 +150,9 @@ export default async function AdminContactsPrintPage({
       </div>
 
       <header style={{ display: 'grid', gap: '0.35rem' }}>
-        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>Bar La Soluzione – Contatti</h1>
+        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>
+          Bar La Soluzione – Contatti
+        </h1>
         <p style={{ margin: 0, color: '#4b5563' }}>{filterSummary}</p>
         <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>
           Risultati pagina {page} (max {pageSize} elementi) · Contatti mostrati: {contacts.length}
@@ -209,7 +179,7 @@ export default async function AdminContactsPrintPage({
               </td>
             </tr>
           ) : (
-            contacts.map((contact) => (
+            contacts.map((contact: ContactPrintRow) => (
               <tr key={`${contact.email}-${contact.createdAt.toISOString()}`}>
                 <td style={{ fontWeight: 600, color: '#111827' }}>{contact.name || '—'}</td>
                 <td style={{ color: '#1d4ed8' }}>{contact.email || '—'}</td>

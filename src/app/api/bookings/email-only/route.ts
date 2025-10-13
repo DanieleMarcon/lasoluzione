@@ -16,7 +16,8 @@ const BASE_BOOKING_OBJECT = (bookingSchema as unknown as { _def?: { schema?: z.Z
 
 const nameField = BASE_BOOKING_OBJECT?.shape?.name ?? z.string().trim().min(2, 'Inserisci il tuo nome');
 const emailField = BASE_BOOKING_OBJECT?.shape?.email ?? z.string().email('Email non valida');
-const phoneField = BASE_BOOKING_OBJECT?.shape?.phone ?? z.string().trim().min(8, 'Inserisci un numero di telefono valido');
+const phoneField =
+  BASE_BOOKING_OBJECT?.shape?.phone ?? z.string().trim().min(8, 'Inserisci un numero di telefono valido');
 const notesField = BASE_BOOKING_OBJECT?.shape?.notes ?? z.string().trim().max(500).optional();
 const peopleField = BASE_BOOKING_OBJECT?.shape?.people ?? z.number().int().min(1).max(20);
 const agreePrivacyField =
@@ -114,7 +115,7 @@ export async function POST(req: Request) {
       if (!event) {
         return NextResponse.json(
           { ok: false, error: 'event_slug_not_found', message: 'Evento non trovato o non attivo.' },
-          { status: 400 },
+          { status: 400 }
         );
       }
     } else {
@@ -129,7 +130,7 @@ export async function POST(req: Request) {
             error: 'event_not_active',
             message: 'Evento non trovato o non attivo.',
           },
-          { status: 400 },
+          { status: 400 }
         );
       }
     }
@@ -142,9 +143,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'email_only_not_allowed' }, { status: 400 });
     }
 
-    const product = event.productId
-      ? await prisma.product.findUnique({ where: { id: event.productId } })
-      : null;
+    const product = event.productId ? await prisma.product.findUnique({ where: { id: event.productId } }) : null;
 
     const notesValue = typeof parsed.notes === 'string' ? parsed.notes : undefined;
     const peopleValue = parsed.people;
@@ -152,7 +151,7 @@ export async function POST(req: Request) {
     if (typeof peopleValue !== 'number') {
       return NextResponse.json(
         { ok: false, error: 'invalid_people', message: 'Numero di persone non valido.' },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -189,8 +188,8 @@ export async function POST(req: Request) {
       baseUrl,
     });
 
-    logger.info({
-      action: 'booking.verify_mail.sent',
+    // ✅ logger.info con firma (message: string, meta?: object)
+    logger.info('booking.verify_mail.sent', {
       bookingId: booking.id,
       email: booking.email,
     });

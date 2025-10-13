@@ -29,7 +29,8 @@ export default function EventSectionItem({
   const isFuture = Number.isNaN(startDate.getTime()) ? false : startDate.getTime() >= now.getTime();
   const hasPrice = typeof event.priceCents === 'number' && event.priceCents > 0;
 
-  const isPurchasable = isActive && !emailOnly && hasPrice && isFuture;
+  // ✅ Mostra "Aggiungi al carrello" se è attivo, futuro e (emailOnly OR ha un prezzo)
+  const isPurchasable = isActive && (emailOnly || hasPrice) && isFuture;
   const canAddToCart = isPurchasable && typeof onAddToCart === 'function';
 
   return (

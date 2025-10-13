@@ -34,7 +34,11 @@ type PaidRedirectResponse = {
   url?: string | null;
 };
 
-type CheckoutResponse = VerifySentResponse | ConfirmedResponse | PaidRedirectResponse | { ok: false; error?: string };
+type CheckoutResponse =
+  | VerifySentResponse
+  | ConfirmedResponse
+  | PaidRedirectResponse
+  | { ok: false; error?: string };
 
 type CheckoutButtonProps = {
   disabled?: boolean;
@@ -98,13 +102,15 @@ export default function CheckoutButton({
     if (checkoutToken) {
       try {
         const publicToken = process.env.NEXT_PUBLIC_REVOLUT_PUBLIC_KEY;
-        if (!publicToken) {
-          throw new Error('Missing Revolut public token');
-        }
+        if (!publicToken) throw new Error('Missing Revolut public token');
+
         const env = process.env.NEXT_PUBLIC_REVOLUT_ENV;
         const mode = env === 'prod' || env === 'live' ? 'prod' : 'sandbox';
-        const sdk = await RevolutCheckout(publicToken, { mode, locale: 'it' });
-        await sdk.pay(checkoutToken);
+
+        // Cast mirato: alcune definizioni tipizzate non espongono (mode, locale) e .pay()
+        const sdk = await (RevolutCheckout as any)(publicToken, { mode, locale: 'it' });
+        await (sdk as any).pay(checkoutToken);
+
         if (payload.orderId) {
           router.push(`/checkout/return?orderId=${encodeURIComponent(payload.orderId)}`);
         } else if (payload.paymentRef) {
@@ -165,9 +171,7 @@ export default function CheckoutButton({
       };
 
       const storedToken = readVerifyToken();
-      if (storedToken) {
-        body.verifyToken = storedToken;
-      }
+      if (storedToken) body.verifyToken = storedToken;
 
       const response = await fetch('/api/payments/checkout', {
         method: 'POST',
@@ -237,12 +241,7 @@ export default function CheckoutButton({
           </label>
         </div>
         {privacyError ? (
-          <p
-            id={privacyErrorId}
-            role="alert"
-            className="text-danger mb-0"
-            style={{ fontSize: '0.9rem' }}
-          >
+          <p id={privacyErrorId} role="alert" className="text-danger mb-0" style={{ fontSize: '0.9rem' }}>
             {privacyError}
           </p>
         ) : null}

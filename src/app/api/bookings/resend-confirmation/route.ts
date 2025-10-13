@@ -23,8 +23,9 @@ function resolveBaseUrl(): string {
 }
 
 async function resolveEventDetails(booking: BookingRecord) {
+  // Se per qualche motivo booking è nullo, ritorna default stabili
   if (!booking) {
-    return { title: booking?.tierLabel ?? 'La Soluzione', whenLabel: '' };
+    return { title: 'La Soluzione', whenLabel: '' };
   }
 
   const eventInstanceId = (booking as { eventInstanceId?: unknown }).eventInstanceId;
@@ -36,6 +37,7 @@ async function resolveEventDetails(booking: BookingRecord) {
       select: { title: true, startAt: true, endAt: true },
     });
   } else if (booking.tierLabel) {
+    // fallback legacy: match su title+date
     eventInstance = await prisma.eventInstance.findFirst({
       where: { title: booking.tierLabel, startAt: booking.date },
       select: { title: true, startAt: true, endAt: true },
@@ -45,24 +47,26 @@ async function resolveEventDetails(booking: BookingRecord) {
   const title = eventInstance?.title ?? booking.tierLabel ?? 'La Soluzione';
   const whenLabelRaw = formatEventSchedule(
     eventInstance?.startAt ?? booking.date,
-    eventInstance?.endAt ?? undefined,
+    eventInstance?.endAt ?? undefined
   );
-  const whenLabel = whenLabelRaw.trim().length
-    ? whenLabelRaw
-    : (() => {
-        try {
-          return (eventInstance?.startAt ?? booking.date).toLocaleString('it-IT', {
-            weekday: 'long',
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          });
-        } catch {
-          return '';
-        }
-      })();
+
+  const whenLabel =
+    whenLabelRaw.trim().length > 0
+      ? whenLabelRaw
+      : (() => {
+          try {
+            return (eventInstance?.startAt ?? booking.date).toLocaleString('it-IT', {
+              weekday: 'long',
+              day: '2-digit',
+              month: 'long',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+          } catch {
+            return '';
+          }
+        })();
 
   return { title, whenLabel };
 }
@@ -71,9 +75,7 @@ function extractClientIp(req: Request): string {
   const forwarded = req.headers.get('x-forwarded-for');
   if (forwarded) {
     const parts = forwarded.split(',');
-    if (parts.length) {
-      return parts[0].trim();
-    }
+    if (parts.length) return parts[0]!.trim();
   }
   const realIp = req.headers.get('x-real-ip');
   if (realIp) return realIp.trim();
@@ -81,7 +83,8 @@ function extractClientIp(req: Request): string {
 }
 
 export async function POST(req: Request) {
-  let booking: Awaited<ReturnType<typeof prisma.booking.findUnique>> | null = null;
+  let booking: BookingRecord | null = null;
+
   try {
     const body = await req.json();
     const parsed = payloadSchema.parse(body);
@@ -103,6 +106,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'not_pending' }, { status: 400 });
     }
 
+    // Rate limit per email+IP
     const ip = extractClientIp(req);
     const emailKey = booking.email.trim().toLowerCase();
     const key = `${emailKey}|${ip}`;
@@ -113,6 +117,7 @@ export async function POST(req: Request) {
       if ((error as any)?.status === 429) {
         const retryAfter = Number((error as any)?.retryAfter) || 0;
         const message = error instanceof Error ? error.message : 'rate_limited';
+
         logger.warn('booking.resend', {
           action: 'booking.resend',
           bookingId: booking.id,
@@ -121,18 +126,15 @@ export async function POST(req: Request) {
           outcome: 'rate_limited',
           retryAfter,
         });
-        const response = NextResponse.json(
-          { ok: false, error: message },
-          { status: 429 },
-        );
-        if (retryAfter > 0) {
-          response.headers.set('Retry-After', String(retryAfter));
-        }
+
+        const response = NextResponse.json({ ok: false, error: message }, { status: 429 });
+        if (retryAfter > 0) response.headers.set('Retry-After', String(retryAfter));
         return response;
       }
       throw error;
     }
 
+    // Invalida eventuali token attivi e genera un nuovo token
     const nowDate = new Date();
     await prisma.bookingVerification.updateMany({
       where: {
@@ -171,6 +173,7 @@ export async function POST(req: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ ok: false, error: 'invalid_payload', details: error.flatten() }, { status: 400 });
     }
+
     logger.error('booking.resend', {
       action: 'booking.resend',
       bookingId: booking?.id ?? null,
@@ -179,6 +182,7 @@ export async function POST(req: Request) {
       outcome: 'error',
       error: error instanceof Error ? error.message : 'unknown_error',
     });
+
     return NextResponse.json({ ok: false, error: 'internal_error' }, { status: 500 });
   }
 }

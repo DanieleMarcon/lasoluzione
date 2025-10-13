@@ -1,4 +1,8 @@
 // src/app/(site)/page.tsx
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const runtime = 'nodejs';
+
 import DeferredMap from '@/components/map/DeferredMap';
 
 type PublicEvent = {
@@ -14,9 +18,7 @@ type PublicEvent = {
 
 function formatEventDate(iso: string) {
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return 'Data da definire';
-  }
+  if (Number.isNaN(date.getTime())) return 'Data da definire';
 
   const dateLabel = date.toLocaleDateString('it-IT', {
     weekday: 'short',
@@ -27,7 +29,6 @@ function formatEventDate(iso: string) {
     hour: '2-digit',
     minute: '2-digit',
   });
-
   return `${dateLabel} · ${timeLabel}`;
 }
 
@@ -43,9 +44,7 @@ export default async function HomePage() {
   try {
     const res = await fetch(`${baseUrl}/api/events?limit=6`, { cache: 'no-store' });
     const data = await res.json();
-    if (Array.isArray(data)) {
-      events = data as PublicEvent[];
-    }
+    if (Array.isArray(data)) events = data as PublicEvent[];
   } catch (error) {
     console.error('[home] failed to load events', error);
   }
@@ -76,12 +75,9 @@ export default async function HomePage() {
         </a>
       </div>
 
-      {/* Eventi */}
       {events.length > 0 ? (
         <section id="eventi" aria-labelledby="eventi-title">
-          <h2 id="eventi-title" style={{ color: '#112f4d' }}>
-            Prossimi eventi
-          </h2>
+          <h2 id="eventi-title" style={{ color: '#112f4d' }}>Prossimi eventi</h2>
           <div role="list" style={{ display: 'grid', gap: 12 }}>
             {events.map((event) => {
               const description = resolveEventDescription(event);
@@ -101,7 +97,6 @@ export default async function HomePage() {
         </section>
       ) : null}
 
-      {/* Prenotazione */}
       <section id="prenota" style={{ marginTop: 48 }}>
         <h2 style={{ color: '#112f4d' }}>Prenota il tuo tavolo</h2>
         <p>Pausa pranzo, aperitivo o evento privato: scegli data, persone e lascia i dettagli.</p>
@@ -120,7 +115,6 @@ export default async function HomePage() {
         </a>
       </section>
 
-      {/* Newsletter */}
       <section id="newsletter" style={{ marginTop: 48 }}>
         <h2 style={{ color: '#112f4d' }}>Newsletter</h2>
         <p>Novità, eventi e promozioni. Niente spam, promesso.</p>

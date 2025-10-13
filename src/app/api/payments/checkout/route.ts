@@ -56,13 +56,11 @@ function isEmailOnlyEventItem(item: CartItemRow): boolean {
   const meta = item.meta as Record<string, unknown>;
   const metaType = typeof meta.type === 'string' ? meta.type : null;
   if (metaType !== 'event') return false;
-  return meta.emailOnly === true;
+  return (meta as any).emailOnly === true;
 }
 
 function isEmailOnlyCart(items: CartItemRow[]): boolean {
-  if (!Array.isArray(items) || items.length === 0) {
-    return false;
-  }
+  if (!Array.isArray(items) || items.length === 0) return false;
   return items.every((item) => isEmailOnlyEventItem(item));
 }
 
@@ -171,9 +169,7 @@ function parseEventCandidate(candidate: Record<string, unknown>): EventInfo | nu
     toDate((candidate as any).end) ??
     toDate((candidate as any).endDate);
 
-  if (!title && !startAt && !endAt) {
-    return null;
-  }
+  if (!title && !startAt && !endAt) return null;
 
   return { title, startAt: startAt ?? null, endAt: endAt ?? null };
 }
@@ -191,16 +187,12 @@ function extractEventInfoFromMeta(meta: unknown): EventInfo | null {
     seen.add(current as object);
 
     const candidate = parseEventCandidate(current as Record<string, unknown>);
-    if (candidate) {
-      return candidate;
-    }
+    if (candidate) return candidate;
 
     for (const value of Object.values(current)) {
       if (!value) continue;
       if (Array.isArray(value)) {
-        for (const entry of value) {
-          queue.push(entry);
-        }
+        for (const entry of value) queue.push(entry);
       } else if (typeof value === 'object') {
         queue.push(value);
       }
@@ -214,9 +206,7 @@ function extractEventInfo(items: CartItemRow[]): EventInfo | null {
   for (const item of items) {
     const info = extractEventInfoFromMeta(item.meta ?? undefined);
     if (info) {
-      if (!info.title && item.nameSnapshot) {
-        info.title = item.nameSnapshot;
-      }
+      if (!info.title && item.nameSnapshot) info.title = item.nameSnapshot;
       return info;
     }
   }
@@ -266,8 +256,14 @@ export async function POST(req: Request) {
       });
     }
 
+    // ⛑️ Hardening: se per qualsiasi ragione il refetch ritornasse null
+    if (!cart) {
+      return NextResponse.json({ ok: false, error: 'cart_not_found' }, { status: 404 });
+    }
+
+    // Ora cart è non-null
     const totalCents = await recalcCartTotal(cart.id);
-    const cartItems = cart.items as CartItemRow[];
+    const cartItems = (cart.items ?? []) as CartItemRow[];
     const emailOnlyCart = isEmailOnlyCart(cartItems);
 
     const orderStatus = emailOnlyCart ? 'pending' : totalCents > 0 ? 'pending_payment' : 'pending';
@@ -414,7 +410,7 @@ export async function POST(req: Request) {
         name: parsed.data.name,
         email: parsed.data.email,
         phone: parsed.data.phone,
-        notes: normalizedNotes,
+        notes: normalizeNotes(parsed.data.notes ?? null),
         agreePrivacy: true,
         agreeMarketing: marketingConsent,
         status: 'pending' as const,

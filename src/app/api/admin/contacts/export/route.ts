@@ -3,7 +3,7 @@ import {
   buildContactsFilters,
   fetchContactsData,
   type AdminContact,
-} from '../route';
+} from '@/lib/admin/contacts-query';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,7 +23,6 @@ const CONTENT_TYPE = 'text/csv';
 const CONTENT_DISPOSITION = 'attachment; filename="contacts.csv"';
 
 type CsvHeader = (typeof CSV_HEADERS)[number];
-
 type ContactCsvRow = Record<CsvHeader, unknown>;
 
 function sanitize(value: unknown) {
@@ -31,9 +30,8 @@ function sanitize(value: unknown) {
   if (value instanceof Date) return value.toISOString();
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
   let stringValue = String(value).replace(/\r?\n/g, ' ');
-  if (/^[=+\-@]/.test(stringValue)) {
-    stringValue = `'${stringValue}`;
-  }
+  // Excel/Sheets CSV injection guard
+  if (/^[=+\-@]/.test(stringValue)) stringValue = `'${stringValue}`;
   stringValue = stringValue.replace(/"/g, '""');
   return /[",]/.test(stringValue) ? `"${stringValue}"` : stringValue;
 }
@@ -55,6 +53,7 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const filters = buildContactsFilters(searchParams);
+
   const rows = await fetchContactsData({
     whereClause: filters.whereClause,
     params: filters.params,
@@ -78,15 +77,11 @@ export async function GET(req: Request) {
     csvLines.push(line);
   }
 
-  if (truncated) {
-    csvLines.push('# truncated');
-  }
-
-  const csv = csvLines.join('\n');
+  if (truncated) csvLines.push('# truncated');
 
   const headers = new Headers();
   headers.set('Content-Type', CONTENT_TYPE);
   headers.set('Content-Disposition', CONTENT_DISPOSITION);
 
-  return new Response(csv, { status: 200, headers });
+  return new Response(csvLines.join('\n'), { status: 200, headers });
 }

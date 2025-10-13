@@ -79,10 +79,7 @@ async function recalcTotal(cartId: string) {
     where: { cartId },
     select: { priceCentsSnapshot: true, qty: true },
   });
-  const total = items.reduce(
-    (acc: number, it: SumItem) => acc + it.priceCentsSnapshot * it.qty,
-    0
-  );
+  const total = items.reduce((acc: number, it: SumItem) => acc + it.priceCentsSnapshot * it.qty, 0);
   await prisma.cart.update({ where: { id: cartId }, data: { totalCents: total } });
   return total;
 }
@@ -101,7 +98,7 @@ export async function POST(request: Request, ctx: RouteContext) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { ok: false, error: 'validation_error', details: error.flatten() },
-        { status: 400 }
+        { status: 400 },
       );
     }
     throw error;
@@ -123,6 +120,7 @@ export async function POST(request: Request, ctx: RouteContext) {
   let eventMeta: { type: 'event'; eventId: string; emailOnly: boolean } | null = null;
 
   if (hasEventItem) {
+    // === ramo EVENTO ========================================================
     const eventId = payload.eventItemId!;
     const existingEventProduct = await prisma.product.findFirst({
       where: { sourceType: 'event_item', sourceId: eventId },
@@ -158,12 +156,14 @@ export async function POST(request: Request, ctx: RouteContext) {
     if (!eventItem.active) {
       return NextResponse.json({ ok: false, error: 'event_not_active' }, { status: 400 });
     }
-    if (eventItem.emailOnly) {
-      return NextResponse.json({ ok: false, error: 'event_email_only' }, { status: 400 });
-    }
-    if (eventItem.priceCents <= 0) {
+
+    const isEmailOnly = !!eventItem.emailOnly;
+
+    // Se è email-only non blocchiamo il carrello; se NON lo è e il prezzo non è valido → errore
+    if (!isEmailOnly && eventItem.priceCents <= 0) {
       return NextResponse.json({ ok: false, error: 'event_not_purchasable' }, { status: 400 });
     }
+
     if (eventItem.startAt.getTime() < now.getTime()) {
       return NextResponse.json({ ok: false, error: 'event_in_past' }, { status: 400 });
     }
@@ -176,9 +176,11 @@ export async function POST(request: Request, ctx: RouteContext) {
         : eventItem.title;
 
     snapshotName = rawName.length > 0 ? rawName : 'Evento';
-    snapshotPrice = payload.priceCentsSnapshot ?? eventItem.priceCents;
-    eventMeta = { type: 'event', eventId: eventItem.id, emailOnly: eventItem.emailOnly };
+    // Email-only = prezzo 0, altrimenti snapshot del prezzo attuale
+    snapshotPrice = isEmailOnly ? 0 : payload.priceCentsSnapshot ?? eventItem.priceCents;
+    eventMeta = { type: 'event', eventId: eventItem.id, emailOnly: isEmailOnly };
   } else {
+    // === ramo PRODOTTO ======================================================
     const baseProductId = payload.productId!;
 
     if (requestedQty <= 0) {
@@ -207,6 +209,7 @@ export async function POST(request: Request, ctx: RouteContext) {
     let rawName = payload.nameSnapshot ?? product.name ?? 'Prodotto';
     snapshotPrice = payload.priceCentsSnapshot ?? product.priceCents;
 
+    // Se il prodotto è collegato a un evento, usiamo i dati dell'evento
     const eventInstance = await prisma.eventInstance.findFirst({
       where: { productId: baseProductId },
       select: { slug: true },
@@ -226,20 +229,18 @@ export async function POST(request: Request, ctx: RouteContext) {
       });
 
       if (eventItem) {
-        snapshotPrice = eventItem.priceCents;
+        const isEmailOnly = !!eventItem.emailOnly;
+        snapshotPrice = isEmailOnly ? 0 : eventItem.priceCents;
         rawName = eventItem.title ?? rawName;
         eventMeta = {
           type: 'event',
           eventId: eventItem.id,
-          emailOnly: eventItem.emailOnly,
+          emailOnly: isEmailOnly,
         };
       }
     }
 
-    snapshotName =
-      typeof rawName === 'string' && rawName.trim().length > 0
-        ? rawName.trim()
-        : 'Prodotto';
+    snapshotName = typeof rawName === 'string' && rawName.trim().length > 0 ? rawName.trim() : 'Prodotto';
     snapshotImage = snapshotImage ?? product.imageUrl ?? null;
   }
 

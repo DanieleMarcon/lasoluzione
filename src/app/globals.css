@@ -1,8 +1,8 @@
-/* src/app/globals.css — Tailwind v4 */
-@import "tailwindcss";
-
 /* I TUOI STILI AGGIUNTIVI (dopo Tailwind) */
 @import url('./(site)/globals.css');
+
+/* src/app/globals.css — Tailwind v4 */
+@import "tailwindcss";
 
 /* Esempio: puoi aggiungere qui variabili o override globali */
 /* :root { */

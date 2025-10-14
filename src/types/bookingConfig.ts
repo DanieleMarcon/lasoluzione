@@ -33,9 +33,9 @@ export type BookingTiersDTO = {
 };
 
 export type SiteConfigDTO = {
-  brandLogoUrl: string;
-  heroImageUrl: string;
-  footerRibbonUrl: string;
+  brandLogoUrl?: string;
+  heroImageUrl?: string;
+  footerRibbonUrl?: string;
 };
 
 export type BookingConfigDTO = {
@@ -48,5 +48,5 @@ export type BookingConfigDTO = {
   prepayAmountCents?: number;
   menu: BookingMenuDTO;
   tiers: BookingTiersDTO;
-  site: SiteConfigDTO;
+  site?: SiteConfigDTO;
 };

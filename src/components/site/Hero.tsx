@@ -1,11 +1,11 @@
 import Link from 'next/link';
 
 type HeroProps = {
-  heroImageUrl: string;
+  heroImageUrl?: string | null;
 };
 
 export default function Hero({ heroImageUrl }: HeroProps) {
-  const imageUrl = heroImageUrl || '/hero.jpg';
+  const imageUrl = typeof heroImageUrl === 'string' && heroImageUrl.trim().length > 0 ? heroImageUrl : '/hero.jpg';
 
   return (
     <section

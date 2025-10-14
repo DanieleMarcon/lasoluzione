@@ -19,6 +19,15 @@ const optionalAssetUrl = z
   .or(z.literal(null))
   .optional();
 
+const siteConfigSchema = z
+  .object({
+    brandLogoUrl: optionalAssetUrl,
+    heroImageUrl: optionalAssetUrl,
+    footerRibbonUrl: optionalAssetUrl,
+  })
+  .partial()
+  .optional();
+
 const settingsSchema = z
   .object({
     enableDateTimeStep: z.boolean(),
@@ -35,6 +44,7 @@ const settingsSchema = z
     siteBrandLogoUrl: optionalAssetUrl,
     siteHeroImageUrl: optionalAssetUrl,
     siteFooterRibbonUrl: optionalAssetUrl,
+    site: siteConfigSchema,
   })
   .superRefine((value, ctx) => {
     if (!value.enableDateTimeStep) {
@@ -100,9 +110,17 @@ export async function PUT(req: Request) {
     .map((type) => type as BookingType)
     .filter((type) => enabledTypes.includes(type));
 
-  const siteBrandLogoUrl = sanitizeAssetUrl(payload.siteBrandLogoUrl);
-  const siteHeroImageUrl = sanitizeAssetUrl(payload.siteHeroImageUrl);
-  const siteFooterRibbonUrl = sanitizeAssetUrl(payload.siteFooterRibbonUrl);
+  const siteBrandLogoUrl = sanitizeAssetUrl(payload.site?.brandLogoUrl ?? payload.siteBrandLogoUrl);
+  const siteHeroImageUrl = sanitizeAssetUrl(payload.site?.heroImageUrl ?? payload.siteHeroImageUrl);
+  const siteFooterRibbonUrl = sanitizeAssetUrl(
+    payload.site?.footerRibbonUrl ?? payload.siteFooterRibbonUrl,
+  );
+
+  const siteConfig = {
+    brandLogoUrl: siteBrandLogoUrl,
+    heroImageUrl: siteHeroImageUrl,
+    footerRibbonUrl: siteFooterRibbonUrl,
+  } as Prisma.InputJsonValue;
 
   const createData: Prisma.BookingSettingsCreateInput = {
     id: 1,
@@ -120,6 +138,7 @@ export async function PUT(req: Request) {
     siteBrandLogoUrl,
     siteHeroImageUrl,
     siteFooterRibbonUrl,
+    site: siteConfig,
   };
 
   try {
@@ -140,6 +159,7 @@ export async function PUT(req: Request) {
         siteBrandLogoUrl: createData.siteBrandLogoUrl,
         siteHeroImageUrl: createData.siteHeroImageUrl,
         siteFooterRibbonUrl: createData.siteFooterRibbonUrl,
+        site: createData.site,
       },
       create: createData,
     });

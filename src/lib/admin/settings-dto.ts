@@ -23,5 +23,10 @@ export function toAdminSettingsDTO(settings: Awaited<ReturnType<typeof getBookin
     siteBrandLogoUrl: settings.site.brandLogoUrl ?? null,
     siteHeroImageUrl: settings.site.heroImageUrl ?? null,
     siteFooterRibbonUrl: settings.site.footerRibbonUrl ?? null,
+    site: {
+      brandLogoUrl: settings.site.brandLogoUrl ?? null,
+      heroImageUrl: settings.site.heroImageUrl ?? null,
+      footerRibbonUrl: settings.site.footerRibbonUrl ?? null,
+    },
   };
 }

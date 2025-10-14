@@ -83,6 +83,7 @@ model BookingSettings {
   siteBrandLogoUrl    String?
   siteHeroImageUrl    String?
   siteFooterRibbonUrl String?
+  site                Json? // { brandLogoUrl?: string; heroImageUrl?: string; footerRibbonUrl?: string }
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 }

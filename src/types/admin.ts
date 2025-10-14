@@ -49,6 +49,11 @@ export type AdminSettingsDTO = {
   siteBrandLogoUrl: string | null;
   siteHeroImageUrl: string | null;
   siteFooterRibbonUrl: string | null;
+  site?: {
+    brandLogoUrl?: string | null;
+    heroImageUrl?: string | null;
+    footerRibbonUrl?: string | null;
+  };
 };
 
 export type AdminEventInstance = {

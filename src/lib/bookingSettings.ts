@@ -22,7 +22,7 @@ export type NormalizedBookingSettings = {
 };
 
 // ✅ aggiungi i default mancanti per cena
-const DEFAULT_SITE_CONFIG: SiteConfigDTO = {
+const DEFAULT_SITE_CONFIG: { brandLogoUrl: string; heroImageUrl: string; footerRibbonUrl: string } = {
   brandLogoUrl: '/brand.svg',
   heroImageUrl: '/hero.jpg',
   footerRibbonUrl: '/ribbon.jpg',
@@ -64,6 +64,27 @@ function sanitizeAsset(value: unknown, fallback: string) {
   return trimmed.length > 0 ? trimmed : fallback;
 }
 
+function asSiteConfig(value: Prisma.JsonValue | null | undefined): SiteConfigDTO {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const record = value as Record<string, unknown>;
+  const site: SiteConfigDTO = {};
+
+  if (typeof record.brandLogoUrl === 'string') {
+    site.brandLogoUrl = record.brandLogoUrl;
+  }
+  if (typeof record.heroImageUrl === 'string') {
+    site.heroImageUrl = record.heroImageUrl;
+  }
+  if (typeof record.footerRibbonUrl === 'string') {
+    site.footerRibbonUrl = record.footerRibbonUrl;
+  }
+
+  return site;
+}
+
 export async function getBookingSettings(): Promise<NormalizedBookingSettings> {
   let row;
   try {
@@ -81,10 +102,20 @@ export async function getBookingSettings(): Promise<NormalizedBookingSettings> {
   const typeLabels = asRecord(row.typeLabels as Prisma.JsonValue, DEFAULT_BOOKING_SETTINGS.typeLabels);
   const prepayTypes = asStringArray(row.prepayTypes as Prisma.JsonValue, DEFAULT_BOOKING_SETTINGS.prepayTypes);
 
+  const siteJson = asSiteConfig((row as any).site ?? null);
   const site: SiteConfigDTO = {
-    brandLogoUrl: sanitizeAsset((row as any).siteBrandLogoUrl, DEFAULT_SITE_CONFIG.brandLogoUrl),
-    heroImageUrl: sanitizeAsset((row as any).siteHeroImageUrl, DEFAULT_SITE_CONFIG.heroImageUrl),
-    footerRibbonUrl: sanitizeAsset((row as any).siteFooterRibbonUrl, DEFAULT_SITE_CONFIG.footerRibbonUrl),
+    brandLogoUrl: sanitizeAsset(
+      siteJson.brandLogoUrl ?? (row as any).siteBrandLogoUrl,
+      DEFAULT_SITE_CONFIG.brandLogoUrl,
+    ),
+    heroImageUrl: sanitizeAsset(
+      siteJson.heroImageUrl ?? (row as any).siteHeroImageUrl,
+      DEFAULT_SITE_CONFIG.heroImageUrl,
+    ),
+    footerRibbonUrl: sanitizeAsset(
+      siteJson.footerRibbonUrl ?? (row as any).siteFooterRibbonUrl,
+      DEFAULT_SITE_CONFIG.footerRibbonUrl,
+    ),
   };
 
   return {
@@ -108,9 +139,15 @@ export function toBookingConfigDTO(
   settings: NormalizedBookingSettings,
   menu: BookingConfigDTO['menu'],
   tiers: BookingConfigDTO['tiers'] = { evento: [], aperitivo: [] },
-  site: SiteConfigDTO = settings.site,
+  site?: SiteConfigDTO,
 ): BookingConfigDTO {
   const fixedDate = settings.fixedDate?.toISOString().slice(0, 10);
+  const resolvedSite: SiteConfigDTO = {
+    brandLogoUrl: site?.brandLogoUrl ?? settings.site.brandLogoUrl ?? DEFAULT_SITE_CONFIG.brandLogoUrl,
+    heroImageUrl: site?.heroImageUrl ?? settings.site.heroImageUrl ?? DEFAULT_SITE_CONFIG.heroImageUrl,
+    footerRibbonUrl:
+      site?.footerRibbonUrl ?? settings.site.footerRibbonUrl ?? DEFAULT_SITE_CONFIG.footerRibbonUrl,
+  };
   return {
     enableDateTimeStep: settings.enableDateTimeStep,
     ...(fixedDate ? { fixedDate } : {}),
@@ -121,7 +158,7 @@ export function toBookingConfigDTO(
     ...(settings.prepayAmountCents != null ? { prepayAmountCents: settings.prepayAmountCents } : {}),
     menu,
     tiers, // 👈 nuova proprietà richiesta dal tipo
-    site,
+    site: resolvedSite,
   };
 }
 
@@ -165,5 +202,9 @@ export const DEFAULT_BOOKING_CONFIG_DTO: BookingConfigDTO = toBookingConfigDTO(
 
 export const getSiteConfig = cache(async (): Promise<SiteConfigDTO> => {
   const settings = await getBookingSettings();
-  return settings.site;
+  return {
+    brandLogoUrl: settings.site.brandLogoUrl ?? DEFAULT_SITE_CONFIG.brandLogoUrl,
+    heroImageUrl: settings.site.heroImageUrl ?? DEFAULT_SITE_CONFIG.heroImageUrl,
+    footerRibbonUrl: settings.site.footerRibbonUrl ?? DEFAULT_SITE_CONFIG.footerRibbonUrl,
+  };
 });

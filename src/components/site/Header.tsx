@@ -11,11 +11,12 @@ const navLinks = [
 ];
 
 type HeaderProps = {
-  brandLogoUrl: string;
+  brandLogoUrl?: string | null;
 };
 
 export default function Header({ brandLogoUrl }: HeaderProps) {
   const pathname = usePathname();
+  const logoUrl = typeof brandLogoUrl === 'string' && brandLogoUrl.trim().length > 0 ? brandLogoUrl : '/brand.svg';
 
   const computeAriaCurrent = (href: string, isHomeAnchor?: boolean) => {
     if (href.startsWith('/prenota') && pathname.startsWith('/prenota')) {
@@ -38,7 +39,7 @@ export default function Header({ brandLogoUrl }: HeaderProps) {
           className="flex items-center gap-3 rounded-full border border-transparent px-2 py-1 text-sm font-semibold text-slate-100 transition hover:border-slate-100/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
         >
           <img
-            src={brandLogoUrl || '/brand.svg'}
+            src={logoUrl}
             alt="La Soluzione – arriva dopo un buon caffè"
             width={164}
             height={48}

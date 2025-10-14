@@ -32,9 +32,14 @@ function SettingsFormInner({ settings, allTypes, eventInstances: initialEventIns
   const [lunchRequirePrepay, setLunchRequirePrepay] = useState(settings.lunchRequirePrepay);
   const [dinnerCoverCents, setDinnerCoverCents] = useState(String(settings.dinnerCoverCents ?? 0));
   const [dinnerRequirePrepay, setDinnerRequirePrepay] = useState(settings.dinnerRequirePrepay);
-  const [siteBrandLogoUrl, setSiteBrandLogoUrl] = useState(settings.siteBrandLogoUrl ?? '');
-  const [siteHeroImageUrl, setSiteHeroImageUrl] = useState(settings.siteHeroImageUrl ?? '');
-  const [siteFooterRibbonUrl, setSiteFooterRibbonUrl] = useState(settings.siteFooterRibbonUrl ?? '');
+  const initialSite = settings.site ?? {
+    brandLogoUrl: settings.siteBrandLogoUrl,
+    heroImageUrl: settings.siteHeroImageUrl,
+    footerRibbonUrl: settings.siteFooterRibbonUrl,
+  };
+  const [siteBrandLogoUrl, setSiteBrandLogoUrl] = useState(initialSite.brandLogoUrl ?? '');
+  const [siteHeroImageUrl, setSiteHeroImageUrl] = useState(initialSite.heroImageUrl ?? '');
+  const [siteFooterRibbonUrl, setSiteFooterRibbonUrl] = useState(initialSite.footerRibbonUrl ?? '');
   const [saving, setSaving] = useState(false);
   const [alert, setAlert] = useState<AlertState | null>(null);
   const [eventInstances, setEventInstances] = useState(() =>
@@ -178,6 +183,12 @@ function SettingsFormInner({ settings, allTypes, eventInstances: initialEventIns
 
     const coverValue = Number.parseInt(coverCents, 10);
     const dinnerCoverValue = Number.parseInt(dinnerCoverCents, 10);
+    const normalizedSite = {
+      brandLogoUrl: siteBrandLogoUrl.trim() || null,
+      heroImageUrl: siteHeroImageUrl.trim() || null,
+      footerRibbonUrl: siteFooterRibbonUrl.trim() || null,
+    };
+
     const payload = {
       enableDateTimeStep: enableDateStep,
       fixedDate: enableDateStep ? null : fixedDate || null,
@@ -190,9 +201,10 @@ function SettingsFormInner({ settings, allTypes, eventInstances: initialEventIns
       lunchRequirePrepay,
       dinnerCoverCents: Number.isNaN(dinnerCoverValue) || dinnerCoverValue < 0 ? 0 : dinnerCoverValue,
       dinnerRequirePrepay,
-      siteBrandLogoUrl: siteBrandLogoUrl.trim(),
-      siteHeroImageUrl: siteHeroImageUrl.trim(),
-      siteFooterRibbonUrl: siteFooterRibbonUrl.trim(),
+      siteBrandLogoUrl: normalizedSite.brandLogoUrl,
+      siteHeroImageUrl: normalizedSite.heroImageUrl,
+      siteFooterRibbonUrl: normalizedSite.footerRibbonUrl,
+      site: normalizedSite,
     };
 
     try {

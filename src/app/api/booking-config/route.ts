@@ -59,8 +59,14 @@ export async function GET() {
       dinnerRequirePrepay: settings.dinnerRequirePrepay ?? false,
     };
 
-    const dto = toBookingConfigDTO(settings, menu, tiers, settings.site);
-    return NextResponse.json(dto);
+    const site = {
+      brandLogoUrl: settings.site?.brandLogoUrl ?? '/brand.svg',
+      heroImageUrl: settings.site?.heroImageUrl ?? '/hero.jpg',
+      footerRibbonUrl: settings.site?.footerRibbonUrl ?? '/ribbon.jpg',
+    };
+
+    const dto = toBookingConfigDTO(settings, menu, tiers, site);
+    return NextResponse.json({ ...dto, site });
   } catch (error) {
     console.error('[GET /api/booking-config] error', error);
     // fallback sicuro

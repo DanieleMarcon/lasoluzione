@@ -17,7 +17,7 @@ export default function Hero({ heroImageUrl }: HeroProps) {
         backgroundPosition: 'center',
       }}
     >
-      <div className="absolute inset-0 -z-10 bg-slate-950/50" aria-hidden="true" />
+      <div className="absolute inset-0 -z-10 bg-slate-500/50" aria-hidden="true" />
       <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 py-20 text-slate-100 md:px-6 md:py-28">
         <p className="text-sm font-medium uppercase tracking-[0.35em] text-amber-300">Bar di quartiere a Milano</p>
         <div className="max-w-3xl space-y-6">

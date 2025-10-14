@@ -1,7 +1,6 @@
 // src/app/admin/signin/page.tsx
 import type { Metadata } from 'next'
-import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
+import Link from 'next/link'
 import EmailSignInForm from '@/components/admin/EmailSignInForm'
 
 type PageProps = {
@@ -15,20 +14,14 @@ export const metadata: Metadata = {
   title: 'Accesso area admin – La Soluzione',
 }
 
-export default async function AdminSignInPage({ searchParams }: PageProps) {
-  // Se già autenticato, vai direttamente alla dashboard admin
-  const session = await auth()
-  if (session?.user) {
-    redirect('/admin')
-  }
-
+export default function AdminSignInPage({ searchParams }: PageProps) {
   const error = searchParams?.error
   const accessDenied = error === 'AccessDenied'
   const configurationError = error === 'Configuration'
   const genericError =
     !!error && !accessDenied && !configurationError ? error : null
 
-  // se EmailSignInForm accetta callbackUrl, passiamo /admin o il "from"
+  // Se il form supporta callbackUrl, usiamo “from” o /admin
   const callbackUrl = searchParams?.from || '/admin'
 
   return (
@@ -106,9 +99,16 @@ export default async function AdminSignInPage({ searchParams }: PageProps) {
           </div>
         )}
 
-        {/* Se il componente supporta callbackUrl usalo, altrimenti lascia senza prop */}
-        {/* @ts-expect-error - ignora se il componente non tipizza callbackUrl */}
+        {/* @ts-expect-error: ignora se il componente non tipizza callbackUrl */}
         <EmailSignInForm callbackUrl={callbackUrl} />
+
+        <p style={{ margin: 0, fontSize: '0.9rem', color: '#6b7280' }}>
+          Sei già autenticato?{' '}
+          <Link href="/admin" style={{ color: '#1d4ed8' }}>
+            Vai al dashboard
+          </Link>
+          .
+        </p>
       </div>
     </div>
   )

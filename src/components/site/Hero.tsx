@@ -37,7 +37,7 @@ export default function Hero({ heroImageUrl }: HeroProps) {
             </Link>
             <Link
               href="/#eventi"
-              className="inline-flex items-center justify-center rounded-full border border-slate-100/40 px-8 py-3 text-base font-semibold text-white transition hover:border-slate-100/60 hover:bg-slate-100/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+              className="inline-flex items-center justify-center rounded-full border border-white px-8 py-3 text-base font-semibold text-white transition hover:border-white/90 hover:bg-slate-100/10 hover:text-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
             >
               Guarda gli eventi
             </Link>

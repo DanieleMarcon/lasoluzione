@@ -39,10 +39,18 @@ export default function Footer({ site }: FooterProps) {
                 <span>
                   <span itemProp="postalCode">20132</span> – <span itemProp="addressLocality">Milano</span>
                 </span>
-                <a href="tel:+39000000000" className="text-white underline-offset-4 hover:opacity-90" itemProp="telephone">
+                <a
+                  href="tel:+39000000000"
+                  className="text-white/90 underline-offset-4 hover:text-white"
+                  itemProp="telephone"
+                >
                   +39 000 000 000
                 </a>
-                <a href="mailto:info@lasoluzione.eu" className="text-white underline-offset-4 hover:opacity-90" itemProp="email">
+                <a
+                  href="mailto:info@lasoluzione.eu"
+                  className="text-white/90 underline-offset-4 hover:text-white"
+                  itemProp="email"
+                >
                   info@lasoluzione.eu
                 </a>
               </address>
@@ -58,7 +66,7 @@ export default function Footer({ site }: FooterProps) {
                   <li key={link.href}>
                     <a
                       href={link.href}
-                      className="inline-flex items-center rounded-full px-3 py-2 text-white transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                      className="inline-flex items-center rounded-full px-3 py-2 text-white/90 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                     >
                       {link.label}
                     </a>

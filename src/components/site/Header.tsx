@@ -73,7 +73,7 @@ export default function Header({ brandLogoUrl }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/20 bg-[#2596be]">
+    <header className="sticky top-0 z-50 border-b border-white/20 bg-[#004177]">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-4 py-4 md:px-6">
         <Link
           href="/"
@@ -132,7 +132,7 @@ export default function Header({ brandLogoUrl }: HeaderProps) {
       <nav
         id="mobile-primary-navigation"
         aria-label="Navigazione principale mobile"
-        className={`${isMobileMenuOpen ? 'grid' : 'hidden'} gap-1 border-t border-white/20 bg-[#2596be] px-4 pb-4 md:hidden`}
+        className={`${isMobileMenuOpen ? 'grid' : 'hidden'} gap-1 border-t border-white/20 bg-[#004177] px-4 pb-4 md:hidden`}
       >
         {navLinks.map(({ href, label, isHomeAnchor }) => (
           <Link

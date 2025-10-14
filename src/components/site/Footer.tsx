@@ -18,7 +18,7 @@ type FooterProps = {
 
 export default function Footer({ site }: FooterProps) {
   return (
-    <footer className="bg-[#2596be] text-white" aria-labelledby="site-footer-title">
+    <footer className="bg-[#004177] text-white" aria-labelledby="site-footer-title">
       <div className="border-t border-white/20">
         <div className="mx-auto flex max-w-7xl flex-col gap-16 px-4 pb-24 pt-16 md:px-6 md:pb-28 md:pt-24">
           <div className="grid gap-12 lg:grid-cols-12">
@@ -91,7 +91,7 @@ export default function Footer({ site }: FooterProps) {
           </section>
         </div>
       </div>
-      <div className="border-t border-white/20 bg-[#2596be]">
+      <div className="border-t border-white/20 bg-[#004177]">
         <img
           src={site.footerRibbonUrl || '/ribbon.jpg'}
           alt="Da Samuel e Cinthia"

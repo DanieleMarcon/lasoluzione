@@ -9,8 +9,18 @@ export default function Footer() {
       <div style={{ display: 'grid', gap: 8 }}>
         <strong>Contatti</strong>
         <div>Via Mondovì 6, 20132 – Milano</div>
-        <div>Tel: <a href="tel:+39000000000">+39 000 000 000</a></div>
-        <div>Email: <a href="mailto:info@lasoluzione.eu">info@lasoluzione.eu</a></div>
+        <div>
+          Tel:{' '}
+          <a href="tel:+39000000000" className="text-white">
+            +39 000 000 000
+          </a>
+        </div>
+        <div>
+          Email:{' '}
+          <a href="mailto:info@lasoluzione.eu" className="text-white">
+            info@lasoluzione.eu
+          </a>
+        </div>
         <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
           <button
             type="button"
@@ -20,8 +30,12 @@ export default function Footer() {
           >
             Gestisci cookie
           </button>
-          <a href="/privacy">Privacy</a>
-          <a href="/cookie-policy">Cookie policy</a>
+          <a href="/privacy" className="text-white">
+            Privacy
+          </a>
+          <a href="/cookie-policy" className="text-white">
+            Cookie policy
+          </a>
         </div>
       </div>
     </footer>

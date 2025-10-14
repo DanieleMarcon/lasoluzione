@@ -11,13 +11,15 @@ import { toAdminSettingsDTO } from '@/lib/admin/settings-dto';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const optionalAssetUrl = z
-  .string()
-  .trim()
-  .url()
-  .or(z.literal(''))
-  .or(z.literal(null))
-  .optional();
+const UrlOrPath = z.string().trim().refine((v) => {
+  if (!v) return true; // campo facoltativo
+  // consenti URL assoluti http/https
+  if (/^https?:\/\//i.test(v)) return true;
+  // consenti percorso assoluto di /public con estensioni comuni immagini
+  return /^\/[^\s?#]*\.(?:png|jpe?g|svg|webp|avif)$/i.test(v);
+}, { message: 'Inserisci una URL (http/https) o un percorso assoluto /file.ext' });
+
+const optionalAssetUrl = UrlOrPath.nullish();
 
 const siteConfigSchema = z
   .object({

@@ -17,10 +17,18 @@ export default function Header() {
         Bar La Soluzione
       </Link>
       <nav style={{ display: 'flex', gap: 16 }}>
-        <Link href="/#eventi">Eventi</Link>
-        <Link href="/prenota">Prenota</Link>
-        <Link href="/#newsletter">Newsletter</Link>
-        <Link href="/#contatti">Contatti</Link>
+        <Link href="/#eventi" className="text-white">
+          Eventi
+        </Link>
+        <Link href="/prenota" className="text-white">
+          Prenota
+        </Link>
+        <Link href="/#newsletter" className="text-white">
+          Newsletter
+        </Link>
+        <Link href="/#contatti" className="text-white">
+          Contatti
+        </Link>
       </nav>
     </header>
   );

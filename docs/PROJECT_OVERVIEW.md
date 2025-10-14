@@ -1,4 +1,12 @@
-# La Soluzione
+---
+merged_from:
+  - README.md
+updated: 2025-02-14
+---
+# Panoramica progetto & setup rapido
+
+> Questo documento sostituisce il precedente `README.md` in root. Fornisce panoramica, prerequisiti e flussi chiave. Per un indice completo consultare `README.md`.
+
 
 Sito e piattaforma operativa per il bar "La Soluzione". L'app Next.js 14 gestisce:
 - landing marketing e contenuti statici;
@@ -56,7 +64,7 @@ Sito e piattaforma operativa per il bar "La Soluzione". L'app Next.js 14 gestisc
    ```
    L'app è disponibile su <http://localhost:3000>. Il magic link email verrà inviato tramite il provider SMTP configurato (in sandbox puoi leggere il log nel provider o nella console).
 
-> Consulta `docs/ENVIRONMENT.md` per la descrizione completa delle variabili e la matrice Local/Preview/Production.
+> Consulta `DEVOPS.md` per la descrizione completa delle variabili e la matrice Local/Preview/Production.
 
 ## Script utili
 - `pnpm dev` – Next.js in sviluppo.
@@ -135,12 +143,14 @@ Sito e piattaforma operativa per il bar "La Soluzione". L'app Next.js 14 gestisc
 - Consolidare feature flag frontend (`NEXT_PUBLIC_CART_ENABLED`, `NEXT_PUBLIC_ADMIN_SHOW_LEGACY`) in una matrice di configurazione centralizzata.
 
 ## Documentazione correlata
-- [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)
-- [docs/ROUTES.md](docs/ROUTES.md)
-- [docs/DATABASE.md](docs/DATABASE.md)
-- [docs/AUTH.md](docs/AUTH.md)
-- [docs/BUILD_AND_DEPLOY.md](docs/BUILD_AND_DEPLOY.md)
-- [docs/SECURITY.md](docs/SECURITY.md)
-- [docs/TEST_PLAN.md](docs/TEST_PLAN.md)
-- [OPERATIONS.md](OPERATIONS.md)
-- [CHANGELOG.md](CHANGELOG.md)
+- [DEVOPS.md](./DEVOPS.md)
+- [FRONTEND.md](./FRONTEND.md)
+- [BACKEND.md](./BACKEND.md)
+- [PAYMENTS.md](./PAYMENTS.md)
+- [BOOKING_EMAIL_ONLY.md](./BOOKING_EMAIL_ONLY.md)
+- [CART_NOTES.md](./CART_NOTES.md)
+- [TESTING.md](./TESTING.md)
+- [CHANGELOG.md](./CHANGELOG.md)
+
+## Cronologia merge
+- Contenuto originale: `README.md` (ottobre 2025).

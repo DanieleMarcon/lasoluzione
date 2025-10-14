@@ -1,77 +1,64 @@
 # Test plan
 
-## Test e2e manuali
-### 1. Checkout email-only (totale 0€)
-1. Assicurati che il carrello contenga prodotti gratuiti (`totalCents = 0`).
+## Test manuali minimi (pre-deploy)
+### 1. Login admin via magic link
+1. Apri `https://localhost:3000/admin/signin` (in produzione usare dominio reale).
+2. Inserisci un'email presente in `ADMIN_EMAILS`.
+3. Verifica che la pagina mostri messaggio di conferma invio link.
+4. Recupera l'email dal provider SMTP (Mailtrap/posta reale) e clicca il link.
+5. Conferma reindirizzamento a `/admin` senza loop; la sidebar deve mostrare l'indirizzo email e il pulsante "Esci".
+6. Tenta l'accesso con un'email non whitelisted → aspettati redirect a `/admin/not-authorized` e nessun utente creato in Prisma (`User`).
+
+### 2. Checkout carrello (totale 0 €)
+1. Usa `/prenota` (versione cart) o script `setup-landing-home.js` per aggiungere prodotti gratuiti.
 2. Vai su `/checkout`, compila form con consensi privacy/marketing.
-3. Invia → attendi risposta `state: 'confirmed'` e redirect a `/checkout/email-sent`.
-4. Apri la mail “Conferma prenotazione” → clicca link (dovrebbe puntare a `/api/payments/email-verify`).
-5. Verifica redirect automatico su `/checkout/success?orderId=...&bookingId=...` e che il carrello sia svuotato.
-6. Controlla database: `Booking.status = confirmed`, `Order.status = confirmed`, `Cart.status = locked`.
+3. Invia → verifica risposta `state: 'confirmed'` e redirect a `/checkout/email-sent`.
+4. Apri la mail “Conferma prenotazione” → clicca link (punto a `/api/payments/email-verify`).
+5. Conferma redirect automatico su `/checkout/success?orderId=...&bookingId=...` e verifica nel DB (`Booking.status = confirmed`).
 
-### 2. Checkout con pagamento Revolut (sandbox)
-1. Popola carrello con prodotti a pagamento.
-2. Completa `/checkout` → ricevi `state: 'verify_sent'` → apri link email di verifica.
-3. Dopo redirect a `/checkout?verified=1`, sottometti di nuovo → ricevi `state: 'paid_redirect'` con `hostedPaymentUrl`.
-4. Completa il pagamento sandbox (o usa hosted page) → Revolut reindirizza su `/checkout/return?orderId=...`.
-5. Attendi polling → redirect `/checkout/success`.
-6. Esegui `POST /api/orders/finalize` se necessario e verifica che Booking/Order siano `paid/confirmed`.
+### 3. Checkout con pagamento (Revolut sandbox)
+1. Popola il carrello con prodotti a pagamento (>= 1 €).
+2. Compila `/checkout` → ricevi `state: 'verify_sent'` e email di verifica.
+3. Dopo il link, reinvia il form: aspettati `state: 'paid_redirect'` con `hostedPaymentUrl`.
+4. Completa il pagamento sandbox (o usa `/fake-payment` per simulare) → redirect a `/checkout/return`.
+5. Attendi polling → `/checkout/success`. Controlla `Order.status` (`paid` o `confirmed`) e `Cart.status` (`locked`).
 
-### 3. Prenotazione legacy via `/api/bookings`
-1. Da `/prenota` (wizard legacy) invia richiesta pranzo con piatti.
-2. Verifica email cliente/admin e stato booking `confirmed`.
+### 4. Prenotazione legacy API `/api/bookings`
+1. Usa il wizard legacy (flag `NEXT_PUBLIC_CART_ENABLED=false`) oppure invia payload via Postman.
+2. Verifica risposta `{ ok: true, data: { bookingId } }` e che venga inviata email a `MAIL_TO_BOOKINGS`.
+3. Assicurati che `Booking.type`, `lunchItemsJson` e consensi siano valorizzati.
 
-## Edge case da coprire
-- Carrello vuoto → `/checkout` deve mostrare messaggio “Il carrello è vuoto” e bloccare submit.
-- Token verifica scaduto → `/api/payments/email-verify` deve rispondere 400, client mostra errore e consente reinvio.
-- Token riutilizzato → `/api/payments/email-verify` reindirizza comunque a `/checkout?verified=1` ma senza conferma; `/checkout` deve richiedere nuovo invio.
-- Mancanza SMTP → `/api/payments/checkout` deve rispondere `verify_email_failed` (email-only) o `email: { ok: false, skipped: true }` (pagamento) senza crashare.
-- Admin non whitelisted → accesso a `/admin` reindirizza a `/admin/not-authorized`.
+### 5. Navigazione admin
+1. Autenticato, visita tutte le voci di menu: `/admin/bookings`, `/admin/catalog/products`, `/admin/events`, `/admin/contacts`, `/admin/settings`.
+2. Verifica caricamento API (`200 OK`) e assenza di errori JavaScript in console.
+3. Esegui logout → `signOut` deve riportare a `/admin/signin` e cancellare la sessione.
 
-## Script e richieste di test
-### POST /api/payments/checkout
-```bash
-curl -X POST http://localhost:3000/api/payments/checkout \
-  -H 'Content-Type: application/json' \
-  --cookie "cart_token=<ID CARRELLO>" \
-  -d '{
-    "email": "test@example.com",
-    "name": "Tester QA",
-    "phone": "+39000000000",
-    "notes": "Test manuale",
-    "agreePrivacy": true,
-    "agreeMarketing": false,
-    "items": [ { "productId": 1, "quantity": 2 } ]
-  }'
-```
-Risultato atteso: `state: verify_sent | confirmed | paid_redirect` a seconda del totale.
+### 6. Rotte informative
+- Controlla `/privacy`, `/cookie-policy`, `/eventi/<slug>` (es. `capodanno-2025`) e `/api/ping` per assicurarsi che il contenuto sia accessibile senza errori.
 
-### GET /api/payments/email-verify
-```bash
-curl -I "http://localhost:3000/api/payments/email-verify?token=<TOKEN>"
-```
-- 302 → `Location: /checkout/success?...` (email-only confermato).
-- 302 → `Location: /checkout?verified=1` + cookie `order_verify_token` (pagamento richiesto).
-- 400 → token invalido/scaduto.
+## Edge case da verificare periodicamente
+- Token verifica scaduto: modifica `expiresAt` nel DB → `/api/payments/email-verify` deve restituire 400 e `/checkout` mostrare messaggio di errore con possibilità di reinvio.
+- `cart_token` mancante o invalido: cancella il cookie e apri `/checkout` → il client deve rigenerare carrello (`POST /api/cart`).
+- SMTP down: spegni il provider → `POST /api/payments/checkout` deve restituire `verify_email_failed` senza crash.
+- Rotte admin inaccessibili senza sessione: apri `/admin` in incognito → redirect a `/admin/signin?from=/admin`.
 
-### POST /api/orders/finalize
-```bash
-curl -X POST http://localhost:3000/api/orders/finalize \
-  -H 'Content-Type: application/json' \
-  -d '{ "orderId": "ord_xxx" }'
-```
-Risultato atteso: `{ ok: true, orderId: ... }` e ordine marcato come pagato.
+## Idee per test automatizzati
+### Playwright (E2E)
+- **Scenario login admin**: mock provider SMTP (MailSlurp/API) per intercettare link, testare login end-to-end e accesso a `/admin/bookings`.
+- **Checkout free order**: popola carrello via API (`POST /api/cart`), esegui flow email-only verificando redirect finali e contenuto pagina di successo.
+- **Checkout pagato**: usa `/fake-payment` per simulare `POST /api/bookings/fake-confirm` e validare l'aggiornamento UI.
+- **Rotte protette**: verifica che `/admin/*` restituisca 307 → `/admin/signin` per utenti anonimi.
 
-### POST /api/bookings/email-only
-```bash
-curl -X POST http://localhost:3000/api/bookings/email-only \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "eventSlug": "capodanno-2025",
-    "people": 4,
-    "customer": { "name": "Tester QA", "email": "qa@example.com", "phone": "+390000000" },
-    "agreePrivacy": true,
-    "agreeMarketing": true
-  }'
-```
-Risultato atteso: `{ ok: true, bookingId, verificationToken }` e mail inviata.
+### Unit / Integration (Vitest o Jest)
+- **`isAdminEmail`**: testare parsing di `ADMIN_EMAILS` (case insensitive, separatori multipli).
+- **Validatori Zod**: importare schemi da API checkout/booking per garantire che payload invalidi vengano rifiutati.
+- **`ensureCart`** (`src/lib/cart.ts`): mock Prisma e testare creazione/riapertura carrello.
+- **`src/lib/auth.ts` callbacks**: usare `vi.fn()` per confermare che utenti non whitelisted vengano eliminati.
+- **Seed**: eseguire `prisma/seed.ts` in database temporaneo e verificare che generi almeno una sezione e un evento (`serata-capodanno`).
+
+## Checklist QA rapida
+- [ ] Healthcheck `/api/ping` risponde 200 in <200ms.
+- [ ] Magic link ricevuto e login completato.
+- [ ] Prenotazione zero € completata e email inviata.
+- [ ] Ordine a pagamento restituisce `hostedPaymentUrl` funzionante.
+- [ ] Rotte admin principali restituiscono contenuti (200) e nessun errore in console.

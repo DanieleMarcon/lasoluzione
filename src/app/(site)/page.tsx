@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const runtime = 'nodejs';
 
+import Link from 'next/link';
 import Script from 'next/script';
 
 import Hero from '@/components/site/Hero';
@@ -87,7 +88,7 @@ export default async function HomePage() {
                 return (
                   <article
                     key={event.id}
-                    className="flex h-full flex-col justify-between rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6 shadow-lg shadow-slate-950/40 transition hover:border-amber-400/60 hover:shadow-amber-400/20"
+                    className="relative flex h-full flex-col justify-between rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6 shadow-lg shadow-slate-950/40 transition hover:border-amber-400/60 hover:shadow-amber-400/20"
                   >
                     <header className="space-y-3">
                       <p className="text-sm font-medium uppercase tracking-[0.25em] text-amber-300">
@@ -101,6 +102,7 @@ export default async function HomePage() {
                     <footer className="mt-6 text-sm text-slate-300">
                       <p>Prenotazioni via modulo o direttamente al bancone.</p>
                     </footer>
+                    <Link href="/prenota" aria-label="Prenota evento" className="absolute inset-0" />
                   </article>
                 );
               })}

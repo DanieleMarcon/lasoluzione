@@ -18,6 +18,18 @@ type AlertState = {
   message: string;
 };
 
+const normalizeSrc = (s?: string) => {
+  if (!s) return '';
+  const v = s.trim();
+  if (v.startsWith('/')) return v; // path in /public
+  try {
+    new URL(v);
+    return v;
+  } catch {
+    return '';
+  }
+};
+
 function SettingsFormInner({ settings, allTypes, eventInstances: initialEventInstances }: Props) {
   const [enableDateStep, setEnableDateStep] = useState(settings.enableDateTimeStep);
   const [fixedDate, setFixedDate] = useState(settings.fixedDate ?? '');
@@ -418,17 +430,20 @@ function SettingsFormInner({ settings, allTypes, eventInstances: initialEventIns
               <span>Logo header (URL)</span>
               <input
                 id="siteBrandLogoUrl"
-                type="url"
+                type="text"
                 placeholder="https://..."
                 value={siteBrandLogoUrl}
                 onChange={(event) => setSiteBrandLogoUrl(event.target.value)}
                 style={inputStyle}
               />
             </label>
+            <small style={{ color: '#6b7280', fontSize: '0.8rem' }}>
+              Accetta URL (https://…) o file in /public (es. /hero.jpg). Evita spazi/accènti nel nome file.
+            </small>
             <div style={previewWrapperStyle}>
               <span style={previewLabelStyle}>Anteprima</span>
               <img
-                src={(siteBrandLogoUrl || '/brand.svg').trim() || '/brand.svg'}
+                src={normalizeSrc(siteBrandLogoUrl) || '/brand.svg'}
                 alt="Anteprima logo"
                 style={previewImageStyle}
                 loading="lazy"
@@ -440,17 +455,20 @@ function SettingsFormInner({ settings, allTypes, eventInstances: initialEventIns
               <span>Immagine hero (URL)</span>
               <input
                 id="siteHeroImageUrl"
-                type="url"
+                type="text"
                 placeholder="https://..."
                 value={siteHeroImageUrl}
                 onChange={(event) => setSiteHeroImageUrl(event.target.value)}
                 style={inputStyle}
               />
             </label>
+            <small style={{ color: '#6b7280', fontSize: '0.8rem' }}>
+              Accetta URL (https://…) o file in /public (es. /hero.jpg). Evita spazi/accènti nel nome file.
+            </small>
             <div style={previewWrapperStyle}>
               <span style={previewLabelStyle}>Anteprima</span>
               <img
-                src={(siteHeroImageUrl || '/hero.jpg').trim() || '/hero.jpg'}
+                src={normalizeSrc(siteHeroImageUrl) || '/hero.jpg'}
                 alt="Anteprima immagine hero"
                 style={{ ...previewImageStyle, aspectRatio: '16 / 9', objectFit: 'cover' }}
                 loading="lazy"
@@ -462,17 +480,20 @@ function SettingsFormInner({ settings, allTypes, eventInstances: initialEventIns
               <span>Ribbon footer (URL)</span>
               <input
                 id="siteFooterRibbonUrl"
-                type="url"
+                type="text"
                 placeholder="https://..."
                 value={siteFooterRibbonUrl}
                 onChange={(event) => setSiteFooterRibbonUrl(event.target.value)}
                 style={inputStyle}
               />
             </label>
+            <small style={{ color: '#6b7280', fontSize: '0.8rem' }}>
+              Accetta URL (https://…) o file in /public (es. /hero.jpg). Evita spazi/accènti nel nome file.
+            </small>
             <div style={previewWrapperStyle}>
               <span style={previewLabelStyle}>Anteprima</span>
               <img
-                src={(siteFooterRibbonUrl || '/ribbon.jpg').trim() || '/ribbon.jpg'}
+                src={normalizeSrc(siteFooterRibbonUrl) || '/ribbon.jpg'}
                 alt="Anteprima ribbon footer"
                 style={{ ...previewImageStyle, aspectRatio: '7 / 1', objectFit: 'cover' }}
                 loading="lazy"

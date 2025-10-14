@@ -118,7 +118,11 @@ export default function Header({ brandLogoUrl }: HeaderProps) {
             onClick={handleMobileToggle}
             className="inline-flex items-center justify-center rounded-md p-2 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#2596be] md:hidden"
           >
-            {isMobileMenuOpen ? <XIcon className="h-6 w-6" aria-hidden="true" /> : <MenuIcon className="h-6 w-6" aria-hidden="true" />}
+            {isMobileMenuOpen ? (
+              <XIcon className="h-6 w-6 text-white" aria-hidden="true" />
+            ) : (
+              <MenuIcon className="h-6 w-6 text-white" aria-hidden="true" />
+            )}
           </button>
           <Link
             href="/admin/signin"

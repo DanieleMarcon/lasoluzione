@@ -43,7 +43,7 @@ export default function Header({ brandLogoUrl }: HeaderProps) {
             alt="La Soluzione – arriva dopo un buon caffè"
             width={164}
             height={48}
-            className="h-14 w-auto max-w-[180px]"
+            className="h-14 w-auto max-w-[220px]"
             loading="lazy"
           />
         </Link>

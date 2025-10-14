@@ -32,7 +32,7 @@ export default function Header({ brandLogoUrl }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-800/60 bg-slate-950/70 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-slate-600/60 bg-slate-950/70 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-4 py-4 md:px-6">
         <Link
           href="/"
@@ -43,7 +43,7 @@ export default function Header({ brandLogoUrl }: HeaderProps) {
             alt="La Soluzione – arriva dopo un buon caffè"
             width={164}
             height={48}
-            className="h-12 w-auto max-w-[180px]"
+            className="h-14 w-auto max-w-[180px]"
             loading="lazy"
           />
         </Link>

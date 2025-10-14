@@ -9,7 +9,7 @@ export default function Hero() {
         Il tuo bar di quartiere, eventi e buona compagnia
       </h1>
       <p style={{ maxWidth: 640, margin: '1rem auto' }}>
-        Colazioni, pranzi veloci e serate con musica live. Prenota un tavolo o scopri i prossimi eventi.
+        Colazioni, pranzi veloci e aperitivi con musica. Prenota un tavolo o scopri i prossimi eventi.
       </p>
       <p>
         <a

@@ -3,7 +3,10 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const runtime = 'nodejs';
 
-import DeferredMap from '@/components/map/DeferredMap';
+import Script from 'next/script';
+
+import Hero from '@/components/site/Hero';
+import { getSiteConfig } from '@/lib/bookingSettings';
 
 type PublicEvent = {
   id: number;
@@ -20,16 +23,13 @@ function formatEventDate(iso: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return 'Data da definire';
 
-  const dateLabel = date.toLocaleDateString('it-IT', {
+  return new Intl.DateTimeFormat('it-IT', {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
-  });
-  const timeLabel = date.toLocaleTimeString('it-IT', {
     hour: '2-digit',
     minute: '2-digit',
-  });
-  return `${dateLabel} · ${timeLabel}`;
+  }).format(date);
 }
 
 function resolveEventDescription(event: PublicEvent) {
@@ -39,6 +39,7 @@ function resolveEventDescription(event: PublicEvent) {
 
 export default async function HomePage() {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000';
+  const site = await getSiteConfig();
   let events: PublicEvent[] = [];
 
   try {
@@ -49,105 +50,71 @@ export default async function HomePage() {
     console.error('[home] failed to load events', error);
   }
 
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'LocalBusiness',
+    name: 'Bar La Soluzione',
+    url: baseUrl,
+    image: [site.heroImageUrl || '/hero.jpg'],
+    logo: site.brandLogoUrl || '/brand.svg',
+    telephone: '+39 000 000 000',
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: 'Via Mondovì 6',
+      addressLocality: 'Milano',
+      postalCode: '20132',
+      addressCountry: 'IT',
+    },
+  };
+
   return (
-    <section>
-      <h1 style={{ color: '#112f4d', textAlign: 'center' }}>
-        Il tuo bar di quartiere, eventi e buona compagnia
-      </h1>
-
-      <p style={{ textAlign: 'center' }}>
-        Colazioni, pranzi veloci e serate con musica live. Prenota un tavolo o scopri i prossimi eventi.
-      </p>
-
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <a
-          href="/prenota"
-          style={{
-            display: 'inline-block',
-            background: '#112f4d',
-            color: '#fff',
-            borderRadius: 8,
-            padding: '10px 16px',
-            textDecoration: 'none',
-          }}
-        >
-          Prenota ora
-        </a>
-      </div>
-
-      {events.length > 0 ? (
-        <section id="eventi" aria-labelledby="eventi-title">
-          <h2 id="eventi-title" style={{ color: '#112f4d' }}>Prossimi eventi</h2>
-          <div role="list" style={{ display: 'grid', gap: 12 }}>
-            {events.map((event) => {
-              const description = resolveEventDescription(event);
-              return (
-                <div
-                  key={event.id}
-                  role="listitem"
-                  style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}
-                >
-                  <strong>{event.title}</strong>
-                  <div>{formatEventDate(event.startAt)}</div>
-                  {description ? <div>{description}</div> : null}
-                </div>
-              );
-            })}
+    <>
+      <Hero heroImageUrl={site.heroImageUrl} />
+      <section id="eventi" aria-labelledby="eventi-title" className="bg-slate-950">
+        <div className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24">
+          <div className="max-w-3xl space-y-4">
+            <h2 id="eventi-title" className="text-2xl font-semibold tracking-tight text-slate-100 md:text-3xl">
+              Prossimi eventi
+            </h2>
+            <p className="text-base leading-relaxed text-slate-300 md:text-lg">
+              Dalle merende con giochi alle serate a tema: scegli l&apos;evento che fa per te e prenota un posto in prima fila.
+            </p>
           </div>
-        </section>
-      ) : null}
-
-      <section id="prenota" style={{ marginTop: 48 }}>
-        <h2 style={{ color: '#112f4d' }}>Prenota il tuo tavolo</h2>
-        <p>Pausa pranzo, aperitivo o evento privato: scegli data, persone e lascia i dettagli.</p>
-        <a
-          href="/prenota"
-          style={{
-            display: 'inline-block',
-            background: '#112f4d',
-            color: '#fff',
-            borderRadius: 8,
-            padding: '10px 16px',
-            textDecoration: 'none',
-          }}
-        >
-          Vai alla prenotazione
-        </a>
+          {events.length > 0 ? (
+            <div className="mt-10 grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+              {events.map((event) => {
+                const description = resolveEventDescription(event);
+                return (
+                  <article
+                    key={event.id}
+                    className="flex h-full flex-col justify-between rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6 shadow-lg shadow-slate-950/40 transition hover:border-amber-400/60 hover:shadow-amber-400/20"
+                  >
+                    <header className="space-y-3">
+                      <p className="text-sm font-medium uppercase tracking-[0.25em] text-amber-300">
+                        {formatEventDate(event.startAt)}
+                      </p>
+                      <h3 className="text-xl font-semibold leading-tight text-slate-100 md:text-2xl">{event.title}</h3>
+                      {description ? (
+                        <p className="text-sm leading-relaxed text-slate-300 md:text-base">{description}</p>
+                      ) : null}
+                    </header>
+                    <footer className="mt-6 text-sm text-slate-300">
+                      <p>Prenotazioni via modulo o direttamente al bancone.</p>
+                    </footer>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-10 rounded-3xl border border-slate-800/60 bg-slate-900/40 px-6 py-8 text-base text-slate-300 md:text-lg">
+              Stiamo preparando il prossimo calendario: torna a trovarci o iscriviti alla newsletter per non perdere gli aggiornamenti.
+            </p>
+          )}
+        </div>
       </section>
-
-      <section id="newsletter" style={{ marginTop: 48 }}>
-        <h2 style={{ color: '#112f4d' }}>Newsletter</h2>
-        <p>Novità, eventi e promozioni. Niente spam, promesso.</p>
-        <form style={{ display: 'flex', gap: 8 }}>
-          <input
-            type="email"
-            required
-            aria-label="La tua email"
-            placeholder="La tua email"
-            style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #cbd5e1' }}
-          />
-          <button
-            type="submit"
-            style={{ padding: '10px 16px', borderRadius: 8, background: '#112f4d', color: '#fff' }}
-          >
-            Iscriviti
-          </button>
-        </form>
-        <small>Riceverai una mail per confermare l’iscrizione (double opt-in).</small>
-      </section>
-
-      {/* Dove siamo — MAPPA */}
-      <DoveSiamo />
-    </section>
-  );
-}
-
-/* ===== Sezione mappa ===== */
-function DoveSiamo() {
-  return (
-    <section id="dove-siamo" style={{ marginTop: 48 }}>
-      <h2 style={{ color: '#112f4d' }}>Dove siamo</h2>
-      <DeferredMap />
-    </section>
+      <Script id="site-localbusiness" type="application/ld+json">
+        {JSON.stringify(jsonLd)}
+      </Script>
+    </>
   );
 }

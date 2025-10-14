@@ -1,0 +1,5 @@
+<!-- TODO: sostituisci con il logo ufficiale -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 40" role="img" aria-label="Logo Bar">
+  <text x="0" y="28" font-family="system-ui, -apple-system" font-size="28" fill="#112f4d">BAR</text>
+  <circle cx="150" cy="20" r="6" fill="#112f4d" />
+</svg>

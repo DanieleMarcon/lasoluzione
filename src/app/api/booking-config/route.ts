@@ -59,7 +59,7 @@ export async function GET() {
       dinnerRequirePrepay: settings.dinnerRequirePrepay ?? false,
     };
 
-    const dto = { ...toBookingConfigDTO(settings, menu), tiers };
+    const dto = toBookingConfigDTO(settings, menu, tiers, settings.site);
     return NextResponse.json(dto);
   } catch (error) {
     console.error('[GET /api/booking-config] error', error);

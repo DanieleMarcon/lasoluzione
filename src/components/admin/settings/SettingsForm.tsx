@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { useMemo, useState } from 'react';
 import type { ChangeEvent, CSSProperties, FormEvent } from 'react';
@@ -31,6 +32,9 @@ function SettingsFormInner({ settings, allTypes, eventInstances: initialEventIns
   const [lunchRequirePrepay, setLunchRequirePrepay] = useState(settings.lunchRequirePrepay);
   const [dinnerCoverCents, setDinnerCoverCents] = useState(String(settings.dinnerCoverCents ?? 0));
   const [dinnerRequirePrepay, setDinnerRequirePrepay] = useState(settings.dinnerRequirePrepay);
+  const [siteBrandLogoUrl, setSiteBrandLogoUrl] = useState(settings.siteBrandLogoUrl ?? '');
+  const [siteHeroImageUrl, setSiteHeroImageUrl] = useState(settings.siteHeroImageUrl ?? '');
+  const [siteFooterRibbonUrl, setSiteFooterRibbonUrl] = useState(settings.siteFooterRibbonUrl ?? '');
   const [saving, setSaving] = useState(false);
   const [alert, setAlert] = useState<AlertState | null>(null);
   const [eventInstances, setEventInstances] = useState(() =>
@@ -186,6 +190,9 @@ function SettingsFormInner({ settings, allTypes, eventInstances: initialEventIns
       lunchRequirePrepay,
       dinnerCoverCents: Number.isNaN(dinnerCoverValue) || dinnerCoverValue < 0 ? 0 : dinnerCoverValue,
       dinnerRequirePrepay,
+      siteBrandLogoUrl: siteBrandLogoUrl.trim(),
+      siteHeroImageUrl: siteHeroImageUrl.trim(),
+      siteFooterRibbonUrl: siteFooterRibbonUrl.trim(),
     };
 
     try {
@@ -389,6 +396,81 @@ function SettingsFormInner({ settings, allTypes, eventInstances: initialEventIns
       </section>
 
       <section style={{ display: 'grid', gap: '1rem' }}>
+        <h3 style={sectionTitleStyle}>Brand &amp; Immagini sito</h3>
+        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>
+          Le immagini sono opzionali. Se lasci i campi vuoti verranno utilizzati i fallback di default mostrati nelle anteprime.
+        </p>
+        <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+          <div style={cardStyle}>
+            <label style={labelStyle} htmlFor="siteBrandLogoUrl">
+              <span>Logo header (URL)</span>
+              <input
+                id="siteBrandLogoUrl"
+                type="url"
+                placeholder="https://..."
+                value={siteBrandLogoUrl}
+                onChange={(event) => setSiteBrandLogoUrl(event.target.value)}
+                style={inputStyle}
+              />
+            </label>
+            <div style={previewWrapperStyle}>
+              <span style={previewLabelStyle}>Anteprima</span>
+              <img
+                src={(siteBrandLogoUrl || '/brand.svg').trim() || '/brand.svg'}
+                alt="Anteprima logo"
+                style={previewImageStyle}
+                loading="lazy"
+              />
+            </div>
+          </div>
+          <div style={cardStyle}>
+            <label style={labelStyle} htmlFor="siteHeroImageUrl">
+              <span>Immagine hero (URL)</span>
+              <input
+                id="siteHeroImageUrl"
+                type="url"
+                placeholder="https://..."
+                value={siteHeroImageUrl}
+                onChange={(event) => setSiteHeroImageUrl(event.target.value)}
+                style={inputStyle}
+              />
+            </label>
+            <div style={previewWrapperStyle}>
+              <span style={previewLabelStyle}>Anteprima</span>
+              <img
+                src={(siteHeroImageUrl || '/hero.jpg').trim() || '/hero.jpg'}
+                alt="Anteprima immagine hero"
+                style={{ ...previewImageStyle, aspectRatio: '16 / 9', objectFit: 'cover' }}
+                loading="lazy"
+              />
+            </div>
+          </div>
+          <div style={cardStyle}>
+            <label style={labelStyle} htmlFor="siteFooterRibbonUrl">
+              <span>Ribbon footer (URL)</span>
+              <input
+                id="siteFooterRibbonUrl"
+                type="url"
+                placeholder="https://..."
+                value={siteFooterRibbonUrl}
+                onChange={(event) => setSiteFooterRibbonUrl(event.target.value)}
+                style={inputStyle}
+              />
+            </label>
+            <div style={previewWrapperStyle}>
+              <span style={previewLabelStyle}>Anteprima</span>
+              <img
+                src={(siteFooterRibbonUrl || '/ribbon.jpg').trim() || '/ribbon.jpg'}
+                alt="Anteprima ribbon footer"
+                style={{ ...previewImageStyle, aspectRatio: '7 / 1', objectFit: 'cover' }}
+                loading="lazy"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section style={{ display: 'grid', gap: '1rem' }}>
         <h3 style={sectionTitleStyle}>Eventi – prenotazione via email</h3>
         <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>
           Usa il toggle per abilitare la richiesta senza pagamento per le singole istanze evento.
@@ -521,4 +603,32 @@ const primaryButtonStyle: CSSProperties = {
   fontWeight: 600,
   fontSize: '1rem',
   cursor: 'pointer',
+};
+
+const cardStyle: CSSProperties = {
+  display: 'grid',
+  gap: '0.75rem',
+  padding: '1rem',
+  borderRadius: 12,
+  border: '1px solid #e5e7eb',
+  backgroundColor: '#f8fafc',
+};
+
+const previewWrapperStyle: CSSProperties = {
+  display: 'grid',
+  gap: '0.5rem',
+};
+
+const previewLabelStyle: CSSProperties = {
+  fontSize: '0.85rem',
+  color: '#6b7280',
+};
+
+const previewImageStyle: CSSProperties = {
+  width: '100%',
+  maxHeight: 160,
+  borderRadius: 10,
+  border: '1px solid #d1d5db',
+  objectFit: 'contain',
+  backgroundColor: '#fff',
 };

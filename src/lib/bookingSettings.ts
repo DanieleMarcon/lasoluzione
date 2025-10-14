@@ -1,8 +1,9 @@
+import { cache } from 'react';
 import type { BookingType, Prisma } from '@prisma/client';
 
 import { prisma } from './prisma';
 
-import type { BookingConfigDTO } from '@/types/bookingConfig';
+import type { BookingConfigDTO, SiteConfigDTO } from '@/types/bookingConfig';
 
 export type NormalizedBookingSettings = {
   enableDateTimeStep: boolean;
@@ -17,9 +18,16 @@ export type NormalizedBookingSettings = {
   // 👇 campi cena
   dinnerCoverCents: number;
   dinnerRequirePrepay: boolean;
+  site: SiteConfigDTO;
 };
 
 // ✅ aggiungi i default mancanti per cena
+const DEFAULT_SITE_CONFIG: SiteConfigDTO = {
+  brandLogoUrl: '/brand.svg',
+  heroImageUrl: '/hero.jpg',
+  footerRibbonUrl: '/ribbon.jpg',
+};
+
 const DEFAULT_BOOKING_SETTINGS: NormalizedBookingSettings = {
   enableDateTimeStep: false,
   fixedDate: new Date('2025-12-20T00:00:00.000Z'),
@@ -32,6 +40,7 @@ const DEFAULT_BOOKING_SETTINGS: NormalizedBookingSettings = {
   lunchRequirePrepay: false,
   dinnerCoverCents: 0,
   dinnerRequirePrepay: false,
+  site: { ...DEFAULT_SITE_CONFIG },
 };
 
 function asStringArray(value: Prisma.JsonValue | null | undefined, fallback: BookingType[]): BookingType[] {
@@ -49,16 +58,34 @@ function asRecord(value: Prisma.JsonValue | null | undefined, fallback: Record<s
   return fallback;
 }
 
+function sanitizeAsset(value: unknown, fallback: string) {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+}
+
 export async function getBookingSettings(): Promise<NormalizedBookingSettings> {
-  const row = await prisma.bookingSettings.findUnique({ where: { id: 1 } });
+  let row;
+  try {
+    row = await prisma.bookingSettings.findUnique({ where: { id: 1 } });
+  } catch (error) {
+    console.error('[bookingSettings] unable to load settings, using defaults', error);
+    return { ...DEFAULT_BOOKING_SETTINGS, site: { ...DEFAULT_BOOKING_SETTINGS.site } };
+  }
 
   if (!row) {
-    return { ...DEFAULT_BOOKING_SETTINGS };
+    return { ...DEFAULT_BOOKING_SETTINGS, site: { ...DEFAULT_BOOKING_SETTINGS.site } };
   }
 
   const enabledTypes = asStringArray(row.enabledTypes as Prisma.JsonValue, DEFAULT_BOOKING_SETTINGS.enabledTypes);
   const typeLabels = asRecord(row.typeLabels as Prisma.JsonValue, DEFAULT_BOOKING_SETTINGS.typeLabels);
   const prepayTypes = asStringArray(row.prepayTypes as Prisma.JsonValue, DEFAULT_BOOKING_SETTINGS.prepayTypes);
+
+  const site: SiteConfigDTO = {
+    brandLogoUrl: sanitizeAsset((row as any).siteBrandLogoUrl, DEFAULT_SITE_CONFIG.brandLogoUrl),
+    heroImageUrl: sanitizeAsset((row as any).siteHeroImageUrl, DEFAULT_SITE_CONFIG.heroImageUrl),
+    footerRibbonUrl: sanitizeAsset((row as any).siteFooterRibbonUrl, DEFAULT_SITE_CONFIG.footerRibbonUrl),
+  };
 
   return {
     enableDateTimeStep: row.enableDateTimeStep,
@@ -72,6 +99,7 @@ export async function getBookingSettings(): Promise<NormalizedBookingSettings> {
     lunchRequirePrepay: row.lunchRequirePrepay ?? DEFAULT_BOOKING_SETTINGS.lunchRequirePrepay,
     dinnerCoverCents: (row as any).dinnerCoverCents ?? DEFAULT_BOOKING_SETTINGS.dinnerCoverCents,
     dinnerRequirePrepay: (row as any).dinnerRequirePrepay ?? DEFAULT_BOOKING_SETTINGS.dinnerRequirePrepay,
+    site,
   };
 }
 
@@ -80,6 +108,7 @@ export function toBookingConfigDTO(
   settings: NormalizedBookingSettings,
   menu: BookingConfigDTO['menu'],
   tiers: BookingConfigDTO['tiers'] = { evento: [], aperitivo: [] },
+  site: SiteConfigDTO = settings.site,
 ): BookingConfigDTO {
   const fixedDate = settings.fixedDate?.toISOString().slice(0, 10);
   return {
@@ -92,6 +121,7 @@ export function toBookingConfigDTO(
     ...(settings.prepayAmountCents != null ? { prepayAmountCents: settings.prepayAmountCents } : {}),
     menu,
     tiers, // 👈 nuova proprietà richiesta dal tipo
+    site,
   };
 }
 
@@ -130,4 +160,10 @@ export const DEFAULT_BOOKING_CONFIG_DTO: BookingConfigDTO = toBookingConfigDTO(
     dinnerRequirePrepay: DEFAULT_BOOKING_SETTINGS.dinnerRequirePrepay,
   },
   { evento: [], aperitivo: [] },
+  { ...DEFAULT_SITE_CONFIG },
 );
+
+export const getSiteConfig = cache(async (): Promise<SiteConfigDTO> => {
+  const settings = await getBookingSettings();
+  return settings.site;
+});

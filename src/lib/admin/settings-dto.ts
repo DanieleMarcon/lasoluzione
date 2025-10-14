@@ -20,5 +20,8 @@ export function toAdminSettingsDTO(settings: Awaited<ReturnType<typeof getBookin
     lunchRequirePrepay: settings.lunchRequirePrepay,
     dinnerCoverCents: settings.dinnerCoverCents,
     dinnerRequirePrepay: settings.dinnerRequirePrepay,
+    siteBrandLogoUrl: settings.site.brandLogoUrl ?? null,
+    siteHeroImageUrl: settings.site.heroImageUrl ?? null,
+    siteFooterRibbonUrl: settings.site.footerRibbonUrl ?? null,
   };
 }

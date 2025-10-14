@@ -345,6 +345,9 @@ async function seedBookingSettings() {
       dinnerCoverCents: 200,
       enabledTypes: ['pranzo', 'cena', 'evento'],
       typeLabels: { pranzo: 'Pranzo', cena: 'Cena', evento: 'Evento' },
+      siteBrandLogoUrl: '/brand.svg',
+      siteHeroImageUrl: '/hero.jpg',
+      siteFooterRibbonUrl: '/ribbon.jpg',
     },
     create: {
       id: 1,
@@ -359,6 +362,9 @@ async function seedBookingSettings() {
       lunchRequirePrepay: false,
       dinnerRequirePrepay: false,
       dinnerCoverCents: 200,
+      siteBrandLogoUrl: '/brand.svg',
+      siteHeroImageUrl: '/hero.jpg',
+      siteFooterRibbonUrl: '/ribbon.jpg',
     },
   });
 

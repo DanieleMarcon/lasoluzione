@@ -38,38 +38,38 @@ export default function DeferredMap() {
       <div
         role="region"
         aria-label="Mappa disabilitata finché non acconsenti ai cookie funzionali"
-        style={{
-          border: '1px dashed var(--color-border)',
-          background: '#f8fafc',
-          padding: '1rem',
-          borderRadius: '12px',
-        }}
+        className="grid gap-4 rounded-2xl border border-slate-700/60 bg-slate-900/40 p-6 text-slate-100"
       >
-        <p style={{ marginTop: 0, marginBottom: '0.75rem' }}>
+        <p className="m-0 text-base leading-relaxed">
           La mappa è disabilitata. Per visualizzarla abilita i cookie <strong>funzionali</strong>.
         </p>
-        <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
-          <button className="btn" onClick={enableMap}>Attiva mappa (consenti funzionali)</button>
-          <button className="btn" onClick={openPreferences}>Apri preferenze</button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={enableMap}
+            className="inline-flex items-center justify-center rounded-full border border-slate-100/40 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:border-slate-100 hover:bg-slate-100/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-100"
+          >
+            Attiva mappa (consenti funzionali)
+          </button>
+          <button
+            type="button"
+            onClick={openPreferences}
+            className="inline-flex items-center justify-center rounded-full border border-slate-100/20 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:border-slate-100/40 hover:bg-slate-100/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-100"
+          >
+            Apri preferenze
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div
-      className="container"
-      style={{
-        border: '1px solid var(--color-border)',
-        borderRadius: '12px',
-        overflow: 'hidden',
-      }}
-    >
-      <div style={{ position: 'relative', width: '100%', paddingTop: '56.25%' }}>
+    <div className="relative overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900/40">
+      <div className="relative w-full pb-[56.25%]">
         <iframe
           title="Mappa"
           src={src}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }}
+          className="absolute inset-0 h-full w-full border-0"
           loading="lazy"
           referrerPolicy="no-referrer-when-downgrade"
         />

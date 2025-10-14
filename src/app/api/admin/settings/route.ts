@@ -11,6 +11,14 @@ import { toAdminSettingsDTO } from '@/lib/admin/settings-dto';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const optionalAssetUrl = z
+  .string()
+  .trim()
+  .url()
+  .or(z.literal(''))
+  .or(z.literal(null))
+  .optional();
+
 const settingsSchema = z
   .object({
     enableDateTimeStep: z.boolean(),
@@ -24,6 +32,9 @@ const settingsSchema = z
     lunchRequirePrepay: z.boolean().default(false),
     dinnerCoverCents: z.coerce.number().int().min(0).max(1_000_000).default(0),
     dinnerRequirePrepay: z.boolean().default(false),
+    siteBrandLogoUrl: optionalAssetUrl,
+    siteHeroImageUrl: optionalAssetUrl,
+    siteFooterRibbonUrl: optionalAssetUrl,
   })
   .superRefine((value, ctx) => {
     if (!value.enableDateTimeStep) {
@@ -47,6 +58,12 @@ const settingsSchema = z
 function toDateOnly(value: string | null | undefined) {
   if (!value) return null;
   return new Date(`${value}T00:00:00.000Z`);
+}
+
+function sanitizeAssetUrl(value: string | null | undefined) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export async function GET() {
@@ -83,6 +100,10 @@ export async function PUT(req: Request) {
     .map((type) => type as BookingType)
     .filter((type) => enabledTypes.includes(type));
 
+  const siteBrandLogoUrl = sanitizeAssetUrl(payload.siteBrandLogoUrl);
+  const siteHeroImageUrl = sanitizeAssetUrl(payload.siteHeroImageUrl);
+  const siteFooterRibbonUrl = sanitizeAssetUrl(payload.siteFooterRibbonUrl);
+
   const createData: Prisma.BookingSettingsCreateInput = {
     id: 1,
     enableDateTimeStep: payload.enableDateTimeStep,
@@ -96,6 +117,9 @@ export async function PUT(req: Request) {
     lunchRequirePrepay: payload.lunchRequirePrepay,
     dinnerCoverCents: payload.dinnerCoverCents,
     dinnerRequirePrepay: payload.dinnerRequirePrepay,
+    siteBrandLogoUrl,
+    siteHeroImageUrl,
+    siteFooterRibbonUrl,
   };
 
   try {
@@ -113,6 +137,9 @@ export async function PUT(req: Request) {
         lunchRequirePrepay: createData.lunchRequirePrepay,
         dinnerCoverCents: createData.dinnerCoverCents,
         dinnerRequirePrepay: createData.dinnerRequirePrepay,
+        siteBrandLogoUrl: createData.siteBrandLogoUrl,
+        siteHeroImageUrl: createData.siteHeroImageUrl,
+        siteFooterRibbonUrl: createData.siteFooterRibbonUrl,
       },
       create: createData,
     });

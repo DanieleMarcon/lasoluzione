@@ -46,6 +46,9 @@ export type AdminSettingsDTO = {
   lunchRequirePrepay: boolean;
   dinnerCoverCents: number;
   dinnerRequirePrepay: boolean;
+  siteBrandLogoUrl: string | null;
+  siteHeroImageUrl: string | null;
+  siteFooterRibbonUrl: string | null;
 };
 
 export type AdminEventInstance = {

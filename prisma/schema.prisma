@@ -80,6 +80,9 @@ model BookingSettings {
   lunchRequirePrepay  Boolean   @default(false)
   dinnerCoverCents    Int       @default(0)
   dinnerRequirePrepay Boolean   @default(false)
+  siteBrandLogoUrl    String?
+  siteHeroImageUrl    String?
+  siteFooterRibbonUrl String?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 }

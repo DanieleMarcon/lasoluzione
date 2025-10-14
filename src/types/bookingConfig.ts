@@ -32,6 +32,12 @@ export type BookingTiersDTO = {
   aperitivo: BookingTierDTO[];
 };
 
+export type SiteConfigDTO = {
+  brandLogoUrl: string;
+  heroImageUrl: string;
+  footerRibbonUrl: string;
+};
+
 export type BookingConfigDTO = {
   enableDateTimeStep: boolean;
   fixedDate?: string;
@@ -42,4 +48,5 @@ export type BookingConfigDTO = {
   prepayAmountCents?: number;
   menu: BookingMenuDTO;
   tiers: BookingTiersDTO;
+  site: SiteConfigDTO;
 };

@@ -41,14 +41,14 @@ export default function Footer({ site }: FooterProps) {
                 </span>
                 <a
                   href="tel:+39000000000"
-                  className="text-white/90 underline-offset-4 hover:text-white"
+                  className="text-white/90 underline-offset-4 hover:text-white !text-white hover:!text-white"
                   itemProp="telephone"
                 >
                   +39 000 000 000
                 </a>
                 <a
                   href="mailto:info@lasoluzione.eu"
-                  className="text-white/90 underline-offset-4 hover:text-white"
+                  className="text-white/90 underline-offset-4 hover:text-white !text-white hover:!text-white"
                   itemProp="email"
                 >
                   info@lasoluzione.eu
@@ -66,7 +66,7 @@ export default function Footer({ site }: FooterProps) {
                   <li key={link.href}>
                     <a
                       href={link.href}
-                      className="inline-flex items-center rounded-full px-3 py-2 text-white/90 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                      className="inline-flex items-center rounded-full px-3 py-2 text-white/90 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white !text-white hover:!text-white"
                     >
                       {link.label}
                     </a>

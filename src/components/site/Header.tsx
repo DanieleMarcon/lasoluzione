@@ -97,7 +97,7 @@ export default function Header({ brandLogoUrl }: HeaderProps) {
               key={href}
               href={href}
               aria-current={computeAriaCurrent(href, isHomeAnchor)}
-              className="inline-flex items-center rounded-md px-3 py-2 text-white transition hover:text-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#2596be]"
+              className="inline-flex items-center rounded-md px-3 py-2 text-white transition hover:text-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#2596be] !text-white hover:!text-white/90"
             >
               {label}
             </Link>
@@ -106,7 +106,7 @@ export default function Header({ brandLogoUrl }: HeaderProps) {
         <div className="flex items-center gap-3">
           <Link
             href="/admin/signin"
-            className="hidden rounded-full border border-white px-4 py-2 text-sm font-semibold text-white transition hover:border-white hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white md:inline-flex md:items-center md:justify-center"
+            className="hidden rounded-full border border-white px-4 py-2 text-sm font-semibold text-white transition hover:border-white hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white md:inline-flex md:items-center md:justify-center !text-white !border-white hover:!border-white"
           >
             Accedi
           </Link>
@@ -116,18 +116,18 @@ export default function Header({ brandLogoUrl }: HeaderProps) {
             aria-expanded={isMobileMenuOpen}
             aria-controls="mobile-primary-navigation"
             onClick={handleMobileToggle}
-            className="inline-flex items-center justify-center rounded-md p-2 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#2596be] md:hidden"
+            className="inline-flex items-center justify-center rounded-md p-2 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#2596be] md:hidden !text-white"
           >
             {isMobileMenuOpen ? (
-              <XIcon className="h-6 w-6 text-white" aria-hidden="true" />
+              <XIcon className="h-6 w-6 stroke-white !text-white" aria-hidden="true" />
             ) : (
-              <MenuIcon className="h-6 w-6 text-white" aria-hidden="true" />
+              <MenuIcon className="h-6 w-6 stroke-white !text-white" aria-hidden="true" />
             )}
           </button>
           <Link
             href="/admin/signin"
             onClick={handleMobileLinkClick}
-            className="inline-flex items-center justify-center rounded-full border border-white px-4 py-2 text-sm font-semibold text-white transition hover:border-white hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#2596be] md:hidden"
+            className="inline-flex items-center justify-center rounded-full border border-white px-4 py-2 text-sm font-semibold text-white transition hover:border-white hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#2596be] md:hidden !text-white !border-white hover:!border-white"
           >
             Accedi
           </Link>
@@ -144,7 +144,7 @@ export default function Header({ brandLogoUrl }: HeaderProps) {
             href={href}
             aria-current={computeAriaCurrent(href, isHomeAnchor)}
             onClick={handleMobileLinkClick}
-            className="inline-flex items-center rounded-md px-3 py-2 text-base font-semibold text-white transition hover:text-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#2596be]"
+            className="inline-flex items-center rounded-md px-3 py-2 text-base font-semibold text-white transition hover:text-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#2596be] !text-white hover:!text-white"
           >
             {label}
           </Link>

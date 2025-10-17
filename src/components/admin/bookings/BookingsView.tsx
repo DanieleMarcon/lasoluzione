@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, CSSProperties, FormEvent } from 'react';
 
 import type { AdminBooking, AdminSettingsDTO, BookingListResponse } from '@/types/admin';
+import { formatEuroFromCents } from '@/lib/format';
 
 const STATUSES = ['pending', 'pending_payment', 'confirmed', 'cancelled', 'failed', 'expired'];
 const PAGE_SIZE = 20;
@@ -370,10 +371,12 @@ export default function BookingsView({ settings }: Props) {
               <th style={thStyle}>Tipo</th>
               <th style={thStyle}>Nome</th>
               <th style={thStyle}>Persone</th>
+              <th style={thStyle}>Dettaglio</th>
               <th style={thStyle}>Email</th>
               <th style={thStyle}>Telefono</th>
               <th style={consentThStyle}>Privacy</th>
               <th style={consentThStyle}>News</th>
+              <th style={thStyle}>Totale</th>
               <th style={thStyle}>Stato</th>
               <th style={thStyle}>Creato</th>
               <th style={thStyle}>Azioni</th>
@@ -382,19 +385,19 @@ export default function BookingsView({ settings }: Props) {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={11} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
+                <td colSpan={13} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
                   Caricamento…
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan={11} style={{ padding: '1.5rem', textAlign: 'center', color: '#b91c1c' }}>
+                <td colSpan={13} style={{ padding: '1.5rem', textAlign: 'center', color: '#b91c1c' }}>
                   {error}
                 </td>
               </tr>
             ) : bookings.length === 0 ? (
               <tr>
-                <td colSpan={11} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
+                <td colSpan={13} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
                   Nessuna prenotazione trovata.
                 </td>
               </tr>
@@ -406,9 +409,27 @@ export default function BookingsView({ settings }: Props) {
                 return (
                   <tr key={booking.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                     <td style={tdStyle}>{formatDateTime(booking.date)}</td>
-                    <td style={tdStyle}>{settings.typeLabels[booking.type] ?? booking.type}</td>
+                    <td style={tdStyle}>
+                      {settings.typeLabels[booking.display.typeLabel] ?? booking.display.typeLabel}
+                    </td>
                     <td style={tdStyle}>{booking.name}</td>
                     <td style={tdStyle}>{booking.people}</td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        maxWidth: 260,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                      title={booking.display.itemsSummary.length > 60 ? booking.display.itemsSummary : undefined}
+                    >
+                      {booking.display.itemsSummary
+                        ? booking.display.itemsSummary.length > 60
+                          ? `${booking.display.itemsSummary.slice(0, 57)}…`
+                          : booking.display.itemsSummary
+                        : '—'}
+                    </td>
                     <td style={tdStyle}>{booking.email}</td>
                     <td style={tdStyle}>{booking.phone}</td>
                     <td
@@ -425,6 +446,7 @@ export default function BookingsView({ settings }: Props) {
                     >
                       {hasMarketingConsent ? '✅' : '—'}
                     </td>
+                    <td style={tdStyle}>{formatEuroFromCents(booking.display.totalCents)}</td>
                     <td style={tdStyle}>{booking.status}</td>
                     <td style={tdStyle}>{new Date(booking.createdAt).toLocaleDateString('it-IT')}</td>
                     <td style={{ ...tdStyle, display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>

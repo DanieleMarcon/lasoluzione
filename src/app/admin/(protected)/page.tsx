@@ -4,7 +4,7 @@ import type { BookingStatus } from '@prisma/client';
 
 import { prisma } from '@/lib/prisma';
 import { toAdminBookingDTO } from '@/lib/admin/booking-dto';
-import { formatCurrency } from '@/lib/formatCurrency';
+import { formatEuroFromCents } from '@/lib/format';
 
 function startOfDay(date: Date) {
   const next = new Date(date);
@@ -185,7 +185,7 @@ export default async function AdminDashboardPage() {
                     </span>
                   </div>
                   <span style={{ color: '#0f172a', fontWeight: 600 }}>
-                    {formatCurrency(booking.totalCents ?? 0)}
+                    {formatEuroFromCents(booking.totalCents ?? 0)}
                   </span>
                 </li>
               ))}

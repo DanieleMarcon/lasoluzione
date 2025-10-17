@@ -1,7 +1,6 @@
+// src/lib/formatCurrency.ts
+import { formatEuroFromCents } from '@/lib/format';
+
 export function formatCurrency(cents: number) {
-  return new Intl.NumberFormat('it-IT', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-  }).format(cents / 100);
+  return formatEuroFromCents(cents);
 }

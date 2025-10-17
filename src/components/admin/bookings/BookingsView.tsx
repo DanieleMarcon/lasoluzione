@@ -5,6 +5,8 @@ import type { ChangeEvent, CSSProperties, FormEvent } from 'react';
 
 import type { AdminBooking, AdminSettingsDTO, BookingListResponse } from '@/types/admin';
 
+import { formatEuroFromCents } from '@/lib/format';
+
 const STATUSES = ['pending', 'pending_payment', 'confirmed', 'cancelled', 'failed', 'expired'];
 const PAGE_SIZE = 20;
 
@@ -368,6 +370,8 @@ export default function BookingsView({ settings }: Props) {
             <tr style={{ textAlign: 'left', backgroundColor: '#f9fafb', fontSize: '0.85rem', color: '#6b7280' }}>
               <th style={thStyle}>Data</th>
               <th style={thStyle}>Tipo</th>
+              <th style={thStyle}>Dettaglio</th>
+              <th style={{ ...thStyle, textAlign: 'right' }}>Totale (€)</th>
               <th style={thStyle}>Nome</th>
               <th style={thStyle}>Persone</th>
               <th style={thStyle}>Email</th>
@@ -382,19 +386,19 @@ export default function BookingsView({ settings }: Props) {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={11} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
+                <td colSpan={13} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
                   Caricamento…
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan={11} style={{ padding: '1.5rem', textAlign: 'center', color: '#b91c1c' }}>
+                <td colSpan={13} style={{ padding: '1.5rem', textAlign: 'center', color: '#b91c1c' }}>
                   {error}
                 </td>
               </tr>
             ) : bookings.length === 0 ? (
               <tr>
-                <td colSpan={11} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
+                <td colSpan={13} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
                   Nessuna prenotazione trovata.
                 </td>
               </tr>
@@ -403,10 +407,15 @@ export default function BookingsView({ settings }: Props) {
                 const actionsDisabled = actionBookingId === booking.id;
                 const hasPrivacyConsent = booking.agreePrivacy === true;
                 const hasMarketingConsent = booking.agreeMarketing === true;
+                const itemsSummary = booking.display.itemsSummary || '—';
                 return (
                   <tr key={booking.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                     <td style={tdStyle}>{formatDateTime(booking.date)}</td>
-                    <td style={tdStyle}>{settings.typeLabels[booking.type] ?? booking.type}</td>
+                    <td style={tdStyle}>{booking.display.typeLabel}</td>
+                    <td style={tdStyle}>
+                      <span style={detailTextStyle} title={booking.display.itemsSummary || '—'}>{itemsSummary}</span>
+                    </td>
+                    <td style={currencyTdStyle}>{formatEuroFromCents(booking.display.totalCents)}</td>
                     <td style={tdStyle}>{booking.name}</td>
                     <td style={tdStyle}>{booking.people}</td>
                     <td style={tdStyle}>{booking.email}</td>
@@ -686,6 +695,20 @@ const consentTdStyle: CSSProperties = {
   ...tdStyle,
   textAlign: 'center',
   whiteSpace: 'nowrap',
+};
+
+const currencyTdStyle: CSSProperties = {
+  ...tdStyle,
+  textAlign: 'right',
+  whiteSpace: 'nowrap',
+};
+
+const detailTextStyle: CSSProperties = {
+  display: 'inline-block',
+  maxWidth: '24rem',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
 };
 
 const modalOverlayStyle: CSSProperties = {

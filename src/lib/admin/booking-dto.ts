@@ -1,7 +1,39 @@
 // src/lib/admin/booking-dto.ts
-import type { Booking } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
-export function toAdminBookingDTO(booking: Booking) {
+type BookingWithOrder = Prisma.BookingGetPayload<{
+  include: {
+    order: {
+      include: {
+        cart: {
+          include: {
+            items: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+function getLegacyTypeLabel(type: string | null) {
+  return type ?? '';
+}
+
+export function toAdminBookingDTO(booking: BookingWithOrder) {
+  const isEvent = Boolean(booking.eventInstanceId);
+  const typeLabel = isEvent ? 'evento' : getLegacyTypeLabel(booking.type);
+
+  const items = booking.order?.cart?.items ?? [];
+  const totalCents = items.reduce((sum, item) => {
+    const quantity = item.qty ?? 0;
+    const priceCents = item.priceCentsSnapshot ?? 0;
+    return sum + quantity * priceCents;
+  }, 0);
+
+  const itemsSummary = items
+    .map((item) => `${item.nameSnapshot} × ${item.qty ?? 0}`)
+    .join(', ');
+
   return {
     id: booking.id,
     date: booking.date.toISOString(),
@@ -25,5 +57,10 @@ export function toAdminBookingDTO(booking: Booking) {
     dinnerTotalCents: booking.dinnerTotalCents ?? null,
     agreePrivacy: booking.agreePrivacy === true,
     agreeMarketing: booking.agreeMarketing === true,
+    display: {
+      typeLabel,
+      totalCents,
+      itemsSummary,
+    },
   };
 }

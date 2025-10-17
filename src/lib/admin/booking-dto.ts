@@ -18,13 +18,15 @@ function itemsSummary(items: CartItem[] = []): string {
 
 // mantieni questo nome export
 export function toAdminBookingDTO(b: BookingForAdminDTO) {
-  const isEvent = b.type === 'event'; // NON usare altre proprietà
+  const rawType = String(b.type);
+  const isEvent = rawType === 'event'; // NON usare altre proprietà
+  const typeLabel = isEvent ? 'evento' : rawType;
   const items = b.order?.cart?.items ?? [];
 
   return {
     ...b, // non rimuovere campi esistenti
     display: {
-      typeLabel: isEvent ? 'evento' : String(b.type),
+      typeLabel,
       totalCents: sumCartCents(items),
       itemsSummary: itemsSummary(items),
     },

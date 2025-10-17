@@ -4,6 +4,7 @@ export type AdminBooking = {
   date: string;
   people: number;
   type: string;
+  eventInstanceId: number | null;
   name: string;
   email: string;
   phone: string;
@@ -20,6 +21,11 @@ export type AdminBooking = {
   dinnerSubtotalCents?: number | null;
   dinnerCoverCents?: number | null;
   dinnerTotalCents?: number | null;
+  display: {
+    typeLabel: string;
+    totalCents: number;
+    itemsSummary: string;
+  };
 };
 
 export type BookingListResponse = {

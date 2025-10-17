@@ -145,15 +145,22 @@ export default async function AdminDashboardPage() {
                   </td>
                 </tr>
               ) : (
-                upcomingRows.map((booking) => (
-                  <tr key={booking.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                    <td style={tdStyle}>{formatDate(booking.date)}</td>
-                    <td style={tdStyle}>{booking.type}</td>
-                    <td style={tdStyle}>{booking.name}</td>
-                    <td style={tdStyle}>{booking.people}</td>
-                    <td style={tdStyle}>{booking.status}</td>
-                  </tr>
-                ))
+                upcomingRows.map((booking) => {
+                  const dateStr =
+                    typeof booking.date === 'string'
+                      ? booking.date
+                      : booking.date?.toISOString();
+
+                  return (
+                    <tr key={booking.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                      <td style={tdStyle}>{formatDate(dateStr)}</td>
+                      <td style={tdStyle}>{booking.type}</td>
+                      <td style={tdStyle}>{booking.name}</td>
+                      <td style={tdStyle}>{booking.people}</td>
+                      <td style={tdStyle}>{booking.status}</td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

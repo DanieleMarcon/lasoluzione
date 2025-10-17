@@ -149,7 +149,7 @@ export default async function AdminDashboardPage() {
                   const dateStr =
                     typeof booking.date === 'string'
                       ? booking.date
-                      : booking.date?.toISOString();
+                      : booking.date?.toISOString() ?? '';
 
                   return (
                     <tr key={booking.id} style={{ borderTop: '1px solid #f1f5f9' }}>

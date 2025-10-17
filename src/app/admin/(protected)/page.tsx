@@ -6,6 +6,11 @@ import { prisma } from '@/lib/prisma';
 import { toAdminBookingDTO } from '@/lib/admin/booking-dto';
 import { formatCurrency } from '@/lib/formatCurrency';
 
+function formatDateSafe(d: string | Date | null | undefined) {
+  const s = typeof d === 'string' ? d : d?.toISOString() ?? '';
+  return formatDate(s);
+}
+
 function startOfDay(date: Date) {
   const next = new Date(date);
   next.setHours(0, 0, 0, 0);
@@ -145,22 +150,15 @@ export default async function AdminDashboardPage() {
                   </td>
                 </tr>
               ) : (
-                upcomingRows.map((booking) => {
-                  const dateStr =
-                    typeof booking.date === 'string'
-                      ? booking.date
-                      : booking.date?.toISOString() ?? '';
-
-                  return (
-                    <tr key={booking.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                      <td style={tdStyle}>{formatDate(dateStr)}</td>
-                      <td style={tdStyle}>{booking.type}</td>
-                      <td style={tdStyle}>{booking.name}</td>
-                      <td style={tdStyle}>{booking.people}</td>
-                      <td style={tdStyle}>{booking.status}</td>
-                    </tr>
-                  );
-                })
+                upcomingRows.map((booking) => (
+                  <tr key={booking.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                    <td style={tdStyle}>{formatDateSafe(booking.date)}</td>
+                    <td style={tdStyle}>{booking.type}</td>
+                    <td style={tdStyle}>{booking.name}</td>
+                    <td style={tdStyle}>{booking.people}</td>
+                    <td style={tdStyle}>{booking.status}</td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -188,7 +186,7 @@ export default async function AdminDashboardPage() {
                   <div style={{ textAlign: 'left' }}>
                     <strong style={{ display: 'block', color: '#0f172a' }}>#{booking.id} — {booking.name}</strong>
                     <span style={{ color: '#64748b', fontSize: '0.9rem' }}>
-                      Creato il {formatDate(booking.createdAt)}
+                      Creato il {formatDateSafe(booking.createdAt)}
                     </span>
                   </div>
                   <span style={{ color: '#0f172a', fontWeight: 600 }}>

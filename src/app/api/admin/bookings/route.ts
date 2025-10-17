@@ -22,6 +22,13 @@ export async function GET(req: Request) {
       orderBy: { date: 'desc' },
       skip,
       take: pageSize,
+      include: {
+        order: {
+          include: {
+            cart: { include: { items: true } },
+          },
+        },
+      },
     }),
     prisma.booking.count({ where }),
   ]);

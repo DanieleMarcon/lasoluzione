@@ -62,7 +62,7 @@ function formatDateTime(value: Date) {
 function summarizeFilters(params: URLSearchParams) {
   const parts: string[] = [];
 
-  const search = params.get('search') ?? params.get('q');
+  const search = params.get('q') ?? params.get('search');
   if (search) parts.push(`ricerca: “${search}”`);
 
   const newsletter = params.get('newsletter');

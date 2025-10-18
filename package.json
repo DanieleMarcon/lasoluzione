@@ -10,6 +10,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "node --test --import tsx tests/contacts-query.test.ts",
     "postinstall": "if [ \"$SKIP_PRISMA_GENERATE\" = \"1\" ]; then echo 'skip prisma generate'; else prisma generate; fi",
     "prisma:fmt": "prisma format --schema prisma/schema.prisma",
     "prisma:gen": "prisma generate --schema prisma/schema.prisma",

@@ -7,6 +7,7 @@
 | Prenotazione Solo Email — Guida e QA | BOOKING_EMAIL_ONLY.md | 2025-10-14 17:33 |
 | Catalogo & Carrello — Stato e Schema | CART_NOTES.md | 2025-10-14 17:34 |
 | Changelog | CHANGELOG.md | 2025-10-14 17:42 |
+| Known Issues & Fix Log | KNOWN_ISSUES.md | 2025-10-14 17:55 |
 | DevOps, Ambiente & Sicurezza Operativa | DEVOPS.md | 2025-10-14 17:51 |
 | Frontend, Routing & UX | FRONTEND.md | 2025-10-14 17:37 |
 | (senza titolo) | INDEX.md | 2025-10-14 17:51 |

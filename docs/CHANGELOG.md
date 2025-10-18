@@ -21,6 +21,8 @@ updated: 2025-02-14
 - `README.md` riposizionato come landing entry point (link rapidi e percorsi di lettura).
 
 ### Fixed
+- Allineata la documentazione alle configurazioni correnti (NextAuth v5, middleware admin, seed PostgreSQL) e chiariti i requisiti `NEXTAUTH_URL`/`AUTH_URL` per produzione.
+- Fix: admin contacts API 500 (paginazione `page/pageSize`, risposta `{ items, total }`, gestione `401` per utenti non admin).
 - Documentazione allineata a runtime Node 20.x su Vercel e mapping branch docs → main per evitare deploy accidentali.
 
 ## 2025-10-10

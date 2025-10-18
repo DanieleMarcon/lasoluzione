@@ -9,7 +9,7 @@ export type ContactFilters = {
   params: unknown[];
 };
 
-export type AdminContact = {
+export type ContactDTO = {
   name: string;
   email: string;
   phone: string;
@@ -66,7 +66,7 @@ export function buildContactsFilters(searchParams: URLSearchParams): ContactFilt
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-  const search = (searchParams.get('search') ?? searchParams.get('q') ?? '').trim();
+  const search = (searchParams.get('q') ?? searchParams.get('search') ?? '').trim();
   if (search) {
     const wildcard = `%${search.toLowerCase()}%`;
     conditions.push('(LOWER(name) LIKE ? OR LOWER(email) LIKE ? OR LOWER(phone) LIKE ?)');
@@ -126,7 +126,7 @@ function toIsoString(value: string | Date) {
   return date.toISOString();
 }
 
-function mapContactRow(row: ContactQueryRow): AdminContact {
+function mapContactRow(row: ContactQueryRow): ContactDTO {
   return {
     name: row.name?.trim() ?? '',
     email: row.email?.trim() ?? '',
@@ -152,7 +152,7 @@ export async function fetchContactsData({
   params: unknown[];
   limit?: number;
   offset?: number;
-}): Promise<AdminContact[]> {
+}): Promise<ContactDTO[]> {
   const paginationClause = typeof limit === 'number' ? ' LIMIT ? OFFSET ?' : '';
   const queryParams: any[] = [...params];
   if (typeof limit === 'number') {

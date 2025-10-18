@@ -8,6 +8,12 @@ import {
   resolveContactsPagination,
 } from '@/lib/admin/contacts-query';
 
+function normalizeSql(sql: unknown) {
+  const fragment = sql as { strings?: readonly string[] };
+  const parts = fragment.strings ?? [];
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+
 describe('resolveContactsPagination', () => {
   it('returns defaults when parameters are missing', () => {
     const params = new URLSearchParams();
@@ -55,9 +61,10 @@ describe('buildContactsFilters', () => {
 
     const filters = buildContactsFilters(params);
 
-    assert.match(filters.whereClause, /LOWER\(name\) LIKE \?/);
-    assert.equal(filters.params.length, 3);
-    assert.deepEqual(filters.params, ['%example%', '%example%', '%example%']);
+    const sql = normalizeSql(filters.where);
+    assert.ok(sql.includes("LOWER(TRIM(COALESCE(b.\"name\", ''))) LIKE"));
+    assert.equal(filters.where.values.length, 3);
+    assert.deepEqual(filters.where.values, ['%example%', '%example%', '%example%']);
   });
 
   it('applies boolean and date filters with normalized values', () => {
@@ -70,12 +77,13 @@ describe('buildContactsFilters', () => {
 
     const filters = buildContactsFilters(params);
 
-    assert.equal(filters.whereClause.includes('agreeMarketing = ?'), true);
-    assert.equal(filters.whereClause.includes('agreePrivacy = ?'), true);
-    assert.equal(filters.whereClause.includes('createdAt >= ?'), true);
-    assert.equal(filters.whereClause.includes('createdAt <= ?'), true);
-    assert.equal(filters.params.length, 4);
-    assert.deepEqual(filters.params, [1, 0, '2024-01-05T00:00:00.000Z', '2024-02-10T23:59:59.999Z']);
+    const sql = normalizeSql(filters.where);
+    assert.ok(sql.includes('b."agreeMarketing" ='));
+    assert.ok(sql.includes('b."agreePrivacy" ='));
+    assert.ok(sql.includes('b."createdAt" >='));
+    assert.ok(sql.includes('b."createdAt" <='));
+    assert.equal(filters.where.values.length, 4);
+    assert.deepEqual(filters.where.values, [true, false, '2024-01-05T00:00:00.000Z', '2024-02-10T23:59:59.999Z']);
   });
 
   it('supports the legacy search parameter when q is missing', () => {
@@ -85,9 +93,10 @@ describe('buildContactsFilters', () => {
 
     const filters = buildContactsFilters(params);
 
-    assert.match(filters.whereClause, /LOWER\(name\) LIKE \?/);
-    assert.equal(filters.params.length, 3);
-    assert.deepEqual(filters.params, ['%legacy%', '%legacy%', '%legacy%']);
+    const sql = normalizeSql(filters.where);
+    assert.ok(sql.includes("LOWER(TRIM(COALESCE(b.\"name\", ''))) LIKE"));
+    assert.equal(filters.where.values.length, 3);
+    assert.deepEqual(filters.where.values, ['%legacy%', '%legacy%', '%legacy%']);
   });
 
   it('falls back to 1=1 when no filters are provided', () => {
@@ -95,7 +104,8 @@ describe('buildContactsFilters', () => {
 
     const filters = buildContactsFilters(params);
 
-    assert.equal(filters.whereClause, '1=1');
-    assert.deepEqual(filters.params, []);
+    const sql = normalizeSql(filters.where);
+    assert.equal(sql, '');
+    assert.deepEqual(filters.where.values, []);
   });
 });

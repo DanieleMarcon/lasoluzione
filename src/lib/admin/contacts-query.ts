@@ -1,12 +1,13 @@
 // src/lib/admin/contacts-query.ts
+import { Prisma } from '@prisma/client';
+
 import { prisma } from '@/lib/prisma';
 
 export const CONTACTS_DEFAULT_PAGE_SIZE = 20;
-export const CONTACTS_MAX_PAGE_SIZE = 100;
+export const CONTACTS_MAX_PAGE_SIZE = 200;
 
 export type ContactFilters = {
-  whereClause: string;
-  params: unknown[];
+  where: Prisma.Sql;
 };
 
 export type ContactDTO = {
@@ -25,7 +26,7 @@ type ContactQueryRow = {
   phone: string | null;
   agreePrivacy: number | boolean | null;
   agreeMarketing: number | boolean | null;
-  createdAt: string | Date;
+  last_contact_at: string | Date;
   totalBookings: number;
 };
 
@@ -63,42 +64,42 @@ function parseDateEnd(value: string | null): string | null {
 }
 
 export function buildContactsFilters(searchParams: URLSearchParams): ContactFilters {
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+  const conditions: Prisma.Sql[] = [];
 
   const search = (searchParams.get('q') ?? searchParams.get('search') ?? '').trim();
   if (search) {
     const wildcard = `%${search.toLowerCase()}%`;
-    conditions.push('(LOWER(name) LIKE ? OR LOWER(email) LIKE ? OR LOWER(phone) LIKE ?)');
-    params.push(wildcard, wildcard, wildcard);
+    conditions.push(
+      Prisma.sql`(
+        LOWER(TRIM(COALESCE(b."name", ''))) LIKE ${wildcard}
+        OR LOWER(TRIM(b."email")) LIKE ${wildcard}
+        OR LOWER(TRIM(COALESCE(b."phone", ''))) LIKE ${wildcard}
+      )`,
+    );
   }
 
   const newsletter = parseBooleanFilter(searchParams.get('newsletter'));
   if (newsletter !== null) {
-    conditions.push('agreeMarketing = ?');
-    params.push(newsletter ? 1 : 0);
+    conditions.push(Prisma.sql`b."agreeMarketing" = ${newsletter}`);
   }
 
   const privacy = parseBooleanFilter(searchParams.get('privacy'));
   if (privacy !== null) {
-    conditions.push('agreePrivacy = ?');
-    params.push(privacy ? 1 : 0);
+    conditions.push(Prisma.sql`b."agreePrivacy" = ${privacy}`);
   }
 
   const from = parseDateStart(searchParams.get('from'));
   if (from) {
-    conditions.push('createdAt >= ?');
-    params.push(from);
+    conditions.push(Prisma.sql`b."createdAt" >= ${from}`);
   }
 
   const to = parseDateEnd(searchParams.get('to'));
   if (to) {
-    conditions.push('createdAt <= ?');
-    params.push(to);
+    conditions.push(Prisma.sql`b."createdAt" <= ${to}`);
   }
 
-  const whereClause = conditions.length > 0 ? conditions.join(' AND ') : '1=1';
-  return { whereClause, params };
+  const where = conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, Prisma.sql` AND `)}` : Prisma.sql``;
+  return { where };
 }
 
 export function resolveContactsPagination(
@@ -131,7 +132,7 @@ function mapContactRow(row: ContactQueryRow): ContactDTO {
     name: row.name?.trim() ?? '',
     email: row.email?.trim() ?? '',
     phone: row.phone?.trim() ?? '',
-    createdAt: toIsoString(row.createdAt),
+    createdAt: toIsoString(row.last_contact_at),
     agreePrivacy: Boolean(row.agreePrivacy),
     agreeMarketing: Boolean(row.agreeMarketing),
     totalBookings: Number(row.totalBookings ?? 0),
@@ -140,66 +141,64 @@ function mapContactRow(row: ContactQueryRow): ContactDTO {
 
 /**
  * Ritorna una riga per email (deduplicata), con conteggio totale prenotazioni.
- * NB: niente generics sui $queryRawUnsafe → cast dopo await (fix ts(2347)).
  */
 export async function fetchContactsData({
-  whereClause,
-  params,
+  where,
   limit,
   offset = 0,
 }: {
-  whereClause: string;
-  params: unknown[];
+  where: Prisma.Sql;
   limit?: number;
   offset?: number;
 }): Promise<ContactDTO[]> {
-  const paginationClause = typeof limit === 'number' ? ' LIMIT ? OFFSET ?' : '';
-  const queryParams: any[] = [...params];
-  if (typeof limit === 'number') {
-    queryParams.push(limit, offset);
-  }
+  const paginationLimit = typeof limit === 'number' && Number.isFinite(limit) ? Math.max(0, limit) : null;
+  const paginationOffset = typeof offset === 'number' && Number.isFinite(offset) ? Math.max(0, offset) : 0;
 
-  const query = `
+  const paginationClause =
+    paginationLimit !== null ? Prisma.sql`LIMIT ${paginationLimit} OFFSET ${paginationOffset}` : Prisma.sql``;
+
+  const query = Prisma.sql`
     WITH filtered AS (
       SELECT
-        id,
-        name,
-        TRIM(email) AS email,
-        LOWER(TRIM(email)) AS normalizedEmail,
-        phone,
-        agreePrivacy,
-        agreeMarketing,
-        createdAt
-      FROM Booking
-      WHERE ${whereClause}
+        b."id",
+        TRIM(b."name") AS "name",
+        TRIM(b."email") AS "email",
+        LOWER(TRIM(COALESCE(b."email", ''))) AS "normalizedEmail",
+        TRIM(b."phone") AS "phone",
+        b."agreePrivacy",
+        b."agreeMarketing",
+        b."createdAt"
+      FROM "Booking" b
+      ${where}
     ),
     ranked AS (
       SELECT
-        id,
-        name,
-        email,
-        phone,
-        agreePrivacy,
-        agreeMarketing,
-        createdAt,
-        normalizedEmail,
-        ROW_NUMBER() OVER (PARTITION BY normalizedEmail ORDER BY createdAt DESC, id DESC) AS rowNumber,
-        COUNT(*) OVER (PARTITION BY normalizedEmail) AS totalBookings
+        "id",
+        "name",
+        "email",
+        "phone",
+        "agreePrivacy",
+        "agreeMarketing",
+        "createdAt",
+        "normalizedEmail",
+        ROW_NUMBER() OVER (PARTITION BY "normalizedEmail" ORDER BY "createdAt" DESC, "id" DESC) AS "rowNumber",
+        COUNT(*) OVER (PARTITION BY "normalizedEmail") AS "totalBookings"
       FROM filtered
     )
     SELECT
-      name,
-      email,
-      phone,
-      agreePrivacy,
-      agreeMarketing,
-      createdAt,
-      totalBookings
+      "name",
+      "email",
+      "phone",
+      "agreePrivacy",
+      "agreeMarketing",
+      "createdAt" AS "last_contact_at",
+      "totalBookings"
     FROM ranked
-    WHERE rowNumber = 1
-    ORDER BY createdAt DESC${paginationClause};
+    WHERE "rowNumber" = 1
+    ORDER BY "last_contact_at" DESC, "email" ASC
+    ${paginationClause}
   `;
 
-  const rows = (await prisma.$queryRawUnsafe(query, ...queryParams)) as ContactQueryRow[];
+  const rows = await prisma.$queryRaw<ContactQueryRow[]>(query);
   return rows.map(mapContactRow);
 }

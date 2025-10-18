@@ -3,14 +3,17 @@ updated: 2025-10-14
 ---
 # Known Issues & Fix Log
 
-## 2025-10-14 – Admin contacts API 500
-- **Sintomo**: chiamando `GET /api/admin/contacts` la piattaforma restituiva 500 sia con utente non autenticato sia con querystring valide.
-- **Root cause**: l'handler sollevava `AdminUnauthorizedError` senza intercettarla; Next.js propagava l'eccezione come 500 generico invece di `401/403`. In più la risposta esponeva `{ data, meta }` non allineato ai consumer e mancava la paginazione standard `page/pageSize/total`.
+## Risolti
+- **Contacts 500 (OFFSET)** — Query `GET /api/admin/contacts` crashava per SQL `LIMIT`/`OFFSET` invertiti e uso di `$queryRawUnsafe`. Ora l'handler usa `Prisma.sql` parametrico, ordina con `ORDER BY "last_contact_at" DESC LIMIT … OFFSET`, calcola il totale su CTE deduplicata e restituisce `{ data, page, pageSize, total, hasNextPage, hasPrevPage }`. La UI admin mostra errori leggibili quando la fetch fallisce.【F:src/app/api/admin/contacts/route.ts†L1-L63】【F:src/lib/admin/contacts-query.ts†L1-L176】【F:src/components/admin/contacts/ContactsPageClient.tsx†L1-L330】
+
+## 2025-02-15 – Admin contacts API 500
+- **Sintomo**: chiamando `GET /api/admin/contacts` la piattaforma restituiva 500 per SQL malformata (`OFFSET` prima di `LIMIT`) e `$queryRawUnsafe` senza bind.
+- **Root cause**: concatenazione stringhe in raw SQL con ordinamento errato e conteggio totale scollegato, risposta `{ items, totalPages }` non più in linea con la UI.
 - **Fix**:
-  - intercettato `AdminUnauthorizedError` e restituito `401` esplicito con payload JSON minimale;【F:src/app/api/admin/contacts/route.ts†L4-L36】
-  - uniformata la query Prisma (`fetchContactsData`) e la conta totale sfruttando i filtri condivisi, con ordinamento `createdAt DESC`; risultato restituito come `{ items, page, pageSize, total, totalPages }` con clamp su `pageSize ≤ 100`;【F:src/app/api/admin/contacts/route.ts†L16-L41】
-  - preferenza al filtro `q` (fallback `search`) e normalizzazione dei consensi/date nella costruzione della `WHERE` clause; copertura test con Node test runner;【F:src/lib/admin/contacts-query.ts†L5-L118】【F:tests/contacts-query.test.ts†L1-L87】
-- **Follow-up**: valutare export CSV e pagina stampa per uniformare la querystring (`q`) e propagare lo stesso DTO; completare osservabilità (log structured) per errori Prisma futuri.
+  - intercettato `AdminUnauthorizedError` e restituito `401` esplicito con payload JSON minimale;【F:src/app/api/admin/contacts/route.ts†L15-L23】
+  - riscritta la query con `Prisma.sql`: deduplica via CTE, `ORDER BY "last_contact_at" DESC LIMIT … OFFSET` parametrico e conteggio totale separato; risposta `{ data, page, pageSize, total, hasNextPage, hasPrevPage }`.【F:src/app/api/admin/contacts/route.ts†L29-L59】【F:src/lib/admin/contacts-query.ts†L66-L204】
+  - preferenza al filtro `q` (fallback `search`) e normalizzazione dei consensi/date nella costruzione della clausola `WHERE`, con test Node aggiornati;【F:src/lib/admin/contacts-query.ts†L66-L140】【F:tests/contacts-query.test.ts†L1-L89】
+- **Follow-up**: monitorare CSV/print per mantenere in sync filtri e DTO e valutare log strutturati per errori Prisma futuri.
 Aggiornato al: 2025-02-15
 
 ## Mini-TOC
@@ -28,7 +31,7 @@ Ogni issue include **riproduzione**, **causa ipotizzata**, **log da raccogliere*
 ## API & Backend
 | ID | Descrizione | Riproduzione | Ipotesi causa | Log richiesti | Priorità |
 | --- | --- | --- | --- | --- | --- |
-| API-500-Contacts | `/api/admin/contacts` restituisce 500. | `GET https://<preview>/api/admin/contacts` con sessione admin oppure aprire `/admin/contacts`. | Rotta interroga tabella non migrata (`prisma.contacts` assente). | Log Prisma (`error.code`, `query`), stack trace completo. Annotare `requestId`. | **P0** |
+| API-500-Contacts | [RISOLTO] `/api/admin/contacts` 500 per SQL `OFFSET`/`LIMIT` invertiti. | — | Vedi sezione "Risolti" (Contacts 500 OFFSET). | — | — |
 | API-EmailOnly-Seed | Lista eventi email-only in `/admin/settings` vuota. | Aprire `/admin/settings` → sezione "Eventi prenotazione via email". | Nessun seed `EventInstance`; API supporta solo PATCH. | Log query `fetchAdminEventInstances`, output array. | **P1** |
 
 ## Frontend & Admin UI

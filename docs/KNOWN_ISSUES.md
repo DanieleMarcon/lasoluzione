@@ -28,7 +28,7 @@ Ogni issue include **riproduzione**, **causa ipotizzata**, **log da raccogliere*
 ## API & Backend
 | ID | Descrizione | Riproduzione | Ipotesi causa | Log richiesti | Priorità |
 | --- | --- | --- | --- | --- | --- |
-| API-500-Contacts | `/api/admin/contacts` restituisce 500. | `GET https://<preview>/api/admin/contacts` con sessione admin oppure aprire `/admin/contacts`. | Rotta interroga tabella non migrata (`prisma.contacts` assente). | Log Prisma (`error.code`, `query`), stack trace completo. Annotare `requestId`. | **P0** |
+| API-500-Contacts | [RISOLTO 2025-02-15] `/api/admin/contacts` tornava 500; ora usa CTE `Prisma.sql` + `$queryRaw` tipizzato. | Storico: `GET https://<preview>/api/admin/contacts` con sessione admin. | Fix: `fetchContactsData`/`countContacts` con filtri tipizzati, paginazione sicura. | Monitorare solo warn Prisma anomali (nessun log aggiuntivo richiesto). | ✔️ Closed |
 | API-EmailOnly-Seed | Lista eventi email-only in `/admin/settings` vuota. | Aprire `/admin/settings` → sezione "Eventi prenotazione via email". | Nessun seed `EventInstance`; API supporta solo PATCH. | Log query `fetchAdminEventInstances`, output array. | **P1** |
 
 ## Frontend & Admin UI

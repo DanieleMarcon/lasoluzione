@@ -31,11 +31,11 @@ Aggiornato al: 2025-02-15
 - Per branch documentazione (`docs/*`) Vercel crea preview anche se l'app non cambia: usare per QA statico.
 
 ## Motore Node & runtime
-- `package.json` definisce `"engines": { "node": ">=20 <21" }`. Vercel, al momento, può indicare Node 22.x nella dashboard ma **rispetta l'engine** del progetto, quindi runtime effettivo: **Node.js 20.x**.
+- `package.json` definisce `"engines": { "node": ">=22 <23" }` e il progetto Vercel è configurato su **Node.js 22.x** per evitare warning di mismatch tra build e runtime.【F:package.json†L1-L38】
 - Configurazione API:
-  - Rotte payments e bookings impostano `export const runtime = 'nodejs'` per abilitare Nodemailer/Revolut SDK.
-  - Nessuna rotta Edge attiva. Evitare di forzare `edge` su API che usano Prisma.
-- Se necessario usare Node 22.x, aggiornare `package.json` **e** Vercel Project Settings (doppia conferma).
+  - Rotte payments e bookings impostano `export const runtime = 'nodejs'` per abilitare Nodemailer/Revolut SDK.【F:src/app/api/payments/checkout/route.ts†L18-L33】【F:src/app/api/bookings/route.ts†L1-L24】
+  - Nessuna rotta Edge attiva. Evitare di forzare `edge` su API che usano Prisma.【F:src/app/api/admin/contacts/route.ts†L1-L39】
+- Se si deve cambiare major di Node, aggiornare **sia** `package.json` **sia** Vercel Project Settings per mantenere allineati engine e build cache.
 
 ## Deploy hooks & automazioni
 | Hook | URL | Scopo |

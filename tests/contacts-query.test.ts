@@ -4,7 +4,8 @@ import { describe, it } from 'node:test';
 import {
   CONTACTS_DEFAULT_PAGE_SIZE,
   CONTACTS_MAX_PAGE_SIZE,
-  buildContactsFilters,
+  parseContactsFilters,
+  resolveContactsWhere,
   resolveContactsPagination,
 } from '@/lib/admin/contacts-query';
 
@@ -16,7 +17,7 @@ describe('resolveContactsPagination', () => {
 
     assert.equal(result.page, 1);
     assert.equal(result.pageSize, CONTACTS_DEFAULT_PAGE_SIZE);
-    assert.equal(result.skip, 0);
+    assert.equal(result.offset, 0);
   });
 
   it('normalizes invalid values and clamps to max page size', () => {
@@ -29,10 +30,10 @@ describe('resolveContactsPagination', () => {
 
     assert.equal(result.page, 1);
     assert.equal(result.pageSize, CONTACTS_MAX_PAGE_SIZE);
-    assert.equal(result.skip, 0);
+    assert.equal(result.offset, 0);
   });
 
-  it('computes skip correctly for valid inputs', () => {
+  it('computes offset correctly for valid inputs', () => {
     const params = new URLSearchParams([
       ['page', '3'],
       ['pageSize', '15'],
@@ -42,22 +43,24 @@ describe('resolveContactsPagination', () => {
 
     assert.equal(result.page, 3);
     assert.equal(result.pageSize, 15);
-    assert.equal(result.skip, 30);
+    assert.equal(result.offset, 30);
   });
 });
 
-describe('buildContactsFilters', () => {
+describe('parseContactsFilters', () => {
   it('prefers the q parameter when both q and search are provided', () => {
     const params = new URLSearchParams([
       ['q', 'Example'],
       ['search', 'Legacy'],
     ]);
 
-    const filters = buildContactsFilters(params);
+    const filters = parseContactsFilters(params);
+    assert.equal(filters.search, 'Example');
 
-    assert.match(filters.whereClause, /LOWER\(name\) LIKE \?/);
-    assert.equal(filters.params.length, 3);
-    assert.deepEqual(filters.params, ['%example%', '%example%', '%example%']);
+    const where = resolveContactsWhere(filters);
+    assert.equal(where.values.length, 3);
+    assert.deepEqual(where.values, ['%example%', '%example%', '%example%']);
+    assert.match(where.strings.join(' '), /LOWER\(b\.name\) LIKE/);
   });
 
   it('applies boolean and date filters with normalized values', () => {
@@ -68,34 +71,33 @@ describe('buildContactsFilters', () => {
       ['to', '2024-02-10'],
     ]);
 
-    const filters = buildContactsFilters(params);
+    const filters = parseContactsFilters(params);
 
-    assert.equal(filters.whereClause.includes('agreeMarketing = ?'), true);
-    assert.equal(filters.whereClause.includes('agreePrivacy = ?'), true);
-    assert.equal(filters.whereClause.includes('createdAt >= ?'), true);
-    assert.equal(filters.whereClause.includes('createdAt <= ?'), true);
-    assert.equal(filters.params.length, 4);
-    assert.deepEqual(filters.params, [1, 0, '2024-01-05T00:00:00.000Z', '2024-02-10T23:59:59.999Z']);
+    assert.equal(filters.newsletter, 'true');
+    assert.equal(filters.privacy, 'false');
+    assert(filters.from instanceof Date);
+    assert(filters.to instanceof Date);
+
+    const where = resolveContactsWhere(filters);
+    assert.equal(where.values.length, 2);
+
+    const [from, to] = where.values as Date[];
+    assert.equal(from.toISOString(), '2024-01-05T00:00:00.000Z');
+    assert.equal(to.toISOString(), '2024-02-11T00:00:00.000Z');
   });
 
-  it('supports the legacy search parameter when q is missing', () => {
-    const params = new URLSearchParams([
-      ['search', 'Legacy'],
-    ]);
-
-    const filters = buildContactsFilters(params);
-
-    assert.match(filters.whereClause, /LOWER\(name\) LIKE \?/);
-    assert.equal(filters.params.length, 3);
-    assert.deepEqual(filters.params, ['%legacy%', '%legacy%', '%legacy%']);
-  });
-
-  it('falls back to 1=1 when no filters are provided', () => {
+  it('returns empty filters when no parameters are provided', () => {
     const params = new URLSearchParams();
 
-    const filters = buildContactsFilters(params);
+    const filters = parseContactsFilters(params);
+    assert.equal(filters.search, undefined);
+    assert.equal(filters.newsletter, 'all');
+    assert.equal(filters.privacy, 'all');
+    assert.equal(filters.from, undefined);
+    assert.equal(filters.to, undefined);
 
-    assert.equal(filters.whereClause, '1=1');
-    assert.deepEqual(filters.params, []);
+    const where = resolveContactsWhere(filters);
+    assert.equal(where.values.length, 0);
+    assert.equal(where.strings.join(''), '');
   });
 });

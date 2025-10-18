@@ -12,7 +12,7 @@ export class AdminUnauthorizedError extends Error {
   }
 }
 
-export async function assertAdmin() {
+async function realAssertAdmin() {
   const session = await auth();
 
   if (!session?.user?.email || !isAdminEmail(session.user.email)) {
@@ -20,6 +20,20 @@ export async function assertAdmin() {
   }
 
   return session;
+}
+
+let assertAdminImpl = realAssertAdmin;
+
+export async function assertAdmin() {
+  return assertAdminImpl();
+}
+
+export function setAssertAdminImpl(impl: typeof realAssertAdmin) {
+  assertAdminImpl = impl;
+}
+
+export function resetAssertAdminImpl() {
+  assertAdminImpl = realAssertAdmin;
 }
 
 export function enforceAdminEmail(email: string | null | undefined) {

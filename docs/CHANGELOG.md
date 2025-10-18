@@ -8,6 +8,10 @@ updated: 2025-02-14
 
 ## [Unreleased]
 
+### Fixed
+- fix: admin contacts uses Prisma.sql and safe $queryRaw; fixed pagination; aligned Node version to 22.x across repo and Vercel docs.【F:src/lib/admin/contacts-query.ts†L1-L207】【F:src/app/api/admin/contacts/route.ts†L1-L39】【F:package.json†L1-L38】
+
+
 ## 2025-02-15 – Docs hardening & deepening
 ### Added
 - Nuovi documenti `DEPLOYMENT.md`, `KNOWN_ISSUES.md`, `ROADMAP.md` con checklist, priorità bug e milestone evolutive.

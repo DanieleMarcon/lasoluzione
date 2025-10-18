@@ -74,7 +74,7 @@ Aggiornato al: 2025-02-15
 | GET/POST | /api/payments/order-status | pubblico | `payments/order-status/route.ts`【F:src/app/api/payments/order-status/route.ts†L7-L53】 | Order | Nessun auth | Polling stato ordine via DB + Revolut. |
 | GET | /api/admin/_whoami | admin | `admin/_whoami/route.ts`【F:src/app/api/admin/_whoami/route.ts†L6-L32】 | (nessun modello) | Middleware + NextAuth token | Debug sessione dev con env summary. |
 | GET | /api/admin/bookings | admin | `admin/bookings/route.ts`【F:src/app/api/admin/bookings/route.ts†L12-L42】 | Booking | `assertAdmin` | Lista paginata prenotazioni con filtri. |
-| GET | /api/admin/contacts | admin | `admin/contacts/route.ts`【F:src/app/api/admin/contacts/route.ts†L4-L41】 | Booking | `assertAdmin` (401 se non admin) | Contatti deduplicati per email con paginazione (`page` ≥1, `pageSize` ≤100), filtro `q` su nome/email/telefono e ordine `createdAt DESC`; risposta `{ items, page, pageSize, total, totalPages }`.【F:src/lib/admin/contacts-query.ts†L5-L182】 |
+| GET | /api/admin/contacts | admin | `admin/contacts/route.ts`【F:src/app/api/admin/contacts/route.ts†L1-L39】 | Booking | `assertAdmin` (401 se non admin) | Deduplica i contatti via CTE `fetchContactsData`/`countContacts` basate su `Prisma.sql` e `$queryRaw` tipizzato (`q`, `newsletter`, `privacy`, `from`, `to`, `pageSize ≤ 100`), ordine `createdAt DESC`; risposta `{ items, page, pageSize, total, totalPages }`.【F:src/lib/admin/contacts-query.ts†L1-L207】 |
 | PATCH/DELETE | /api/admin/bookings/[id] | admin | `admin/bookings/[id]/route.ts`【F:src/app/api/admin/bookings/[id]/route.ts†L41-L120】 | Booking, BookingSettings | `assertAdmin` | Update/soft delete booking, valida tipi e date. |
 | POST | /api/admin/bookings/[id]/confirm | admin | `admin/bookings/[id]/confirm/route.ts`【F:src/app/api/admin/bookings/[id]/confirm/route.ts†L18-L62】 | Booking | `assertAdmin` | Imposta stato `confirmed` e reinvia email. |
 | POST | /api/admin/bookings/[id]/cancel | admin | `admin/bookings/[id]/cancel/route.ts`【F:src/app/api/admin/bookings/[id]/cancel/route.ts†L15-L41】 | Booking | `assertAdmin` | Marca `cancelled` e invia email testo (se SMTP). |
@@ -128,6 +128,7 @@ Aggiornato al: 2025-02-15
 ### src/lib (API/Admin)
 - `admin/event-instances.ts` — Fetch server-side istanze evento ordinate per startAt.【F:src/lib/admin/event-instances.ts†L5-L25】
 - `admin/booking-query.ts` — Costruzione filtri bookings admin (pagina, date, status).【F:src/lib/admin/booking-query.ts†L1-L48】
+- `admin/contacts-query.ts` — Parser filtri e CTE `Prisma.sql` per contatti deduplicati (`fetchContactsData`/`countContacts`).【F:src/lib/admin/contacts-query.ts†L1-L207】
 - `admin/booking-dto.ts` — Mappatura Booking → DTO amministrativo.【F:src/lib/admin/booking-dto.ts†L1-L120】
 - `admin/settings-dto.ts` — Normalizza BookingSettings per UI admin.【F:src/lib/admin/settings-dto.ts†L5-L24】
 - `admin/session.ts` — Helper `assertAdmin` su base NextAuth + whitelist.【F:src/lib/admin/session.ts†L7-L23】
@@ -318,8 +319,19 @@ Le tabelle seguenti coprono **tutte** le rotte presenti sotto `src/app/api` (pub
 | `POST /api/admin/bookings/[id]/confirm` | `assertAdmin` | — | `200` → booking `confirmed` + email inviata | `404` booking; `409` stato non pendente; `500` mailer | Aggiorna `Booking.status`, `confirmedAt`, invia email | `src/app/api/admin/bookings/[id]/confirm/route.ts` |
 | `POST /api/admin/bookings/[id]/cancel` | `assertAdmin` | Body `{ reason?: string }` | `200` → booking `cancelled` | `404` booking; `409` `already_cancelled` | Aggiorna stato, invia email testo | `src/app/api/admin/bookings/[id]/cancel/route.ts` |
 | `POST /api/admin/bookings/[id]/resend` | `assertAdmin` | — | `200` → email reinviata | `404` booking; `409` `no_email_template` | Genera email HTML/testo e invia via Nodemailer | `src/app/api/admin/bookings/[id]/resend/route.ts` |
-| `GET /api/admin/contacts` | `assertAdmin` | Query `page`, `q`, `source` | **Bug**: `500` per Prisma `contacts` inesistente | `500` `table_missing` (vedi Known Issues) | Query su tabella inesistente (TODO) | `src/app/api/admin/contacts/route.ts` |
-| `GET /api/admin/contacts/export` | `assertAdmin` | Query `format` | `500` (stesso bug) | `500` | Tentativo export contatti | `src/app/api/admin/contacts/export/route.ts` |
+| `GET /api/admin/contacts` | `assertAdmin` | Query `page`, `pageSize`, `q`, `newsletter`, `privacy`, `from`, `to` | `200` → `{ items, page, pageSize, total, totalPages }` | `401` se non admin | Deduplica email normalizzate con `fetchContactsData`/`countContacts` (`Prisma.sql` + `$queryRaw`) | `src/app/api/admin/contacts/route.ts` |
+| `GET /api/admin/contacts/export` | `assertAdmin` | Query `q`, `newsletter`, `privacy`, `from`, `to` | `200` CSV (max 10k righe) | `401` se non admin | Usa `fetchContactsData` con `LIMIT` elevato per generare CSV, segnala `# truncated` oltre soglia | `src/app/api/admin/contacts/export/route.ts` |
+
+#### Focus: Admin Contacts API
+
+```ts
+const filters = parseContactsFilters(searchParams);
+const { page, pageSize, offset } = resolveContactsPagination(searchParams);
+const items = await fetchContactsData({ filters, limit: pageSize, offset });
+const total = await countContacts(filters);
+```
+
+Le helper `fetchContactsData` e `countContacts` compongono CTE deduplicate con `Prisma.sql` e `$queryRaw`, evitando stringhe concatenate e garantendo parametri tipizzati per filtri (`q`, `newsletter`, `privacy`, `from`, `to`).【F:src/app/api/admin/contacts/route.ts†L1-L39】【F:src/lib/admin/contacts-query.ts†L1-L207】
 | `GET /api/admin/menu/dishes` | `assertAdmin` | Query `page`, `visibleAt` | `200` → `{ data: MenuDish[], meta }` | — | Lettura `MenuDish` | `src/app/api/admin/menu/dishes/route.ts` |
 | `POST /api/admin/menu/dishes` | `assertAdmin` | Body `createMenuDishSchema` | `201` → dish creato | `400` validazione; `409` slug duplicato | Crea `MenuDish` | `src/app/api/admin/menu/dishes/route.ts` |
 | `PATCH /api/admin/menu/dishes/[id]` | `assertAdmin` | Body `updateMenuDishSchema` | `200` → dish aggiornato | `404` dish; `409` slug duplicato | Aggiorna record | `src/app/api/admin/menu/dishes/[id]/route.ts` |
@@ -430,7 +442,7 @@ Le tabelle seguenti coprono **tutte** le rotte presenti sotto `src/app/api` (pub
 | `verify_required` | 409 | "Completa la verifica email" | Checkout chiamato senza `order_verify_token` valido | Forzare flusso email verify, mostrare CTA reinvio. |
 | `already_paid` | 409 | "Ordine già pagato" | `Order.status` `paid`/`confirmed` | Evitare doppio pagamento, offrire pagina successo. |
 | `provider_error` | 424 | "Errore provider pagamento" | Revolut API ha risposto errore 5xx/timeout | Ritentare dopo 30s, loggare `responseId`. |
-| `table_missing` | 500 | "Contatti non disponibili" | Rotta `/api/admin/contacts` interroga tabella non migrata | Vedi Known Issue P0, creare migrazione o disabilitare feature. |
+| (risolto 2025-02-15) | — | — | `/api/admin/contacts` ora usa viste CTE su `Booking`; nessuna tabella mancante | Vedi changelog 2025-02-15 per dettaglio fix. |
 | `email_only_disabled` | 409 | "Prenotazione email-only disabilitata" | `EventInstance.allowEmailOnlyBooking` false | Abilitare via admin settings o mostrare messaggio alt. |
 | `cart_empty` | 409 | "Il carrello è vuoto" | Nessun `CartItem` attivo durante checkout | Forzare reload carrello; se bug, indagare seed. |
 
@@ -882,7 +894,7 @@ Attualmente non sono configurate policy RLS, trigger o funzioni Supabase all’i
 - `PAYMENTS.md` dettaglia sequenza Revolut, firma webhook e idempotenza ordine.
 - `FRONTEND.md` collega ogni rotta admin alla UI (componenti React) con note di UX.
 - `WORKFLOW_AND_ENVIRONMENT_GUIDE.md` spiega come usare questi endpoint in QA (branch docs, PR, ambienti).
-- `KNOWN_ISSUES.md` cataloga bug API (es. `/api/admin/contacts` 500) con passi di riproduzione.
+- `KNOWN_ISSUES.md` traccia gli incident storici (es. `/api/admin/contacts` 500 ora risolto) con note post-mortem.
 
 ## Provenienza & Storia
 SORGENTE: `docs/_archive/ROUTES.md`, `docs/_archive/AUDIT_BACKEND.md`, `docs/_archive/DATABASE.md`  

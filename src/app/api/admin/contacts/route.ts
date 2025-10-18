@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { AdminUnauthorizedError, assertAdmin } from '@/lib/admin/session';
 import {
-  buildContactsFilters,
+  parseContactsFilters,
   resolveContactsPagination,
   fetchContactsData,
+  countContacts,
 } from '@/lib/admin/contacts-query';
 
 export const runtime = 'nodejs';
@@ -20,23 +21,18 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
-  const filters = buildContactsFilters(searchParams);
-  const { page, pageSize, skip } = resolveContactsPagination(searchParams);
+  const filters = parseContactsFilters(searchParams);
+  const { page, pageSize, offset } = resolveContactsPagination(searchParams);
 
-  const [items, totalRows] = await Promise.all([
+  const [items, total] = await Promise.all([
     fetchContactsData({
-      whereClause: filters.whereClause,
-      params: filters.params,
+      filters,
       limit: pageSize,
-      offset: skip,
+      offset,
     }),
-    (await import('@/lib/prisma')).prisma.$queryRawUnsafe(
-      `SELECT COUNT(DISTINCT LOWER(TRIM(email))) AS total FROM Booking WHERE ${filters.whereClause};`,
-      ...(filters.params as any[])
-    ) as Promise<Array<{ total: number }>>,
+    countContacts(filters),
   ]);
 
-  const total = Number(totalRows[0]?.total ?? 0);
   const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
 
   return NextResponse.json({

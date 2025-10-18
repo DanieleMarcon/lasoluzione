@@ -181,6 +181,7 @@ Checklist:
 - Production Branch: `main`.
 - Preview: ogni PR/branch; URL formato `https://lasoluzione-git-<branch>.vercel.app`.
 - Env: configurare `Production`, `Preview`, `Development` con variabili coerenti (vedi `PAYMENTS.md`).
+- Runtime Node: mantenere Node 22.x allineando `package.json` (`>=22 <23`) e Vercel → Build & Development Settings per evitare warning di engine mismatch.【F:package.json†L1-L38】
 
 ### 5.2 Redeploy / rollback
 - `Redeploy`: Vercel UI → Deployment → `Redeploy` (usa commit originale).

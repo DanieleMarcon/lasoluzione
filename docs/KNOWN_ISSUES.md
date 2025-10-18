@@ -3,6 +3,15 @@ updated: 2025-10-14
 ---
 # Known Issues & Fix Log
 
+## 2025-02-16 – Admin Contacts 500 (SQL unsafe query)
+- **Sintomo**: `/api/admin/contacts` restituiva 500 con filtri complessi o paginazione oltre pagina 1.
+- **Root cause**: query composta via `$queryRawUnsafe` e stringhe concatenate; `LIMIT`/`OFFSET` non parametrizzati generavano `syntax error near "OFFSET"` e impedivano a Prisma di tipizzare i filtri.
+- **Fix**:
+  - introdotto builder `buildContactsWhere` che produce frammenti `Prisma.sql` tipizzati per search/boolean/date, riutilizzabili da API e export.【F:src/lib/admin/contacts-query.ts†L1-L146】
+  - handler `/api/admin/contacts` ora usa `Prisma.sql` parametrico su view `contacts_view`, con `LIMIT`/`OFFSET` numerici sanitizzati e risposta `{ ok, items, totalPages }`.【F:src/app/api/admin/contacts/route.ts†L1-L116】
+  - export/print allineati alla nuova fetch tipizzata (`fetchContactsData`) per evitare `$queryRawUnsafe`.【F:src/app/api/admin/contacts/export/route.ts†L1-L69】【F:src/app/admin/(protected)/contacts/print/page.tsx†L1-L157】
+- **Follow-up**: monitorare che la view `contacts_view` resti aggiornata con deduplica per email e valutare fallback se non presente in ambienti locali.
+
 ## 2025-10-14 – Admin contacts API 500
 - **Sintomo**: chiamando `GET /api/admin/contacts` la piattaforma restituiva 500 sia con utente non autenticato sia con querystring valide.
 - **Root cause**: l'handler sollevava `AdminUnauthorizedError` senza intercettarla; Next.js propagava l'eccezione come 500 generico invece di `401/403`. In più la risposta esponeva `{ data, meta }` non allineato ai consumer e mancava la paginazione standard `page/pageSize/total`.

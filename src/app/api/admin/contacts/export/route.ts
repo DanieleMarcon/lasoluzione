@@ -1,9 +1,5 @@
 import { assertAdmin } from '@/lib/admin/session';
-import {
-  buildContactsFilters,
-  fetchContactsData,
-  type ContactDTO,
-} from '@/lib/admin/contacts-query';
+import { fetchContactsData, parseContactsFilters, type ContactDTO } from '@/lib/admin/contacts-query';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -52,11 +48,10 @@ export async function GET(req: Request) {
   await assertAdmin();
 
   const { searchParams } = new URL(req.url);
-  const filters = buildContactsFilters(searchParams);
+  const filters = parseContactsFilters(searchParams);
 
   const rows = await fetchContactsData({
-    whereClause: filters.whereClause,
-    params: filters.params,
+    filters,
     limit: EXPORT_MAX_ROWS + 1,
     offset: 0,
   });

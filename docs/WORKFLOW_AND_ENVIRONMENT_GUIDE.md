@@ -192,6 +192,11 @@ Checklist:
 - Opzione B: clonare progetto Vercel e collegarlo a branch alternativo.
 - Evitare di cambiare temporaneamente Production Branch (alto rischio). Documentare scelte in `DEVOPS.md`.
 
+### 5.4 Runtime logs e diagnostica
+- In Vercel → Deployments → seleziona build → scheda **Functions** → clic su `api/admin/contacts` (Edge/Serverless) per aprire i Runtime Logs.
+- Ogni invocazione mostra `requestId`, codice e messaggio: errori Prisma/handler loggano `CONTACTS_QUERY_FAILED` con stack console (`console.error`).
+- Per bug riproducibili, copia log completo (inclusi `statusCode` e `error`) e allegalo nella issue/PR insieme ai parametri di query usati.
+
 ---
 
 ## 6) Supabase & dati

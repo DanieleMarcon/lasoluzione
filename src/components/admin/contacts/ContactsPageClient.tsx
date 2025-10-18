@@ -7,7 +7,7 @@ import { ToastProvider, useToast } from '@/components/admin/ui/toast';
 
 const PAGE_SIZE = 20;
 
-export type AdminContact = {
+export type ContactDTO = {
   name: string;
   email: string;
   phone: string;
@@ -18,15 +18,12 @@ export type AdminContact = {
 };
 
 export type ContactsListResponse = {
-  data: AdminContact[];
-  meta: {
-    page: number;
-    pageSize: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPreviousPage: boolean;
-  };
+  data: ContactDTO[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
 };
 
 type Filters = {
@@ -82,14 +79,16 @@ function ContactsPageInner() {
   const toast = useToast();
   const [draftFilters, setDraftFilters] = useState<Filters>({ ...defaultFilters });
   const [filters, setFilters] = useState<Filters>({ ...defaultFilters });
-  const [contacts, setContacts] = useState<AdminContact[]>([]);
-  const [meta, setMeta] = useState<ContactsListResponse['meta']>({
+  const [contacts, setContacts] = useState<ContactDTO[]>([]);
+  const [pagination, setPagination] = useState<
+    Omit<ContactsListResponse, 'data'> & { totalPages: number }
+  >({
     page: 1,
     pageSize: PAGE_SIZE,
     total: 0,
-    totalPages: 1,
     hasNextPage: false,
-    hasPreviousPage: false,
+    hasPrevPage: false,
+    totalPages: 0,
   });
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -105,7 +104,7 @@ function ContactsPageInner() {
       const params = new URLSearchParams();
       params.set('page', String(page));
       params.set('pageSize', String(PAGE_SIZE));
-      if (filters.search.trim()) params.set('search', filters.search.trim());
+      if (filters.search.trim()) params.set('q', filters.search.trim());
       if (filters.newsletter !== 'all') params.set('newsletter', filters.newsletter);
       if (filters.privacy !== 'all') params.set('privacy', filters.privacy);
       if (filters.from) params.set('from', filters.from);
@@ -120,21 +119,52 @@ function ContactsPageInner() {
         });
 
         if (!response.ok) {
-          const payload = await response.json().catch(() => ({ error: 'Errore sconosciuto' }));
-          throw new Error(payload.error || 'Impossibile caricare i contatti');
+          const payload = await response
+            .json()
+            .catch(() => ({ error: 'Caricamento contatti non riuscito' }));
+          const message =
+            typeof payload?.detail === 'string'
+              ? payload.detail
+              : typeof payload?.error === 'string'
+              ? payload.error
+              : 'Caricamento contatti non riuscito';
+          throw new Error(message);
         }
 
-        const payload = (await response.json()) as ContactsListResponse;
-        if (page > payload.meta.totalPages && payload.meta.totalPages >= 1) {
-          setPage(payload.meta.totalPages);
+        const payload = (await response.json()) as
+          | ContactsListResponse
+          | { error: string; detail?: string };
+
+        if ('error' in payload && (!('data' in payload) || !Array.isArray(payload.data))) {
+          const message = payload.detail || payload.error || 'Caricamento contatti non riuscito';
+          throw new Error(message);
+        }
+
+        const result = payload as ContactsListResponse;
+        const totalPages = result.total === 0 ? 0 : Math.ceil(result.total / result.pageSize);
+
+        if (totalPages > 0 && page > totalPages) {
+          setPage(totalPages);
           return;
         }
 
-        setContacts(payload.data);
-        setMeta(payload.meta);
+        if (totalPages === 0 && page !== 1) {
+          setPage(1);
+          return;
+        }
+
+        setContacts(result.data);
+        setPagination({
+          page: result.page,
+          pageSize: result.pageSize,
+          total: result.total,
+          hasNextPage: result.hasNextPage,
+          hasPrevPage: result.hasPrevPage,
+          totalPages,
+        });
       } catch (err: any) {
         if (err?.name === 'AbortError') return;
-        const message = err?.message ?? 'Impossibile caricare i contatti';
+        const message = err?.message ?? 'Caricamento contatti non riuscito';
         setError(message);
         toast.error(message);
       } finally {
@@ -147,13 +177,17 @@ function ContactsPageInner() {
   }, [filters, page, toast]);
 
   const totalLabel = useMemo(() => {
-    if (meta.total === 0) return 'Nessun contatto trovato';
-    if (meta.total === 1) return '1 contatto trovato';
-    return `${meta.total} contatti totali`;
-  }, [meta.total]);
+    if (pagination.total === 0) return 'Nessun contatto trovato';
+    if (pagination.total === 1) return '1 contatto trovato';
+    return `${pagination.total} contatti totali`;
+  }, [pagination.total]);
 
-  const rangeStart = meta.total === 0 || contacts.length === 0 ? 0 : (meta.page - 1) * meta.pageSize + 1;
-  const rangeEnd = meta.total === 0 || contacts.length === 0 ? 0 : rangeStart + contacts.length - 1;
+  const rangeStart = pagination.total === 0 || contacts.length === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
+  const rangeEnd = pagination.total === 0 || contacts.length === 0 ? 0 : rangeStart + contacts.length - 1;
+
+  const hasPreviousPage = pagination.hasPrevPage;
+  const hasNextPage = pagination.hasNextPage;
+  const totalPagesLabel = pagination.totalPages > 0 ? pagination.totalPages : 1;
 
   function onFilterChange(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     const { name, value } = event.target;
@@ -176,7 +210,7 @@ function ContactsPageInner() {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('pageSize', String(PAGE_SIZE));
-    if (filters.search.trim()) params.set('search', filters.search.trim());
+    if (filters.search.trim()) params.set('q', filters.search.trim());
     if (filters.newsletter !== 'all') params.set('newsletter', filters.newsletter);
     if (filters.privacy !== 'all') params.set('privacy', filters.privacy);
     if (filters.from) params.set('from', filters.from);
@@ -186,7 +220,7 @@ function ContactsPageInner() {
 
   function handleExportCsv() {
     const params = new URLSearchParams();
-    if (filters.search.trim()) params.set('search', filters.search.trim());
+    if (filters.search.trim()) params.set('q', filters.search.trim());
     if (filters.newsletter !== 'all') params.set('newsletter', filters.newsletter);
     if (filters.privacy !== 'all') params.set('privacy', filters.privacy);
     if (filters.from) params.set('from', filters.from);
@@ -377,7 +411,7 @@ function ContactsPageInner() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#4b5563' }}>
           <p style={{ margin: 0, fontWeight: 600 }}>{totalLabel}</p>
           <p style={{ margin: 0, fontSize: '0.9rem' }}>
-            Pagina {meta.page} di {meta.totalPages}
+            Pagina {pagination.page} di {totalPagesLabel}
           </p>
         </div>
 
@@ -436,7 +470,7 @@ function ContactsPageInner() {
           <button
             type="button"
             onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-            disabled={!meta.hasPreviousPage || loading}
+            disabled={!hasPreviousPage || loading}
             style={{
               padding: '0.55rem 1.2rem',
               borderRadius: 999,
@@ -444,8 +478,8 @@ function ContactsPageInner() {
               backgroundColor: '#fff',
               color: '#374151',
               fontWeight: 600,
-              cursor: meta.hasPreviousPage && !loading ? 'pointer' : 'not-allowed',
-              opacity: meta.hasPreviousPage && !loading ? 1 : 0.6,
+              cursor: hasPreviousPage && !loading ? 'pointer' : 'not-allowed',
+              opacity: hasPreviousPage && !loading ? 1 : 0.6,
             }}
           >
             ← Precedente
@@ -456,7 +490,7 @@ function ContactsPageInner() {
           <button
             type="button"
             onClick={() => setPage((prev) => prev + 1)}
-            disabled={!meta.hasNextPage || loading}
+            disabled={!hasNextPage || loading}
             style={{
               padding: '0.55rem 1.2rem',
               borderRadius: 999,
@@ -464,8 +498,8 @@ function ContactsPageInner() {
               backgroundColor: '#111827',
               color: '#f9fafb',
               fontWeight: 600,
-              cursor: meta.hasNextPage && !loading ? 'pointer' : 'not-allowed',
-              opacity: meta.hasNextPage && !loading ? 1 : 0.6,
+              cursor: hasNextPage && !loading ? 'pointer' : 'not-allowed',
+              opacity: hasNextPage && !loading ? 1 : 0.6,
             }}
           >
             Successiva →

@@ -2,7 +2,7 @@ import { assertAdmin } from '@/lib/admin/session';
 import {
   buildContactsFilters,
   fetchContactsData,
-  type AdminContact,
+  type ContactDTO,
 } from '@/lib/admin/contacts-query';
 
 export const runtime = 'nodejs';
@@ -36,7 +36,7 @@ function sanitize(value: unknown) {
   return /[",]/.test(stringValue) ? `"${stringValue}"` : stringValue;
 }
 
-function toRecord(contact: AdminContact): ContactCsvRow {
+function toRecord(contact: ContactDTO): ContactCsvRow {
   return {
     name: contact.name,
     email: contact.email,
@@ -62,7 +62,7 @@ export async function GET(req: Request) {
   });
 
   let truncated = false;
-  let data: AdminContact[] = rows;
+  let data: ContactDTO[] = rows;
   if (rows.length > EXPORT_MAX_ROWS) {
     truncated = true;
     data = rows.slice(0, EXPORT_MAX_ROWS);

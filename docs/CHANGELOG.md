@@ -19,6 +19,7 @@ updated: 2025-02-14
 
 ### Fixed
 - Allineata la documentazione alle configurazioni correnti (NextAuth v5, middleware admin, seed PostgreSQL) e chiariti i requisiti `NEXTAUTH_URL`/`AUTH_URL` per produzione.
+- Fix: admin contacts 500 (OFFSET order + safe `$queryRaw`, risposta `{ data, page, pageSize, total, hasNextPage, hasPrevPage }`, gestione `401` per utenti non admin).
 
 ## 2025-10-10
 ### Added

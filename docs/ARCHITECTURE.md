@@ -117,6 +117,7 @@ Prisma ORM → PostgreSQL/Supabase (prisma/schema.prisma, seed.ts)
 | GET | `/api/events` | `src/app/api/events/route.ts` | Lista eventi pubblici. |
 | POST | `/api/newsletter` | `src/app/api/newsletter/route.ts` | Opt-in newsletter. |
 | Auth.js | `/api/auth/[...nextauth]` | `src/app/api/auth/[...nextauth]/route.ts` | Magic link con SMTP. |
+| GET | `/api/admin/contacts` | `src/app/api/admin/contacts/route.ts` | Endpoint admin: filtri `q`, `newsletter`, `privacy`, range date; paginazione `{ items, page, pageSize, total, totalPages }`, 401 se non admin.【F:src/app/api/admin/contacts/route.ts†L4-L41】【F:src/lib/admin/contacts-query.ts†L5-L182】 |
 
 ## Modelli attivi & migrazioni
 - **Booking / BookingVerification / BookingSettings**: flussi prenotazioni legacy e email-only con token conferma.

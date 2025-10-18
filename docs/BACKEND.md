@@ -435,6 +435,12 @@ Le tabelle seguenti coprono **tutte** le rotte presenti sotto `src/app/api` (pub
 | `cart_empty` | 409 | "Il carrello è vuoto" | Nessun `CartItem` attivo durante checkout | Forzare reload carrello; se bug, indagare seed. |
 
 ## Database & Prisma
+### Query Raw con Prisma
+- Usare esclusivamente `$queryRaw`/`$executeRaw` in combinazione con `Prisma.sql`/`Prisma.join` per costruire query tipizzate.
+- Vietato `$queryRawUnsafe`/`$executeRawUnsafe`: concatenazioni manuali di stringhe hanno causato 500 su `/api/admin/contacts` (LIMIT/OFFSET non parametrizzati) e rischio SQL injection.
+- Parametrizzare sempre `LIMIT`/`OFFSET` convertendo i valori in numeri (`Number`/`Math.floor`) prima di passarli alla query.
+- Condividere builder di filtri (es. `buildContactsWhere`) per riusare la stessa `WHERE` tra API, export e stampa senza duplicare stringhe raw.
+
 ### Schema Prisma (snapshot)
 ```prisma
 // prisma/schema.prisma

@@ -22,7 +22,7 @@ updated: 2025-02-14
 
 ### Fixed
 - Allineata la documentazione alle configurazioni correnti (NextAuth v5, middleware admin, seed PostgreSQL) e chiariti i requisiti `NEXTAUTH_URL`/`AUTH_URL` per produzione.
-- Fix: admin contacts API 500 (paginazione `page/pageSize`, risposta `{ items, total }`, gestione `401` per utenti non admin).
+- Fix: admin contacts API – parametrizzazione query raw con `Prisma.sql`, builder condiviso per i filtri e clamp numerico su `LIMIT/OFFSET`.【F:src/lib/admin/contacts-query.ts†L1-L146】【F:src/app/api/admin/contacts/route.ts†L1-L116】
 - Documentazione allineata a runtime Node 20.x su Vercel e mapping branch docs → main per evitare deploy accidentali.
 
 ## 2025-10-10

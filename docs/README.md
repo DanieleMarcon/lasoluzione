@@ -1,28 +1,53 @@
+Aggiornato al: 2025-02-15
+
+## Mini-TOC
+- [Cos'è il progetto](#cosè-il-progetto)
+- [Come orientarsi nella documentazione](#come-orientarsi-nella-documentazione)
+- [Link rapidi indispensabili](#link-rapidi-indispensabili)
+- [Percorsi di lettura suggeriti](#percorsi-di-lettura-suggeriti)
+- [Documentazione storica](#documentazione-storica)
+- [Riferimenti incrociati](#riferimenti-incrociati)
+
 # Documentazione La Soluzione
 
-Questa cartella contiene la documentazione consolidata del progetto Next.js/Prisma. I documenti sono organizzati per aree tematiche, ognuna con frontmatter che traccia le fonti originali.
+Questa raccolta descrive **La Soluzione**, piattaforma Next.js 14 con App Router, integrazione Prisma/SQLite e flussi di prenotazione-eventi con checkout Revolut. È la landing umana: da qui raggiungi panoramiche, reference operative e archivio storico senza consultare la struttura Git.
 
-## Panoramica
-- [docs/PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md) — panoramica progetto, prerequisiti e setup rapido.
-- [docs/ARCHITECTURE.md](./ARCHITECTURE.md) — architettura applicativa, snapshot repository e dipendenze runtime.
+## Cos'è il progetto
+- **Dominio**: gestione eventi, prenotazioni ristorante e vendita esperienze tramite catalogo e pagamenti online.
+- **Stack**: Next.js (App Router), React server/client components, Prisma ORM su SQLite, Auth.js con magic link, Vercel per deploy, Supabase come storage secondario (log e RLS TBD).
+- **Missione**: fornire al team operativo un'unica base di conoscenza per sviluppo, QA e presidio post-go-live.
 
-## Backend & Data Layer
-- [docs/BACKEND.md](./BACKEND.md) — API, Prisma, autenticazione, email e integrazione eventi pubblici.
-- [docs/CART_NOTES.md](./CART_NOTES.md) — stato catalogo/carrello e note di schema.
-- [docs/PAYMENTS.md](./PAYMENTS.md) — configurazione e audit integrazione Revolut.
+## Come orientarsi nella documentazione
+| Ruolo | Strumento | Uso consigliato |
+| --- | --- | --- |
+| ChatGPT (planner) | Consultare `PROJECT_OVERVIEW.md`, `WORKFLOW_AND_ENVIRONMENT_GUIDE.md`, `ROADMAP.md` prima di orchestrare task multipli. |
+| Codex / agente esecutivo | Partire da `INDEX.md` per localizzare i file tecnici, poi seguire `BACKEND.md`, `FRONTEND.md`, `PAYMENTS.md` per contesto implementativo e API. |
+| Dev umano | Usare `README.md` → `PROJECT_OVERVIEW.md` per il quadro generale, poi i manuali specifici (`DEPLOYMENT.md`, `KNOWN_ISSUES.md`, `TESTING.md`) per operazioni quotidiane. |
 
-## Frontend & UX
-- [docs/FRONTEND.md](./FRONTEND.md) — onboarding frontend, routing App Router, checkout e area admin.
-- [docs/BOOKING_EMAIL_ONLY.md](./BOOKING_EMAIL_ONLY.md) — guida e QA per il flusso “prenotazione solo email”.
-- [docs/RESPONSIVE_AUDIT.md](./RESPONSIVE_AUDIT.md) — audit responsività mobile e checklist QA.
+## Link rapidi indispensabili
+- [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md) — contesto, obiettivi e componenti principali.
+- [INDEX.md](./INDEX.md) — indice tecnico sistematico aggiornato.
+- [WORKFLOW_AND_ENVIRONMENT_GUIDE.md](./WORKFLOW_AND_ENVIRONMENT_GUIDE.md) — processi operativi e setup strumenti.
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — viste logiche/fisiche e schema Prisma completo.
+- [BACKEND.md](./BACKEND.md) — API reference, middleware, database e catalogo errori.
+- [FRONTEND.md](./FRONTEND.md) — UI admin dettagliata, filtri, layout e note UX.
+- [PAYMENTS.md](./PAYMENTS.md) — flusso Revolut, webhook, idempotenza e variabili ambiente.
+- [DEPLOYMENT.md](./DEPLOYMENT.md) — pipeline Vercel, motore Node e checklist post-release.
+- [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) — bug riproducibili, log richiesti e priorità.
+- [ROADMAP.md](./ROADMAP.md) — fasi evolutive con criteri di done e ownership.
+- [TESTING.md](./TESTING.md) — batterie manuali, casi limite e automazione futura.
 
-## Operazioni & QA
-- [docs/DEVOPS.md](./DEVOPS.md) — ambienti, deploy Vercel, sicurezza, troubleshooting e runbook.
-- [docs/TESTING.md](./TESTING.md) — piano di test manuali, edge case e idee per automazione.
-- [docs/CHANGELOG.md](./CHANGELOG.md) — cronologia rilasci e aggiornamenti documentazione.
+## Percorsi di lettura suggeriti
+1. **Onboarding rapido**: `PROJECT_OVERVIEW.md` → `ARCHITECTURE.md` → `BACKEND.md`.
+2. **Focus pagamenti**: `PAYMENTS.md` → `BACKEND.md` (sezione Revolut API) → `KNOWN_ISSUES.md` (errori 500/timeout) → `ROADMAP.md` (milestone payout).
+3. **Operazioni quotidiane**: `WORKFLOW_AND_ENVIRONMENT_GUIDE.md` → `DEPLOYMENT.md` → `TESTING.md` → `CHANGELOG.md`.
+4. **Refactoring admin**: `FRONTEND.md` → `KNOWN_ISSUES.md` (React minificati) → `ROADMAP.md` (iniziative UI/UX).
 
-## Altri riferimenti
-- [docs/INDEX.md](./INDEX.md) — inventario con data ultima modifica di ogni file `.md`.
-- [docs/_archive/README.md](./_archive/README.md) — elenco documenti storici e motivazione dell’archiviazione.
+## Documentazione storica
+- [docs/_archive/README.md](./_archive/README.md) — guida ai documenti precedenti con motivazioni di archiviazione.
+- Archivio tematico (`_archive/*.md`) disponibile per confronti storici: citato all’interno delle sezioni aggiornate tramite blocchi “Provenienza & Storia”.
 
-> Nota: tutti i file Markdown storici sono stati spostati sotto `docs/_archive/` per preservare la cronologia senza duplicare i contenuti attivi.
+## Riferimenti incrociati
+- `INDEX.md` elenca tutte le fonti con timestamp e mapping archivio ↔ attivo.
+- `CHANGELOG.md` traccia quando ogni documento ha ricevuto hardening / integrazione.
+- `PROJECT_OVERVIEW.md` collega i principali owner e i repository ancillari.

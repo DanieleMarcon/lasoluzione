@@ -5,6 +5,24 @@ merged_from:
   - STATE-SNAPSHOT.md
 updated: 2025-02-14
 ---
+# Aggiornato al: 2025-02-15
+
+## Mini-TOC
+- [Architettura & Stato Sistema](#architettura--stato-sistema)
+  - [Diagramma logico applicazione](#diagramma-logico-applicazione)
+  - [Boundary principali](#boundary-principali)
+  - [Logging e osservabilità](#logging-e-osservabilità)
+  - [Snapshot repository (2025-10-10)](#snapshot-repository-2025-10-10)
+  - [Versioni chiave](#versioni-chiave)
+  - [Rotte principali UI](#rotte-principali-ui)
+  - [API principali (estratto)](#api-principali-estratto)
+  - [Modelli attivi & migrazioni](#modelli-attivi--migrazioni)
+  - [Note operative](#note-operative)
+  - [Feature flag & configurazioni runtime](#feature-flag--configurazioni-runtime)
+  - [Dipendenze ambientali](#dipendenze-ambientali)
+- [Riferimenti incrociati](#riferimenti-incrociati)
+- [Provenienza & Storia](#provenienza--storia)
+
 # Architettura & Stato Sistema
 
 > Questo documento sostituisce la precedente `docs/ARCHITECTURE.md`, le snapshot di stato (`docs/STATE-SNAPSHOT.md`, `STATE-SNAPSHOT.md`) e funge da overview tecnica aggiornata.
@@ -40,7 +58,7 @@ Prisma ORM → PostgreSQL/Supabase (prisma/schema.prisma, seed.ts)
 ## Boundary principali
 - **Frontend client**: componenti con `"use client"` (checkout page, fake-payment, hook `useCart`) gestiscono stato locale, sessionStorage (`order_verify_token`) e invocano API REST.
 - **Frontend server**: layout e pagine server-only (admin dashboard, eventi) eseguono query Prisma direttamente grazie a React Server Components.
-- **API/Server actions**: tutta la logica mutativa passa dalle route in `src/app/api/**` (non sono usate server actions esplicite). Ogni endpoint valida input con Zod o controlli manuali e usa helper di `src/lib`.
+- **API/Server actions**: tutta la logica mutativa passa dalle route in `src/app/api/**` (non sono usate server actions esplicite). Ogni endpoint valida input con Zod o controlli manuali e usa helper di `src/lib`. Per payload completi vedere `BACKEND.md` sezione “API Reference 2025”.
 - **Domain layer**: file in `src/lib/**` incapsulano accesso DB e integrazioni (mailer, Revolut). Evitare di chiamare Prisma direttamente dalle pagine quando esiste un helper dedicato.
 - **Background / side effects**: invio email sempre tramite `src/lib/mailer.ts` con fallback log-only se SMTP non configurato; integrazione Revolut centralizzata in `src/lib/revolut.ts`.
 
@@ -159,6 +177,17 @@ Prisma ORM → PostgreSQL/Supabase (prisma/schema.prisma, seed.ts)
 - **Database**: `DATABASE_URL` + `DIRECT_URL` (PostgreSQL/Supabase).
 - **Auth.js**: `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `ADMIN_EMAILS`.
 - **SMTP**: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `MAIL_TO_BOOKINGS`.
+
+## Riferimenti incrociati
+- `BACKEND.md` — API reference, schema Prisma, ERD e matrice CORS.
+- `FRONTEND.md` — dettaglio componenti UI (landing e admin) collegate ai percorsi di questa sezione.
+- `PROJECT_OVERVIEW.md` — riepilogo obiettivi business e relazioni con partner esterni.
+
+## Provenienza & Storia
+SORGENTE: `docs/ARCHITECTURE.md`, `docs/STATE-SNAPSHOT.md`, `STATE-SNAPSHOT.md`
+COMMIT: 9d9f5c3
+MOTIVO DELLO SPOSTAMENTO: allineare struttura al consolidamento 2025-02-15 con mini-TOC e riferimenti incrociati.
+DIFFERENZE CHIAVE: sezioni storiche invariate, aggiunti rimandi a `BACKEND.md` e sezione riferimenti per navigazione rapida.
 - **Revolut**: `REVOLUT_SECRET_KEY`, `REVOLUT_API_VERSION`, `PAY_RETURN_URL`, `PAY_CANCEL_URL`.
 - **Sito pubblico**: `NEXT_PUBLIC_BASE_URL` / `APP_BASE_URL` / `BASE_URL` per link email e redirect.
 - **Cookie**: `NEXT_PUBLIC_POLICY_VERSION`, `NEXT_PUBLIC_SITE_URL`.

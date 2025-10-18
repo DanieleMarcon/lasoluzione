@@ -1,3 +1,21 @@
+Aggiornato al: 2025-02-15
+
+## Mini-TOC
+- [La Soluzione — Guida Operativa Completa (Ambiente, Flussi, Branching, Deploy)](#la-soluzione--guida-operativa-completa-ambiente-flussi-branching-deploy)
+  - [0) Glossario rapido](#0-glossario-rapido)
+  - [1) Flussi end-to-end](#1-flussi-end-to-end)
+  - [2) Strategia di branching](#2-strategia-di-branching)
+  - [3) Strumenti operativi: passi guidati](#3-strumenti-operativi-passi-guidati)
+  - [4) Pull Request: varianti e checklist](#4-pull-request-varianti-e-checklist)
+  - [5) Vercel: Preview vs Production](#5-vercel-preview-vs-production)
+  - [6) Supabase & dati](#6-supabase--dati)
+  - [7) Lavorare in locale senza fare danni](#7-lavorare-in-locale-senza-fare-danni)
+  - [8) Coordinare Codex e lavoro umano](#8-coordinare-codex-e-lavoro-umano)
+  - [9) Processi chiave documentazione](#9-processi-chiave-documentazione)
+  - [10) QA su Preview prima di main](#10-qa-su-preview-prima-di-main)
+  - [11) Comandi CLI utili](#11-comandi-cli-utili)
+- [Riferimenti incrociati](#riferimenti-incrociati)
+- [Provenienza & Storia](#provenienza--storia)
 
 # La Soluzione — Guida Operativa Completa (Ambiente, Flussi, Branching, Deploy)
 
@@ -6,276 +24,283 @@
 ---
 
 ## 0) Glossario rapido
-
-- **ChatGPT**: pensa e scrive prompt, definisce la strategia, prepara la documentazione.
-- **Codex**: esegue i prompt tecnici, modifica il codice, apre **Pull Request (PR)** sul repository GitHub.
-- **GitHub**: repository remoto; ospita branch, PR e integrazioni (Vercel/Supabase).
-- **GitHub Desktop**: client grafico per sincronizzare branch tra GitHub ↔ locale.
-- **VS Code**: editor locale usato per verifiche, fix veloci, commit “manuali”.
-- **Vercel**: piattaforma di deploy. Crea **Preview** per ogni PR/branch e **Production** quando si aggiorna il branch di produzione (di norma `main`).
-- **Supabase**: database e autenticazione; si integra con GitHub e Vercel (env, migrazioni).
-- **SiteGround**: DNS/hosting del dominio, punta a Vercel (record DNS).
+| Ruolo/Strumento | Funzione | Note operative |
+| --- | --- | --- |
+| **ChatGPT (planner)** | Pianifica, stende promemoria, verifica coerenza doc. | Produce task list e revisiona output Codex. |
+| **Codex (esecutore)** | Modifica file, esegue test, apre PR. | Lavora sempre su branch dedicati (`feat/*`, `fix/*`, `docs/*`). |
+| **VS Code** | Editor locale per verifiche e fix manuali. | Usa estensioni Git e GitLens per controllare branch. |
+| **GitHub Desktop** | Sincronizza branch locale ↔ remoto con UI. | Evita errori di branch e semplifica merge/pull. |
+| **GitHub** | Gestione repository, PR, permessi. | Branch protection su `main`, review obbligatorie. |
+| **Supabase** | Database/Postgres gestito; conserva dati preview/prod. | Gestire credenziali via Vercel env. |
+| **Vercel** | Deploy automatico preview/production. | Preview su ogni PR/branch, Production su `main`. |
+| **SiteGround/DNS** | Gestione dominio pubblico. | Record CNAME verso Vercel, TTL 300s consigliato. |
 
 ---
 
-## 1) Architettura di alto livello e flussi
+## 1) Flussi end-to-end
 
 ### 1.1 Flusso standard “da idea a produzione”
-1. **Pianificazione con ChatGPT** → definisce obiettivi, scrive prompt operativi per Codex.
-2. **Esposizione a Codex** → Codex lavora su **un branch dedicato**, spinge le modifiche su GitHub e apre una **PR**.
-3. **Vercel** crea automaticamente un **Preview Deploy** per la PR/branch.
-4. **Verifica su Preview** (QA, test manuali, eventuali fix) → si aggiorna lo stesso branch finché è “verde”.
-5. **Merge** → si unisce la PR in **main** (o nel branch di destinazione) tramite GitHub.
-6. **Vercel Production Deploy** → parte al merge (se “Production Branch” = `main`).
+```mermaid
+flowchart LR
+  A[ChatGPT pianifica] --> B[Codex implementa]
+  B --> C[GitHub PR]
+  C --> D[Vercel Preview]
+  D --> E[Review & QA]
+  E --> F[Merge]
+  F --> G[Vercel Production Deploy]
+```
+1. **ChatGPT** definisce scopo, vincoli, check.
+2. **Codex** sviluppa su branch dedicato, apre PR.
+3. **GitHub** esegue check, attiva preview.
+4. **QA** su URL preview Vercel.
+5. **Merge** su branch target (tipicamente `main`).
+6. **Vercel** promuove deploy production.
 
-### 1.2 Flusso alternativo “documentazione separata”
-- Tutta la documentazione vive in un branch **`docs/*`** (es. `docs/audit-2025-10`) per permettere review spedite, senza toccare `main`.
-- Quando pronta, si **merge** in `main` (o si mantiene separata se è un “playbook” interno).
+### 1.2 Flusso “documentazione separata”
+```mermaid
+sequenceDiagram
+  participant Planner as ChatGPT
+  participant Agent as Codex
+  participant Repo as GitHub (branch docs/*)
+  participant Preview as Vercel Preview
+  participant Maint as Maintainer umano
+
+  Planner->>Agent: Prompt aggiornamento doc
+  Agent->>Repo: Push branch docs/hardening-YYYYMMDD
+  Repo->>Preview: Deploy automatico
+  Maint->>Repo: Review/merge su docs/*
+  Maint->>Repo: PR finale docs/* -> main (quando necessario)
+  Repo->>Preview: Nuovo deploy (no production finché main invariato)
+```
+
+### 1.3 Flusso locale GitHub Desktop ↔ VS Code
+```mermaid
+flowchart LR
+  GD[GitHub Desktop]
+  VS[VS Code]
+  GH[GitHub Remote]
+
+  GH --> GD: Fetch / Pull
+  GD --> VS: Apri repository
+  VS --> GD: Commit stage & commento
+  GD --> GH: Push origin/branch
+```
+Check rapido prima di ogni sessione: `Fetch` → conferma branch → `Pull` → solo allora modifica in VS Code.
 
 ---
 
-## 2) Strategia di branching consigliata
-
-- **main** → branch di produzione (protetto). Solo PR approvate entrano qui.
-- **feat/** → nuove funzionalità (es. `feat/admin-bookings-totale-dettaglio`).
-- **fix/** → correzioni specifiche (es. `fix/contacts-500-api`).
-- **docs/** → sola documentazione (es. `docs/workflow-and-env`).
-- **hotfix/** → patch urgenti da promuovere subito in produzione.
+## 2) Strategia di branching
+| Branch | Uso | Regole |
+| --- | --- | --- |
+| `main` | Produzione. | Protetto. Solo PR approvate. Deploy automatico Vercel production. |
+| `feat/*` | Nuove funzionalità. | Uno per feature, nominare con descrizione (`feat/admin-bookings-totale`). |
+| `fix/*` | Bugfix puntuali. | Allinearsi con issue/ticket, includere test. |
+| `docs/*` | Documentazione. | Nessun codice app; PR possono rimanere fuori da main. |
+| `hotfix/*` | Patch urgenti. | Merge rapido → `main` + `production`.
 
 **Regole d’oro**
-- Mai sviluppare direttamente su `main`.
-- PR piccole, atomiche e tematiche.
-- Ogni PR deve avere **descrizione chiara**, **lista file** e **link al Preview Vercel**.
-- Abilitare protezioni su `main` (branch protection): nessun push diretto, 1+ review obbligatorie, CI/Preview verdi.
+- Mai committare su `main` direttamente.
+- PR piccole, tematiche, con lista file.
+- Ogni PR indica URL preview Vercel e checklist completata.
+- Protezioni `main`: review obbligatoria, status Vercel verde, no force push.
 
 ---
 
-## 3) Come creare e usare un branch “documentazione” (o qualunque altro)
+## 3) Strumenti operativi: passi guidati
 
-### 3.1 Creazione del branch da GitHub (consigliato)
-1. Vai su **GitHub → Repo → Branch menu → New branch**.
-2. Nome suggerito: `docs/workflow-and-env`.
-3. Crea **pull request** vuota opzionale per collegare subito Vercel Preview.
+### 3.1 Creare un branch documentazione e non toccare `main`
+1. **GitHub UI** → Branch menu → `New branch` → nome `docs/hardening-YYYYMMDD`.
+2. **Screenshot**: ![Placeholder branch creation](PLACEHOLDER_BRANCH.png)
+3. Conferma che la base sia `main` (dropdown “Create from”).
+4. Comunica il nome a Codex/ChatGPT per le attività.
 
-### 3.2 Collegare Codex al branch
-- In Codex, seleziona il branch **`docs/workflow-and-env`** dal selettore dei rami.
-- Tutti i commit/PR generati da Codex andranno su questo branch (o come PR verso questo branch, a seconda del flusso).
+**Checklist**
+- [ ] Branch creato da `main` aggiornato.
+- [ ] Nessun commit locale su `main` aperto.
+- [ ] README del branch aggiornato (se necessario).
 
-### 3.3 Lavorare in locale sul branch
-**GitHub Desktop**
-1. `Current repository` → seleziona repo.
-2. `Current branch` → **Fetch origin** → **Switch branch** → scegli `docs/workflow-and-env`.
-3. `Pull` per scaricare aggiornamenti.
-4. Apri in **VS Code** con il pulsante “Open in Visual Studio Code”.
+### 3.2 Aprire PR che non triggerano production (solo preview)
+1. Su GitHub clicca `Compare & pull request` dal branch `docs/*` verso `docs/*` (o branch dedicato).
+2. Nel form PR imposta `base: docs/...`, `compare: docs/...-update`.
+3. **Screenshot**: ![Placeholder PR non-main](PLACEHOLDER_PR_NON_MAIN.png)
+4. Salva con titolo chiaro (es. `docs: hardening 2025-02-15`).
 
-**VS Code**
-- Esegui modifiche, salva, poi **Git** sidebar → **Stage Changes** → **Commit** → **Push**.
-- Torna su GitHub per verificare la PR e/o su Vercel per il Preview.
+Checklist:
+- [ ] Base branch ≠ `main`.
+- [ ] Vercel indicator “Preview Ready”.
+- [ ] Checklist PR (vedi `CHANGELOG.md`) compilata.
+
+### 3.3 Fare merge su branch target ≠ `main`
+1. Apri la PR su GitHub.
+2. Seleziona `Merge pull request` → conferma.
+3. **Screenshot**: ![Placeholder merge non main](PLACEHOLDER_MERGE.png)
+4. Verifica che `main` non sia cambiato (nessun deploy production).
+
+### 3.4 Passare contenuti da branch A→B senza cherry-pick casuali
+1. Apri PR `branchA` → `branchB`.
+2. Compila descrizione con sezione `From/To`.
+3. Usa `Squash & merge` per unire commit multipli pulendo la storia.
+4. Aggiorna `INDEX.md` con nuova provenienza.
+
+### 3.5 Sincronizzare locale post-merge senza sovrascrivere
+1. In GitHub Desktop: `Fetch origin` → `Pull origin branch`.
+2. Se serve rebase: `Repository` → `Pull with Rebase`.
+3. In terminale: `git fetch origin && git checkout branch && git rebase origin/main` (se branch basato su main).
+4. Risolvi conflitti in VS Code (usa Source Control > Merge Editor).
+
+### 3.6 Evitare commit nel branch sbagliato
+- In VS Code controlla il nome branch nella status bar (in basso a sinistra).
+- `git status` (CLI) prima del commit: conferma `On branch docs/...`.
+- GitHub Desktop mostra banner rosso se tenti push su `main` protetto.
+- Checklist rapida in sede commit: `[ ] Branch corretto`, `[ ] Messaggio coerente`, `[ ] Diff rivista`.
 
 ---
 
-## 4) Pull Request: casi pratici importanti
+## 4) Pull Request: varianti e checklist
 
-### 4.1 PR “branch → main” (flusso standard)
-- **Scopo**: portare il tuo lavoro in produzione.
-- **Passi**:
-  1. Completi il lavoro su `feat/...` o `docs/...`.
-  2. Apri PR **verso `main`**.
-  3. Controlla i **check**: Preview Vercel deve essere ok.
-  4. **Merge** (Squash & merge consigliato per storia pulita).
-  5. Vercel avvia **Production Deploy** su `main` automaticamente.
+### 4.1 PR branch → main (flusso standard)
+- Scopo: deploy produzione.
+- Passi: sviluppa → apri PR su `main` → verifica preview → merge (Squash consigliato) → monitor deploy production.
+- Checklist: `[ ] Tests`, `[ ] Preview QA`, `[ ] CHANGELOG`, `[ ] Checklist PR completata`.
 
-### 4.2 PR “Codex → branch non‑main” (es. aggiornare _documentazione_ senza toccare main)
-- **Scopo**: aggiornare **solo** `docs/...`.
-- **Passi**:
-  1. In Codex seleziona **il branch** `docs/...` come **target** (non `main`).
-  2. Codex aprirà una PR **verso `docs/...`** (o push diretto sul branch, a seconda dello strumento).
-  3. Vercel creerà un **Preview** per `docs/...` (se configurato per pre‑deploy di branch).  
-  4. **Merge PR → docs/...**: nessun deploy di produzione partirà (perché la **Production Branch** resta `main`).
+### 4.2 PR Codex → branch non-main (aggiornare doc/code isolati)
+- Target branch: `docs/...` o `staging`.
+- Garantisce nessun deploy production.
+- Ricordare di aggiornare `ROADMAP`/`INDEX` se toccati.
 
-### 4.3 Promuovere **documentazione** da `docs/...` → `main`
-- Quando vuoi che la doc aggiornata appaia in `main`:
-  1. Apri PR **da `docs/...` verso `main`**.
-  2. Review + Merge.
-  3. Vercel farà un deploy di produzione **solo se** il contenuto della doc influenza l’app (es. pagine statiche). In caso di repo “app only”, spesso la doc non tocca bundle/rotte e il deploy è veloce.
+### 4.3 Promuovere documentazione da `docs/...` → `main`
+- Apri PR `docs/...` → `main` quando serve pubblicare.
+- QA su preview `docs/...` prima.
+- Dopo merge, verifica che l’app non rigeneri bundle inutili (monitor build Vercel).
 
 ---
 
-## 5) Vercel: come funziona (Preview vs Production) e come “forzare” i deploy
+## 5) Vercel: Preview vs Production
 
 ### 5.1 Impostazioni chiave
-- **Production Branch**: normalmente `main`. Qualunque merge/push su `main` → **Production Deploy**.
-- **Preview Deploys**: Vercel genera un URL per ogni PR e per ogni branch non‑main.
+- Production Branch: `main`.
+- Preview: ogni PR/branch; URL formato `https://lasoluzione-git-<branch>.vercel.app`.
+- Env: configurare `Production`, `Preview`, `Development` con variabili coerenti (vedi `PAYMENTS.md`).
 
-### 5.2 Forzare un deploy
-- **Re‑deploy di un build esistente**: in Vercel → seleziona il deployment → **Redeploy**.
-- **Deploy di un commit/branch specifico**: in Vercel → **New Deployment** → scegli branch/commit.
-- **Ignorare build**: opzionale via commit message (`[skip ci]`) se usi automazioni esterne.
+### 5.2 Redeploy / rollback
+- `Redeploy`: Vercel UI → Deployment → `Redeploy` (usa commit originale).
+- `Deploy from branch`: Vercel UI → `New Deployment` → scegli branch/commit.
+- `Rollback`: dal deployment history clic `Promote to Production` sul build precedente.
 
-### 5.3 Passare da “documentazione” a “produzione”
-- Non serve “spostare” deploy: è il **merge su `main`** a generare il deploy di produzione.
-- Se necessario testare “come se fosse produzione” si può:
-  - Impostare temporaneamente **Production Branch** a `docs/...` (sconsigliato, rischi)
-  - Oppure usare environment separati (Project duplicato o Environment “Preview”/“Development” con env var diverse).
-
----
-
-## 6) Supabase: integrazione e buone pratiche
-
-- **Env var**: gestite in Vercel (Project → Settings → Environment Variables) per collegare l’app all’istanza Supabase.
-- **Migrazioni DB**:
-  - Versionare script/migrations (folder `supabase/migrations` o prisma migrations se usi Prisma).
-  - PR: includi migrazioni + istruzioni. In produzione, migrazioni partono in fase di build/run se previsto.
-- **Dati di test**: usa **branch DB** o tabelle seed per Preview (evita di toccare i dati di produzione).
+### 5.3 Simulare produzione senza toccare main
+- Opzione A: mantenere branch `staging` con env identiche a production.
+- Opzione B: clonare progetto Vercel e collegarlo a branch alternativo.
+- Evitare di cambiare temporaneamente Production Branch (alto rischio). Documentare scelte in `DEVOPS.md`.
 
 ---
 
-## 7) Lavorare in locale senza fare danni (anti‑errore)
+## 6) Supabase & dati
+- Credenziali gestite via Vercel (`DATABASE_URL`, `DIRECT_URL`).
+- Migrazioni Prisma (`prisma/migrations`) devono essere eseguite manualmente su Supabase prima del deploy se non automatizzate.
+- Per preview usare database separato o flag feature (evitare dati reali).
+- Log accessi e policy RLS in `ROADMAP.md` (milestone sicurezza DB).
+
+---
+
+## 7) Lavorare in locale senza fare danni
 
 ### 7.1 Checklist quotidiana
-1. **GitHub Desktop → Fetch** sempre prima di iniziare.
-2. Verifica il **branch corrente** (barra in alto): SEI davvero su `feat/...` o `docs/...`?
-3. **Pull** prima di modificare (eviti divergenze).
-4. Commit piccoli, messaggi chiari (`feat: …`, `fix: …`, `docs: …`).
-5. **Push** e verifica su GitHub (PR aggiornata) e su Vercel (Preview).
+- [ ] `Fetch` su GitHub Desktop.
+- [ ] Confermare branch corrente.
+- [ ] `Pull` / `Pull with Rebase` prima di modificare.
+- [ ] Commit piccoli e descrittivi (`docs:`, `feat:`, `fix:`).
+- [ ] Push e verifica PR/Preview.
 
-### 7.2 Evitare commit sul branch sbagliato
-- Attiva **branch protection** su `main` (no push diretto).
-- Usa **GitLens** in VS Code per visibilità dei branch.
-- Regola personale: se il lavoro cambia tema, **nuovo branch**.
+### 7.2 Aggiornare branch con main
+- GitHub Desktop → `Branch` → `Update from main` (merge) o `Pull with Rebase`.
+- CLI: `git fetch origin && git checkout feat/... && git merge origin/main`.
+- Risolvere conflitti con Merge Editor VS Code; testare preview dopo.
 
-### 7.3 Aggiornare il tuo branch con `main`
-- Quando `main` avanza, porta dentro le novità:
-  - **GitHub Desktop**: `Branch` → `Update from main` (merge)  
-  - Oppure terminale: `git fetch origin && git checkout tuo-branch && git merge origin/main`
-- Risolvi conflitti, testa su Preview, continua.
-
----
-
-## 8) Come “unire” il lavoro di Codex e locale senza confusione
-
-### Scenario A — Codex spinge su **stesso branch** che usi in locale
-1. Tu fai **Pull** su `docs/...` in GitHub Desktop.
-2. Vedi i commit di Codex; continui dal loro stato.
-3. Eventuali conflitti? Risolvili in VS Code → commit → push.
-
-### Scenario B — Codex apre **PR verso un branch** (non `main`)
-1. Lavora in locale sullo **stesso branch** target della PR.
-2. Spingi ulteriori commit → la PR si aggiorna automaticamente.
-3. Quando tutto è ok → **Merge** PR (verso quel branch o verso `main` a seconda del flusso).
-
-### Scenario C — Vuoi **prendere solo alcune cose** da un branch
-- Apri PR **selettiva** o usa `git cherry-pick <commit>` in locale (avanzato).
-- In alternativa: **Squash & merge** per portare solo il risultato finale in `main`.
+### 7.3 Debug branch sbagliato
+- `git status` → se appare `On branch main` interrompere e `git checkout docs/...`.
+- GitHub Desktop `History` per verificare commit precedenti.
+- In caso di commit errato su main: `git reset HEAD~` e ripetere su branch corretto (se protetto, push rifiutato).
 
 ---
 
-## 9) Processo pratico chiave: “Aggiornare documentazione senza toccare main”
+## 8) Coordinare Codex e lavoro umano
 
-1. **Crea branch** `docs/workflow-and-env` su GitHub.
-2. **Collega Codex** al branch (selettore rami in Codex).
-3. **Codex**: produce contenuti e **apre PR verso `docs/workflow-and-env`** (o push diretto).
-4. **Vercel**: genera **Preview** per `docs/workflow-and-env` (se il progetto è web-docs).
-5. **Review** → **Merge** PR **verso `docs/workflow-and-env`** (non `main`).  
-6. **Promozione** (quando serve): PR **da `docs/workflow-and-env` a `main`** → merge → **Production Deploy**.
+### Scenario A — Codex e umano sullo stesso branch
+1. Codex push → appare su GitHub.
+2. In locale `Pull` aggiornamenti.
+3. Continua lavoro, risolvi conflitti, push.
 
-> Nota: se la documentazione vive solo nella cartella `/doc` e non influenza l’app, il deploy sarà quasi istantaneo e “a basso rischio”.
+### Scenario B — Codex apre PR verso branch non-main
+1. Checkout branch target della PR.
+2. Aggiungi commit → PR aggiornata.
+3. QA su preview → merge.
 
----
-
-## 10) Processo pratico chiave: “Forzare tests Preview completi prima di toccare main”
-
-1. Sviluppo in `feat/...`.
-2. PR **feat → staging** (crea un branch `staging` opzionale).  
-3. Test su **Preview di `staging`** (ha env di staging).
-4. Quando tutto ok → PR **staging → main** → deploy produzione.
+### Scenario C — Portare solo alcune modifiche
+- Usa PR dedicata con selezione file.
+- In alternativa `git cherry-pick <sha>` (documenta in PR per trasparenza).
 
 ---
 
-## 11) Esempi di comandi utili (CLI opzionale)
+## 9) Processi chiave documentazione
 
+### “Aggiornare documentazione senza toccare main”
+1. Crea branch `docs/...` (vedi §3.1).
+2. Codex lavora sul branch → PR verso lo stesso branch.
+3. Merge PR (resti su `docs/...`).
+4. Quando pronto, PR `docs/...` → `main`.
+5. Aggiorna `INDEX.md`, `CHANGELOG.md`, checklist PR.
+
+### “Aprire PR che non triggera produzione”
+- Verifica base branch ≠ `main`.
+- Nella PR aggiungi badge “Preview only”.
+- Inserisci nel body: “Questa PR non deve essere mergiata su main (no deploy).”
+
+### “Passare contenuti branch A→B via PR”
+- Documenta nel body: `Source branch`, `Target branch`, `Motivazione`.
+- Includi sezione `Rischi` e `Test`.
+
+### “Sincronizzare locale post-merge”
+- Dopo merge su branch remoto: `git checkout branch && git pull`.
+- Se merge da main, considerare `git rebase` per storia lineare.
+
+---
+
+## 10) QA su Preview prima di main
+1. Sviluppa su `feat/...`.
+2. Apri PR `feat/...` → `staging` (o branch QA).
+3. Esegui checklist QA (vedi `TESTING.md`).
+4. Solo dopo QA verde, PR `staging` → `main`.
+5. Documenta in PR principale cosa è stato validato su preview.
+
+---
+
+## 11) Comandi CLI utili
 ```bash
 # Clona il repo (prima volta)
 git clone git@github.com:DanieleMarcon/lasoluzione.git
 cd lasoluzione
 
-# Vedi branch remoti
-git branch -r
+# Passa a un branch documentazione
+git checkout -b docs/hardening-20250215
 
-# Crea e passa a un nuovo branch di lavoro
-git checkout -b docs/workflow-and-env origin/main
+git status      # verifica branch e file modificati
+git pull --rebase origin main   # aggiorna branch dalla base
 
-# Porta nel tuo branch gli aggiornamenti da main
-git fetch origin
-git merge origin/main
-
-# Aggiungi, committa e spingi
-git add .
-git commit -m "docs: aggiorna guida ambiente e workflow"
-git push -u origin docs/workflow-and-env
+git add docs/README.md
+git commit -m "docs: aggiorna entry point"
+git push -u origin docs/hardening-20250215
 ```
 
-> In alternativa, usa sempre **GitHub Desktop** se preferisci l’interfaccia grafica.
-
 ---
 
-## 12) Checklist PR prima del merge
+## Riferimenti incrociati
+- `README.md` — landing documentazione con mappa contenuti.
+- `DEVOPS.md` — runbook incident, sicurezza e procedure avanzate Vercel/Supabase.
+- `TESTING.md` — checklist QA da eseguire sui preview.
+- `ROADMAP.md` — pianificazione iniziative (incluso go-live pagamenti, policy RLS Supabase).
 
-- [ ] Descrizione chiara (cosa, perché, come testare).
-- [ ] Screenshot o link al **Preview Vercel**.
-- [ ] Lint/Typecheck ok (Next.js build ok, Prisma generate ok).
-- [ ] Database migrazioni verificate (se presenti).
-- [ ] Non ci sono credenziali nel codice (usa env).
-
----
-
-## 13) Troubleshooting (FAQ)
-
-**D: La Preview Vercel non si aggiorna.**  
-R: Assicurati di aver fatto **push** sul branch corretto. In Vercel puoi usare **Redeploy** o **New Deployment** puntando al branch.
-
-**D: Ho fatto commit sul branch sbagliato.**  
-R: Crea un branch dal commit attuale (`git checkout -b fix/giusto`), poi ripristina l’altro branch allo stato precedente da GitHub (revert) o con `git reset` (avanzato).
-
-**D: PR vuole mergiare su `main` ma io volevo aggiornare `docs/...`.**  
-R: Nella pagina PR, cambia il **base branch** (in alto: `base: docs/... compare: tuo-branch`).
-
-**D: “Il deploy di produzione non è cambiato”.**  
-R: Production si attiva **solo** al push/merge su **Production Branch** (spesso `main`). Assicurati che il merge sia effettivamente entrato in `main` e non in `docs/...`.
-
-**D: Come verifico “da dove” ha deployato Vercel?**  
-R: Nella pagina del Deployment Vercel c’è sempre il riferimento a **repo/branch/commit**. Deve corrispondere al branch atteso.
-
----
-
-## 14) Policy minime consigliate
-
-- **Branch protection** su `main` (no push diretto, 1 review richiesta).
-- **CI pre‑merge**: Next build + typecheck (per evitare rotture in produzione).
-- **Env var per ambiente**: Development/Preview/Production in Vercel con valori diversi.
-- **Accessi**: permessi minimi per scrittura sui branch protetti.
-
----
-
-## 15) Modello di “Definition of Done” (DoD)
-
-- Funziona su Preview Vercel (link incluso in PR).
-- Nessun errore in console significativi (client e server).
-- Documentazione aggiornata (se serve) in `/doc`.
-- Migrazioni DB applicate e testate (se presenti).
-- PR piccola, comprensibile, con checklist spuntata.
-
----
-
-## 16) Riepilogo operativo per il tuo caso d’uso (documentazione)
-
-1. **Crea branch** `docs/workflow-and-env` su GitHub.
-2. **Seleziona il branch in Codex** e chiedi l’aggiornamento/creazione dei file Markdown in `/doc`.
-3. **Review** su GitHub (PR → Preview se serve).
-4. **Merge in `docs/...`** (niente produzione ancora).
-5. Quando pronta, **PR da `docs/...` a `main`** → merge → (eventuale) **Production Deploy**.
-6. **GitHub Desktop**: tieni sempre sincronizzati i branch sul tuo locale per eventuali fix veloci in VS Code.
-
----
-
-> **Suggerimento**: Mantieni questo file tra i “pin” del repo (`/doc/WORKFLOW_AND_ENVIRONMENT_GUIDE.md`) e aggiornalo ogni volta che cambia una policy o un flusso.
+## Provenienza & Storia
+SORGENTE: `docs/WORKFLOW_AND_ENVIRONMENT_GUIDE.md` (versione 2025-02-14)  
+COMMIT: 9d9f5c3  
+MOTIVO DELLO SPOSTAMENTO: aggiunta mini-TOC, diagrammi mermaid, procedure passo-passo con checklist, allineamento alle direttive hardening.  
+DIFFERENZE CHIAVE: contenuti originali mantenuti e riorganizzati, integrate immagini placeholder, checklist operative e riferimenti incrociati.

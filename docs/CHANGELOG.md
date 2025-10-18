@@ -7,18 +7,21 @@ updated: 2025-02-14
 # Changelog
 
 ## [Unreleased]
+
+## 2025-02-15 – Docs hardening & deepening
 ### Added
-- Nuova documentazione `docs/AUTH.md`, `docs/BUILD_AND_DEPLOY.md`, `docs/SECURITY.md`, `OPERATIONS.md` con runbook, threat model e pipeline Vercel.
-- Template `.env.example` in `docs/.env.example` e sezione dedicata in `docs/ENVIRONMENT.md` (matrice ambienti, requisiti runtime).
-- Diagramma ER aggiornato e guida migrazioni/seed in `docs/DATABASE.md`.
+- Nuovi documenti `DEPLOYMENT.md`, `KNOWN_ISSUES.md`, `ROADMAP.md` con checklist, priorità bug e milestone evolutive.
+- Sequenza Revolut + matrice stati prenotazione in `PAYMENTS.md`, inclusa specifica webhook proposta.
+- Mini-TOC e sezione "Mappa consolidamento" in `INDEX.md` per navigazione rapida tra attivo/archivio.
 
 ### Changed
-- README completamente riscritto con overview stack, setup passo-passo, flussi chiave, troubleshooting e risk log.
-- `docs/ROUTES.md` riorganizzato (pagine pubbliche, area admin, API, convenzioni).
-- `docs/TEST_PLAN.md` aggiornato con test manuali minimi, edge case e idee Playwright/Vitest.
+- `BACKEND.md` ampliato con tabelle API dettagliate, matrice CORS, schema Prisma completo e catalogo errori.
+- `FRONTEND.md` arricchito con tabella prenotazioni admin, filtri, suggerimenti refactor e elenco errori React collegati a `KNOWN_ISSUES.md`.
+- `WORKFLOW_AND_ENVIRONMENT_GUIDE.md` ristrutturato con diagrammi mermaid, procedure passo-passo e checklist anti-errore.
+- `README.md` riposizionato come landing entry point (link rapidi e percorsi di lettura).
 
 ### Fixed
-- Allineata la documentazione alle configurazioni correnti (NextAuth v5, middleware admin, seed PostgreSQL) e chiariti i requisiti `NEXTAUTH_URL`/`AUTH_URL` per produzione.
+- Documentazione allineata a runtime Node 20.x su Vercel e mapping branch docs → main per evitare deploy accidentali.
 
 ## 2025-10-10
 ### Added

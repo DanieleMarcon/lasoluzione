@@ -55,8 +55,7 @@ export async function GET(req: Request) {
   const filters = buildContactsFilters(searchParams);
 
   const rows = await fetchContactsData({
-    whereClause: filters.whereClause,
-    params: filters.params,
+    where: filters.where,
     limit: EXPORT_MAX_ROWS + 1,
     offset: 0,
   });

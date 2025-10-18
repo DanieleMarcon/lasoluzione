@@ -18,11 +18,12 @@ export type ContactDTO = {
 };
 
 export type ContactsListResponse = {
-  items: ContactDTO[];
+  data: ContactDTO[];
   page: number;
   pageSize: number;
   total: number;
-  totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
 };
 
 type Filters = {
@@ -74,20 +75,26 @@ function BooleanBadge({ value }: { value: boolean }) {
   );
 }
 
+type ContactsListError = {
+  error: string;
+  detail?: string;
+};
+
 function ContactsPageInner() {
   const toast = useToast();
   const [draftFilters, setDraftFilters] = useState<Filters>({ ...defaultFilters });
   const [filters, setFilters] = useState<Filters>({ ...defaultFilters });
   const [contacts, setContacts] = useState<ContactDTO[]>([]);
-  const [pagination, setPagination] = useState<Omit<ContactsListResponse, 'items'>>({
+  const [pagination, setPagination] = useState<Omit<ContactsListResponse, 'data' | 'hasNextPage' | 'hasPrevPage'>>({
     page: 1,
     pageSize: PAGE_SIZE,
     total: 0,
-    totalPages: 0,
   });
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasPreviousPage, setHasPreviousPage] = useState(false);
+  const [hasNextPage, setHasNextPage] = useState(false);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -114,32 +121,41 @@ function ContactsPageInner() {
         });
 
         if (!response.ok) {
-          const payload = await response.json().catch(() => ({ error: 'Errore sconosciuto' }));
-          throw new Error(payload.error || 'Impossibile caricare i contatti');
+          const payload = (await response.json().catch(() => ({ error: 'Caricamento contatti non riuscito' }))) as ContactsListError;
+          const message = payload.error || 'Caricamento contatti non riuscito';
+          throw new Error(message);
         }
 
-        const payload = (await response.json()) as ContactsListResponse;
+        const payload = (await response.json()) as ContactsListResponse | ContactsListError;
 
-        if (payload.totalPages > 0 && page > payload.totalPages) {
-          setPage(payload.totalPages);
+        if ('error' in payload) {
+          const message = payload.error || 'Caricamento contatti non riuscito';
+          throw new Error(message);
+        }
+
+        const computedTotalPages = payload.total > 0 ? Math.ceil(payload.total / payload.pageSize) : 0;
+
+        if (computedTotalPages > 0 && page > computedTotalPages) {
+          setPage(computedTotalPages);
           return;
         }
 
-        if (payload.totalPages === 0 && page !== 1) {
+        if (computedTotalPages === 0 && page !== 1) {
           setPage(1);
           return;
         }
 
-        setContacts(payload.items);
+        setContacts(payload.data);
         setPagination({
           page: payload.page,
           pageSize: payload.pageSize,
           total: payload.total,
-          totalPages: payload.totalPages,
         });
+        setHasPreviousPage(Boolean(payload.hasPrevPage));
+        setHasNextPage(Boolean(payload.hasNextPage));
       } catch (err: any) {
         if (err?.name === 'AbortError') return;
-        const message = err?.message ?? 'Impossibile caricare i contatti';
+        const message = err?.message ?? 'Caricamento contatti non riuscito';
         setError(message);
         toast.error(message);
       } finally {
@@ -151,6 +167,11 @@ function ContactsPageInner() {
     return () => abort.abort();
   }, [filters, page, toast]);
 
+  const totalPages = useMemo(() => {
+    if (pagination.total === 0) return 0;
+    return Math.ceil(pagination.total / pagination.pageSize);
+  }, [pagination.pageSize, pagination.total]);
+
   const totalLabel = useMemo(() => {
     if (pagination.total === 0) return 'Nessun contatto trovato';
     if (pagination.total === 1) return '1 contatto trovato';
@@ -160,9 +181,7 @@ function ContactsPageInner() {
   const rangeStart = pagination.total === 0 || contacts.length === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
   const rangeEnd = pagination.total === 0 || contacts.length === 0 ? 0 : rangeStart + contacts.length - 1;
 
-  const hasPreviousPage = pagination.total > 0 && pagination.page > 1;
-  const hasNextPage = pagination.total > 0 && pagination.page < pagination.totalPages;
-  const totalPagesLabel = pagination.totalPages > 0 ? pagination.totalPages : 1;
+  const totalPagesLabel = totalPages > 0 ? totalPages : 1;
 
   function onFilterChange(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     const { name, value } = event.target;

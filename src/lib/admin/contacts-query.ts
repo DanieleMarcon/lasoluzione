@@ -1,12 +1,12 @@
 // src/lib/admin/contacts-query.ts
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 export const CONTACTS_DEFAULT_PAGE_SIZE = 20;
 export const CONTACTS_MAX_PAGE_SIZE = 100;
 
 export type ContactFilters = {
-  whereClause: string;
-  params: unknown[];
+  whereClause: Prisma.Sql;
 };
 
 export type ContactDTO = {
@@ -23,10 +23,10 @@ type ContactQueryRow = {
   name: string | null;
   email: string | null;
   phone: string | null;
-  agreePrivacy: number | boolean | null;
-  agreeMarketing: number | boolean | null;
-  createdAt: string | Date;
-  totalBookings: number;
+  last_contact_at: Date | null;
+  privacy_opt_in: boolean | null;
+  newsletter_opt_in: boolean | null;
+  bookings_count: number;
 };
 
 export type PaginationOptions = {
@@ -46,59 +46,59 @@ function parseBooleanFilter(value: string | null): boolean | null {
   return null;
 }
 
-function parseDateStart(value: string | null): string | null {
+function parseDateStart(value: string | null): Date | null {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   date.setHours(0, 0, 0, 0);
-  return date.toISOString();
+  return date;
 }
 
-function parseDateEnd(value: string | null): string | null {
+function parseDateEnd(value: string | null): Date | null {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  date.setHours(23, 59, 59, 999);
-  return date.toISOString();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 1);
+  return date;
 }
 
 export function buildContactsFilters(searchParams: URLSearchParams): ContactFilters {
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+  const conditions: Prisma.Sql[] = [];
 
   const search = (searchParams.get('q') ?? searchParams.get('search') ?? '').trim();
   if (search) {
-    const wildcard = `%${search.toLowerCase()}%`;
-    conditions.push('(LOWER(name) LIKE ? OR LOWER(email) LIKE ? OR LOWER(phone) LIKE ?)');
-    params.push(wildcard, wildcard, wildcard);
+    const wildcard = `%${search.trim()}%`;
+    conditions.push(
+      Prisma.sql`(name ILIKE ${wildcard} OR email ILIKE ${wildcard} OR phone ILIKE ${wildcard})`,
+    );
   }
 
   const newsletter = parseBooleanFilter(searchParams.get('newsletter'));
   if (newsletter !== null) {
-    conditions.push('agreeMarketing = ?');
-    params.push(newsletter ? 1 : 0);
+    conditions.push(Prisma.sql`newsletter_opt_in = ${newsletter}`);
   }
 
   const privacy = parseBooleanFilter(searchParams.get('privacy'));
   if (privacy !== null) {
-    conditions.push('agreePrivacy = ?');
-    params.push(privacy ? 1 : 0);
+    conditions.push(Prisma.sql`privacy_opt_in = ${privacy}`);
   }
 
   const from = parseDateStart(searchParams.get('from'));
   if (from) {
-    conditions.push('createdAt >= ?');
-    params.push(from);
+    conditions.push(Prisma.sql`last_contact_at >= ${from}`);
   }
 
   const to = parseDateEnd(searchParams.get('to'));
   if (to) {
-    conditions.push('createdAt <= ?');
-    params.push(to);
+    conditions.push(Prisma.sql`last_contact_at < ${to}`);
   }
 
-  const whereClause = conditions.length > 0 ? conditions.join(' AND ') : '1=1';
-  return { whereClause, params };
+  if (conditions.length === 0) {
+    return { whereClause: Prisma.sql`` };
+  }
+
+  return { whereClause: Prisma.sql`WHERE ${Prisma.join(conditions, Prisma.sql` AND `)}` };
 }
 
 export function resolveContactsPagination(
@@ -119,7 +119,8 @@ export function resolveContactsPagination(
   return { page, pageSize, skip };
 }
 
-function toIsoString(value: string | Date) {
+function toIsoString(value: string | Date | null) {
+  if (!value) return new Date().toISOString();
   if (value instanceof Date) return value.toISOString();
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return new Date().toISOString();
@@ -131,75 +132,42 @@ function mapContactRow(row: ContactQueryRow): ContactDTO {
     name: row.name?.trim() ?? '',
     email: row.email?.trim() ?? '',
     phone: row.phone?.trim() ?? '',
-    createdAt: toIsoString(row.createdAt),
-    agreePrivacy: Boolean(row.agreePrivacy),
-    agreeMarketing: Boolean(row.agreeMarketing),
-    totalBookings: Number(row.totalBookings ?? 0),
+    createdAt: toIsoString(row.last_contact_at),
+    agreePrivacy: Boolean(row.privacy_opt_in),
+    agreeMarketing: Boolean(row.newsletter_opt_in),
+    totalBookings: Number(row.bookings_count ?? 0),
   };
 }
 
-/**
- * Ritorna una riga per email (deduplicata), con conteggio totale prenotazioni.
- * NB: niente generics sui $queryRawUnsafe → cast dopo await (fix ts(2347)).
- */
-export async function fetchContactsData({
-  whereClause,
-  params,
-  limit,
-  offset = 0,
-}: {
-  whereClause: string;
-  params: unknown[];
+type FetchContactsOptions = {
+  whereClause: Prisma.Sql;
   limit?: number;
   offset?: number;
-}): Promise<ContactDTO[]> {
-  const paginationClause = typeof limit === 'number' ? ' LIMIT ? OFFSET ?' : '';
-  const queryParams: any[] = [...params];
-  if (typeof limit === 'number') {
-    queryParams.push(limit, offset);
-  }
+  /** opzionale: lasciata per retro-compatibilità con i call-site esistenti */
+  params?: unknown[];
+};
 
-  const query = `
-    WITH filtered AS (
+export async function fetchContactsData({
+  whereClause,
+  limit = CONTACTS_DEFAULT_PAGE_SIZE,
+  offset = 0,
+}: FetchContactsOptions): Promise<ContactDTO[]> {
+  const rows = await prisma.$queryRaw<ContactQueryRow[]>(
+    Prisma.sql`
       SELECT
-        id,
-        name,
-        TRIM(email) AS email,
-        LOWER(TRIM(email)) AS normalizedEmail,
-        phone,
-        agreePrivacy,
-        agreeMarketing,
-        createdAt
-      FROM Booking
-      WHERE ${whereClause}
-    ),
-    ranked AS (
-      SELECT
-        id,
         name,
         email,
         phone,
-        agreePrivacy,
-        agreeMarketing,
-        createdAt,
-        normalizedEmail,
-        ROW_NUMBER() OVER (PARTITION BY normalizedEmail ORDER BY createdAt DESC, id DESC) AS rowNumber,
-        COUNT(*) OVER (PARTITION BY normalizedEmail) AS totalBookings
-      FROM filtered
-    )
-    SELECT
-      name,
-      email,
-      phone,
-      agreePrivacy,
-      agreeMarketing,
-      createdAt,
-      totalBookings
-    FROM ranked
-    WHERE rowNumber = 1
-    ORDER BY createdAt DESC${paginationClause};
-  `;
+        last_contact_at,
+        privacy_opt_in,
+        newsletter_opt_in,
+        bookings_count
+      FROM admin_contacts_view
+      ${whereClause}
+      ORDER BY last_contact_at DESC NULLS LAST
+      LIMIT ${limit} OFFSET ${offset}
+    `,
+  );
 
-  const rows = (await prisma.$queryRawUnsafe(query, ...queryParams)) as ContactQueryRow[];
   return rows.map(mapContactRow);
 }

@@ -7,6 +7,8 @@ updated: 2025-02-14
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- fix: admin contacts — typing di `fetchContactsData` e query raw sicura, allineamento engines Node 20.x.
 
 ## 2025-02-15 – Docs hardening & deepening
 ### Added

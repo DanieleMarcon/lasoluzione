@@ -110,7 +110,6 @@ export default async function AdminContactsPrintPage({
   const contacts: ContactPrintRow[] = normalizeRows(
     await fetchContactsData({
       whereClause: filters.whereClause,
-      params: filters.params,
       limit: pageSize,
       offset: skip,
     })

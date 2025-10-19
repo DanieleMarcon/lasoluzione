@@ -7,9 +7,10 @@ updated: 2025-10-14
 - **Sintomo**: chiamando `GET /api/admin/contacts` la piattaforma restituiva 500 sia con utente non autenticato sia con querystring valide.
 - **Root cause**: l'handler sollevava `AdminUnauthorizedError` senza intercettarla; Next.js propagava l'eccezione come 500 generico invece di `401/403`. In più la risposta esponeva `{ data, meta }` non allineato ai consumer e mancava la paginazione standard `page/pageSize/total`.
 - **Fix**:
-  - intercettato `AdminUnauthorizedError` e restituito `401` esplicito con payload JSON minimale;【F:src/app/api/admin/contacts/route.ts†L4-L36】
-  - uniformata la query Prisma (`fetchContactsData`) e la conta totale sfruttando i filtri condivisi, con ordinamento `createdAt DESC`; risultato restituito come `{ items, page, pageSize, total, totalPages }` con clamp su `pageSize ≤ 100`;【F:src/app/api/admin/contacts/route.ts†L16-L41】
-  - preferenza al filtro `q` (fallback `search`) e normalizzazione dei consensi/date nella costruzione della `WHERE` clause; copertura test con Node test runner;【F:src/lib/admin/contacts-query.ts†L5-L118】【F:tests/contacts-query.test.ts†L1-L87】
+  - intercettato `AdminUnauthorizedError` e restituito `401` esplicito con payload JSON minimale;【F:src/app/api/admin/contacts/route.ts†L3-L22】
+  - uniformata la query Prisma (`fetchContactsData`) e la conta totale sfruttando i filtri condivisi, con ordinamento `createdAt DESC`; risultato restituito come `{ items, page, pageSize, total, totalPages }` con clamp su `pageSize ≤ 100`;【F:src/app/api/admin/contacts/route.ts†L24-L52】
+  - preferenza al filtro `q` (fallback `search`) e normalizzazione dei consensi/date nella costruzione della `WHERE` clause; copertura test con Node test runner;【F:src/lib/admin/contacts-query.ts†L1-L173】【F:tests/contacts-query.test.ts†L1-L104】
+  - Nota retro-compatibilità: i vecchi call-site potevano passare `params`, ora ignorati perché i bind avvengono direttamente dentro `Prisma.sql\`.【F:src/lib/admin/contacts-query.ts†L142-L173】
 - **Follow-up**: valutare export CSV e pagina stampa per uniformare la querystring (`q`) e propagare lo stesso DTO; completare osservabilità (log structured) per errori Prisma futuri.
 Aggiornato al: 2025-02-15
 

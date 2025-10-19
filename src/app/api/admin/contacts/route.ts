@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { AdminUnauthorizedError, assertAdmin } from '@/lib/admin/session';
 import {
@@ -5,6 +6,7 @@ import {
   resolveContactsPagination,
   fetchContactsData,
 } from '@/lib/admin/contacts-query';
+import { prisma } from '@/lib/prisma';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,14 +28,16 @@ export async function GET(req: Request) {
   const [items, totalRows] = await Promise.all([
     fetchContactsData({
       whereClause: filters.whereClause,
-      params: filters.params,
       limit: pageSize,
       offset: skip,
     }),
-    (await import('@/lib/prisma')).prisma.$queryRawUnsafe(
-      `SELECT COUNT(DISTINCT LOWER(TRIM(email))) AS total FROM Booking WHERE ${filters.whereClause};`,
-      ...(filters.params as any[])
-    ) as Promise<Array<{ total: number }>>,
+    prisma.$queryRaw<Array<{ total: number }>>(
+      Prisma.sql`
+        SELECT COUNT(*)::int AS total
+        FROM admin_contacts_view
+        ${filters.whereClause}
+      `,
+    ),
   ]);
 
   const total = Number(totalRows[0]?.total ?? 0);

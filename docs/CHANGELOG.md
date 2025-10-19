@@ -7,6 +7,11 @@ updated: 2025-02-14
 # Changelog
 
 ## [Unreleased]
+### Added
+- Endpoint `GET /api/admin/contacts/_debug` per verificare stato vista, campioni e colonne attese dell'admin contacts.【F:src/app/api/admin/contacts/_debug/route.ts†L1-L89】
+
+### Changed
+- `/api/admin/contacts` ora usa la vista `admin_contacts_view`, forza runtime Node 20 con risposte dinamiche e mappa errori `MISSING_VIEW`/`UNEXPECTED` con `errorId` nei log.【F:src/app/api/admin/contacts/route.ts†L8-L80】【F:src/lib/admin/contacts-query.ts†L13-L138】
 
 ## 2025-02-15 – Docs hardening & deepening
 ### Added

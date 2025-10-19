@@ -13,6 +13,14 @@ updated: 2025-10-14
 - **Follow-up**: valutare export CSV e pagina stampa per uniformare la querystring (`q`) e propagare lo stesso DTO; completare osservabilità (log structured) per errori Prisma futuri.
 Aggiornato al: 2025-02-15
 
+## 2025-10-15 – View mancante per contatti admin
+- **Sintomo**: `GET /api/admin/contacts` risponde `501` con payload `{ ok:false, code:'MISSING_VIEW' }` su ambienti senza vista.
+- **Root cause**: la vista materializzata `public.admin_contacts_view` non è stata creata o pubblicata nel database Postgres.
+- **Fix**:
+  - usare `GET /api/admin/contacts/_debug` per verificare presenza vista e righe di esempio;【F:src/app/api/admin/contacts/_debug/route.ts†L1-L89】
+  - creare la vista con lo script SQL condiviso in infra (colonne attese `full_name,email,phone,last_contact_at,privacy_consent,newsletter_optin,bookings_count`).【F:src/app/api/admin/contacts/_debug/route.ts†L15-L28】
+- **Follow-up**: aggiungere migrazione o task IaC che garantisca la creazione della vista su staging/produzione.
+
 ## Mini-TOC
 - [Known Issues — La Soluzione](#known-issues--la-soluzione)
   - [API & Backend](#api--backend)

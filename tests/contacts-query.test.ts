@@ -55,9 +55,9 @@ describe('buildContactsFilters', () => {
 
     const filters = buildContactsFilters(params);
 
-    assert.match(filters.whereClause, /LOWER\(name\) LIKE \?/);
-    assert.equal(filters.params.length, 3);
-    assert.deepEqual(filters.params, ['%example%', '%example%', '%example%']);
+    assert.match(filters.whereClause.sql, /LOWER\(full_name\) LIKE/);
+    assert.equal(filters.whereClause.values.length, 3);
+    assert.deepEqual(filters.whereClause.values, ['%example%', '%example%', '%example%']);
   });
 
   it('applies boolean and date filters with normalized values', () => {
@@ -70,12 +70,17 @@ describe('buildContactsFilters', () => {
 
     const filters = buildContactsFilters(params);
 
-    assert.equal(filters.whereClause.includes('agreeMarketing = ?'), true);
-    assert.equal(filters.whereClause.includes('agreePrivacy = ?'), true);
-    assert.equal(filters.whereClause.includes('createdAt >= ?'), true);
-    assert.equal(filters.whereClause.includes('createdAt <= ?'), true);
-    assert.equal(filters.params.length, 4);
-    assert.deepEqual(filters.params, [1, 0, '2024-01-05T00:00:00.000Z', '2024-02-10T23:59:59.999Z']);
+    assert.equal(filters.whereClause.sql.includes('newsletter_optin ='), true);
+    assert.equal(filters.whereClause.sql.includes('privacy_consent ='), true);
+    assert.equal(filters.whereClause.sql.includes('last_contact_at >='), true);
+    assert.equal(filters.whereClause.sql.includes('last_contact_at <='), true);
+    assert.equal(filters.whereClause.values.length, 4);
+    assert.deepEqual(filters.whereClause.values, [
+      true,
+      false,
+      '2024-01-05T00:00:00.000Z',
+      '2024-02-10T23:59:59.999Z',
+    ]);
   });
 
   it('supports the legacy search parameter when q is missing', () => {
@@ -85,9 +90,9 @@ describe('buildContactsFilters', () => {
 
     const filters = buildContactsFilters(params);
 
-    assert.match(filters.whereClause, /LOWER\(name\) LIKE \?/);
-    assert.equal(filters.params.length, 3);
-    assert.deepEqual(filters.params, ['%legacy%', '%legacy%', '%legacy%']);
+    assert.match(filters.whereClause.sql, /LOWER\(full_name\) LIKE/);
+    assert.equal(filters.whereClause.values.length, 3);
+    assert.deepEqual(filters.whereClause.values, ['%legacy%', '%legacy%', '%legacy%']);
   });
 
   it('falls back to 1=1 when no filters are provided', () => {
@@ -95,7 +100,7 @@ describe('buildContactsFilters', () => {
 
     const filters = buildContactsFilters(params);
 
-    assert.equal(filters.whereClause, '1=1');
-    assert.deepEqual(filters.params, []);
+    assert.equal(filters.whereClause.sql, '');
+    assert.deepEqual(filters.whereClause.values, []);
   });
 });

@@ -5,6 +5,7 @@ import {
   CONTACTS_DEFAULT_PAGE_SIZE,
   CONTACTS_MAX_PAGE_SIZE,
   buildContactsFilters,
+  buildContactsWhere,
   resolveContactsPagination,
 } from '@/lib/admin/contacts-query';
 
@@ -55,9 +56,11 @@ describe('buildContactsFilters', () => {
 
     const filters = buildContactsFilters(params);
 
-    assert.match(filters.whereClause, /LOWER\(name\) LIKE \?/);
-    assert.equal(filters.params.length, 3);
-    assert.deepEqual(filters.params, ['%example%', '%example%', '%example%']);
+    assert.equal(filters.search, 'Example');
+    assert.equal(filters.newsletter, 'all');
+    assert.equal(filters.privacy, 'all');
+    assert.equal(filters.from, undefined);
+    assert.equal(filters.to, undefined);
   });
 
   it('applies boolean and date filters with normalized values', () => {
@@ -70,12 +73,10 @@ describe('buildContactsFilters', () => {
 
     const filters = buildContactsFilters(params);
 
-    assert.equal(filters.whereClause.includes('agreeMarketing = ?'), true);
-    assert.equal(filters.whereClause.includes('agreePrivacy = ?'), true);
-    assert.equal(filters.whereClause.includes('createdAt >= ?'), true);
-    assert.equal(filters.whereClause.includes('createdAt <= ?'), true);
-    assert.equal(filters.params.length, 4);
-    assert.deepEqual(filters.params, [1, 0, '2024-01-05T00:00:00.000Z', '2024-02-10T23:59:59.999Z']);
+    assert.equal(filters.newsletter, 'true');
+    assert.equal(filters.privacy, 'false');
+    assert.equal(filters.from, '2024-01-05T00:00:00.000Z');
+    assert.equal(filters.to, '2024-02-11T00:00:00.000Z');
   });
 
   it('supports the legacy search parameter when q is missing', () => {
@@ -85,9 +86,7 @@ describe('buildContactsFilters', () => {
 
     const filters = buildContactsFilters(params);
 
-    assert.match(filters.whereClause, /LOWER\(name\) LIKE \?/);
-    assert.equal(filters.params.length, 3);
-    assert.deepEqual(filters.params, ['%legacy%', '%legacy%', '%legacy%']);
+    assert.equal(filters.search, 'Legacy');
   });
 
   it('falls back to 1=1 when no filters are provided', () => {
@@ -95,7 +94,42 @@ describe('buildContactsFilters', () => {
 
     const filters = buildContactsFilters(params);
 
-    assert.equal(filters.whereClause, '1=1');
-    assert.deepEqual(filters.params, []);
+    assert.equal(filters.search, undefined);
+    assert.equal(filters.newsletter, 'all');
+    assert.equal(filters.privacy, 'all');
+    assert.equal(filters.from, undefined);
+    assert.equal(filters.to, undefined);
+  });
+});
+
+describe('buildContactsWhere', () => {
+  it('produces SQL with parameters for search and dates', () => {
+    const { whereClause } = buildContactsWhere({
+      search: 'Example',
+      newsletter: 'true',
+      privacy: 'false',
+      from: '2024-01-05T00:00:00.000Z',
+      to: '2024-02-11T00:00:00.000Z',
+    });
+
+    assert.equal(typeof whereClause.sql, 'string');
+    assert.match(
+      whereClause.sql,
+      /WHERE \(name ILIKE \? OR email ILIKE \? OR phone ILIKE \?\) AND agreeMarketing = true AND agreePrivacy = false AND createdAt >= \? AND createdAt < \?/,
+    );
+    assert.deepEqual(whereClause.values, [
+      '%Example%',
+      '%Example%',
+      '%Example%',
+      '2024-01-05T00:00:00.000Z',
+      '2024-02-11T00:00:00.000Z',
+    ]);
+  });
+
+  it('returns an empty clause when no filters are applied', () => {
+    const { whereClause } = buildContactsWhere({});
+
+    assert.equal(whereClause.sql, '');
+    assert.deepEqual(whereClause.values, []);
   });
 });

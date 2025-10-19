@@ -8,6 +8,9 @@ updated: 2025-02-14
 
 ## [Unreleased]
 
+### Fixed
+- fix(admin/contacts): refactor builder `WHERE` verso `Prisma.Sql`, utilizzo `$queryRaw` sicuro e allineamento stampa/export con lo stesso filtro.【F:src/lib/admin/contacts-query.ts†L5-L156】【F:src/app/api/admin/contacts/route.ts†L1-L44】【F:src/app/api/admin/contacts/export/route.ts†L1-L68】【F:src/app/admin/(protected)/contacts/print/page.tsx†L1-L150】
+
 ## 2025-02-15 – Docs hardening & deepening
 ### Added
 - Nuovi documenti `DEPLOYMENT.md`, `KNOWN_ISSUES.md`, `ROADMAP.md` con checklist, priorità bug e milestone evolutive.

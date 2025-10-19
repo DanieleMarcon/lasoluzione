@@ -10,6 +10,7 @@ updated: 2025-10-14
   - intercettato `AdminUnauthorizedError` e restituito `401` esplicito con payload JSON minimale;【F:src/app/api/admin/contacts/route.ts†L4-L36】
   - uniformata la query Prisma (`fetchContactsData`) e la conta totale sfruttando i filtri condivisi, con ordinamento `createdAt DESC`; risultato restituito come `{ items, page, pageSize, total, totalPages }` con clamp su `pageSize ≤ 100`;【F:src/app/api/admin/contacts/route.ts†L16-L41】
   - preferenza al filtro `q` (fallback `search`) e normalizzazione dei consensi/date nella costruzione della `WHERE` clause; copertura test con Node test runner;【F:src/lib/admin/contacts-query.ts†L5-L118】【F:tests/contacts-query.test.ts†L1-L87】
+  - risolta la discrepanza di tipo `Prisma.Sql` vs stringa introducendo `buildContactsWhere`, `$queryRaw` con `Prisma.sql` e binding sicuri senza `params`; stampa/export allineati allo stesso builder.【F:src/lib/admin/contacts-query.ts†L5-L156】【F:src/app/api/admin/contacts/route.ts†L1-L44】【F:src/app/api/admin/contacts/export/route.ts†L1-L68】【F:src/app/admin/(protected)/contacts/print/page.tsx†L1-L150】
 - **Follow-up**: valutare export CSV e pagina stampa per uniformare la querystring (`q`) e propagare lo stesso DTO; completare osservabilità (log structured) per errori Prisma futuri.
 Aggiornato al: 2025-02-15
 

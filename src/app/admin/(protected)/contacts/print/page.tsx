@@ -2,6 +2,7 @@ import PrintTrigger from '@/components/admin/bookings/PrintTrigger';
 import { assertAdmin } from '@/lib/admin/session';
 import {
   buildContactsFilters,
+  buildContactsWhere,
   fetchContactsData,
   resolveContactsPagination,
 } from '@/lib/admin/contacts-query';
@@ -102,6 +103,7 @@ export default async function AdminContactsPrintPage({
 
   const params = toURLSearchParams(searchParams);
   const filters = buildContactsFilters(params);
+  const { whereClause } = buildContactsWhere(filters);
   const { page, pageSize, skip } = resolveContactsPagination(params, {
     defaultPageSize: PRINT_MAX_PAGE_SIZE,
     maxPageSize: PRINT_MAX_PAGE_SIZE,
@@ -109,8 +111,7 @@ export default async function AdminContactsPrintPage({
 
   const contacts: ContactPrintRow[] = normalizeRows(
     await fetchContactsData({
-      whereClause: filters.whereClause,
-      params: filters.params,
+      whereClause,
       limit: pageSize,
       offset: skip,
     })

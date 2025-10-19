@@ -3,13 +3,14 @@ import { assertAdmin } from '@/lib/admin/session';
 import {
   buildContactsFilters,
   fetchContactsData,
-  resolveContactsPagination,
+  type ContactDTO,
+  type ContactsFilters,
 } from '@/lib/admin/contacts-query';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const PRINT_MAX_PAGE_SIZE = 1000;
+const PRINT_MAX_PAGE_SIZE = 200;
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -81,7 +82,7 @@ function summarizeFilters(params: URLSearchParams) {
   return parts.length > 0 ? parts.join(' · ') : 'Nessun filtro attivo';
 }
 
-function normalizeRows(data: Awaited<ReturnType<typeof fetchContactsData>>): ContactPrintRow[] {
+function normalizeRows(data: ContactDTO[]): ContactPrintRow[] {
   return data.map((contact) => ({
     name: contact.name,
     email: contact.email,
@@ -101,20 +102,24 @@ export default async function AdminContactsPrintPage({
   await assertAdmin();
 
   const params = toURLSearchParams(searchParams);
-  const filters = buildContactsFilters(params);
-  const { page, pageSize, skip } = resolveContactsPagination(params, {
-    defaultPageSize: PRINT_MAX_PAGE_SIZE,
-    maxPageSize: PRINT_MAX_PAGE_SIZE,
-  });
-
-  const contacts: ContactPrintRow[] = normalizeRows(
-    await fetchContactsData({
-      whereClause: filters.whereClause,
-      params: filters.params,
-      limit: pageSize,
-      offset: skip,
-    })
+  const filters = buildContactsFilters(
+    {
+      search: params.get('q') ?? params.get('search'),
+      newsletter: params.get('newsletter') as ContactsFilters['newsletter'],
+      privacy: params.get('privacy') as ContactsFilters['privacy'],
+      from: params.get('from'),
+      to: params.get('to'),
+      page: Number.parseInt(params.get('page') ?? '', 10),
+      pageSize: Number.parseInt(params.get('pageSize') ?? '', 10),
+    },
+    {
+      defaultPageSize: PRINT_MAX_PAGE_SIZE,
+      maxPageSize: PRINT_MAX_PAGE_SIZE,
+    },
   );
+
+  const { items } = await fetchContactsData({ filters });
+  const contacts: ContactPrintRow[] = normalizeRows(items);
 
   const filterSummary = summarizeFilters(params);
 
@@ -155,7 +160,7 @@ export default async function AdminContactsPrintPage({
         </h1>
         <p style={{ margin: 0, color: '#4b5563' }}>{filterSummary}</p>
         <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>
-          Risultati pagina {page} (max {pageSize} elementi) · Contatti mostrati: {contacts.length}
+          Risultati pagina {filters.page} (max {filters.pageSize} elementi) · Contatti mostrati: {contacts.length}
         </p>
       </header>
 

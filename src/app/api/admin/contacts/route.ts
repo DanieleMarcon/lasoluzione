@@ -23,20 +23,12 @@ export async function GET(req: Request) {
   const filters = buildContactsFilters(searchParams);
   const { page, pageSize, skip } = resolveContactsPagination(searchParams);
 
-  const [items, totalRows] = await Promise.all([
-    fetchContactsData({
-      whereClause: filters.whereClause,
-      params: filters.params,
-      limit: pageSize,
-      offset: skip,
-    }),
-    (await import('@/lib/prisma')).prisma.$queryRawUnsafe(
-      `SELECT COUNT(DISTINCT LOWER(TRIM(email))) AS total FROM Booking WHERE ${filters.whereClause};`,
-      ...(filters.params as any[])
-    ) as Promise<Array<{ total: number }>>,
-  ]);
+  const { items, total } = await fetchContactsData({
+    whereClause: filters.whereClause,
+    limit: pageSize,
+    offset: skip,
+  });
 
-  const total = Number(totalRows[0]?.total ?? 0);
   const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
 
   return NextResponse.json({

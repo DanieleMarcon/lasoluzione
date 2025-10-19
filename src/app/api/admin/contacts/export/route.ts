@@ -54,18 +54,17 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const filters = buildContactsFilters(searchParams);
 
-  const rows = await fetchContactsData({
+  const { items } = await fetchContactsData({
     whereClause: filters.whereClause,
-    params: filters.params,
     limit: EXPORT_MAX_ROWS + 1,
     offset: 0,
   });
 
   let truncated = false;
-  let data: ContactDTO[] = rows;
-  if (rows.length > EXPORT_MAX_ROWS) {
+  let data: ContactDTO[] = items;
+  if (items.length > EXPORT_MAX_ROWS) {
     truncated = true;
-    data = rows.slice(0, EXPORT_MAX_ROWS);
+    data = items.slice(0, EXPORT_MAX_ROWS);
   }
 
   const csvLines: string[] = [];

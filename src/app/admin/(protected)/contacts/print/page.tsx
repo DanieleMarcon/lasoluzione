@@ -82,7 +82,7 @@ function summarizeFilters(params: URLSearchParams) {
 }
 
 function normalizeRows(data: Awaited<ReturnType<typeof fetchContactsData>>): ContactPrintRow[] {
-  return data.map((contact) => ({
+  return data.items.map((contact) => ({
     name: contact.name,
     email: contact.email,
     phone: contact.phone,
@@ -110,7 +110,6 @@ export default async function AdminContactsPrintPage({
   const contacts: ContactPrintRow[] = normalizeRows(
     await fetchContactsData({
       whereClause: filters.whereClause,
-      params: filters.params,
       limit: pageSize,
       offset: skip,
     })

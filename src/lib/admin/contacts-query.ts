@@ -1,12 +1,45 @@
-// src/lib/admin/contacts-query.ts
+import { Prisma } from '@prisma/client';
+
 import { prisma } from '@/lib/prisma';
 
 export const CONTACTS_DEFAULT_PAGE_SIZE = 20;
-export const CONTACTS_MAX_PAGE_SIZE = 100;
+export const CONTACTS_MAX_PAGE_SIZE = 200;
 
-export type ContactFilters = {
-  whereClause: string;
-  params: unknown[];
+export type ContactsFilters = {
+  search?: string | null;
+  newsletter?: 'all' | 'true' | 'false';
+  privacy?: 'all' | 'true' | 'false';
+  from?: string | null;
+  to?: string | null;
+  page?: number;
+  pageSize?: number;
+};
+
+export type NormalizedContactsFilters = {
+  search: string | null;
+  newsletter: 'all' | 'true' | 'false';
+  privacy: 'all' | 'true' | 'false';
+  from: string | null;
+  to: string | null;
+  page: number;
+  pageSize: number;
+  limit: number;
+  offset: number;
+};
+
+type BuildFiltersOptions = {
+  defaultPageSize?: number;
+  maxPageSize?: number;
+};
+
+type AdminContactsRow = {
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  last_contact_at: Date | string | null;
+  privacy: boolean | null;
+  newsletter: boolean | null;
+  total_bookings: number | null;
 };
 
 export type ContactDTO = {
@@ -19,187 +52,137 @@ export type ContactDTO = {
   totalBookings: number;
 };
 
-type ContactQueryRow = {
-  name: string | null;
-  email: string | null;
-  phone: string | null;
-  agreePrivacy: number | boolean | null;
-  agreeMarketing: number | boolean | null;
-  createdAt: string | Date;
-  totalBookings: number;
-};
+function toNullableString(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
-export type PaginationOptions = {
-  defaultPageSize?: number;
-  maxPageSize?: number;
-};
+function normalizeSearch(value: unknown) {
+  const search = toNullableString(value);
+  return search;
+}
 
-export type PaginationResult = {
-  page: number;
-  pageSize: number;
-  skip: number;
-};
+function normalizeTriState(value: unknown): 'all' | 'true' | 'false' {
+  if (value === 'true' || value === true) return 'true';
+  if (value === 'false' || value === false) return 'false';
+  return 'all';
+}
 
-function parseBooleanFilter(value: string | null): boolean | null {
-  if (value === 'true') return true;
-  if (value === 'false') return false;
+function normalizeDate(value: unknown): string | null {
+  const dateString = toNullableString(value);
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return null;
+  return dateString.slice(0, 10);
+}
+
+function toInteger(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(parsed)) return null;
+    return parsed;
+  }
   return null;
 }
 
-function parseDateStart(value: string | null): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  date.setHours(0, 0, 0, 0);
-  return date.toISOString();
+function normalizePage(value: unknown, fallback: number) {
+  const parsed = toInteger(value);
+  if (parsed == null || parsed < 1) return fallback;
+  return parsed;
 }
 
-function parseDateEnd(value: string | null): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  date.setHours(23, 59, 59, 999);
-  return date.toISOString();
+function normalizePageSize(value: unknown, fallback: number, max: number) {
+  const parsed = toInteger(value);
+  if (parsed == null || parsed < 1) return fallback;
+  return Math.min(parsed, max);
 }
 
-export function buildContactsFilters(searchParams: URLSearchParams): ContactFilters {
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-
-  const search = (searchParams.get('q') ?? searchParams.get('search') ?? '').trim();
-  if (search) {
-    const wildcard = `%${search.toLowerCase()}%`;
-    conditions.push('(LOWER(name) LIKE ? OR LOWER(email) LIKE ? OR LOWER(phone) LIKE ?)');
-    params.push(wildcard, wildcard, wildcard);
-  }
-
-  const newsletter = parseBooleanFilter(searchParams.get('newsletter'));
-  if (newsletter !== null) {
-    conditions.push('agreeMarketing = ?');
-    params.push(newsletter ? 1 : 0);
-  }
-
-  const privacy = parseBooleanFilter(searchParams.get('privacy'));
-  if (privacy !== null) {
-    conditions.push('agreePrivacy = ?');
-    params.push(privacy ? 1 : 0);
-  }
-
-  const from = parseDateStart(searchParams.get('from'));
-  if (from) {
-    conditions.push('createdAt >= ?');
-    params.push(from);
-  }
-
-  const to = parseDateEnd(searchParams.get('to'));
-  if (to) {
-    conditions.push('createdAt <= ?');
-    params.push(to);
-  }
-
-  const whereClause = conditions.length > 0 ? conditions.join(' AND ') : '1=1';
-  return { whereClause, params };
-}
-
-export function resolveContactsPagination(
-  searchParams: URLSearchParams,
-  options: PaginationOptions = {}
-): PaginationResult {
+export function buildContactsFilters(
+  input: ContactsFilters = {},
+  options: BuildFiltersOptions = {},
+): NormalizedContactsFilters {
   const defaultPageSize = options.defaultPageSize ?? CONTACTS_DEFAULT_PAGE_SIZE;
   const maxPageSize = options.maxPageSize ?? CONTACTS_MAX_PAGE_SIZE;
 
-  const pageRaw = Number.parseInt(searchParams.get('page') ?? '1', 10);
-  const page = Number.isNaN(pageRaw) || pageRaw < 1 ? 1 : pageRaw;
+  const search = normalizeSearch(input.search ?? null);
+  const newsletter = normalizeTriState(input.newsletter);
+  const privacy = normalizeTriState(input.privacy);
+  const from = normalizeDate(input.from ?? null);
+  const to = normalizeDate(input.to ?? null);
+  const page = normalizePage(input.page, 1);
+  const pageSize = normalizePageSize(input.pageSize, defaultPageSize, maxPageSize);
+  const limit = pageSize;
+  const offset = (page - 1) * pageSize;
 
-  const sizeRaw = Number.parseInt(searchParams.get('pageSize') ?? String(defaultPageSize), 10);
-  const normalizedSize = Number.isNaN(sizeRaw) || sizeRaw < 1 ? defaultPageSize : sizeRaw;
-  const pageSize = Math.min(normalizedSize, maxPageSize);
-
-  const skip = (page - 1) * pageSize;
-  return { page, pageSize, skip };
+  return { search, newsletter, privacy, from, to, page, pageSize, limit, offset };
 }
 
-function toIsoString(value: string | Date) {
-  if (value instanceof Date) return value.toISOString();
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return new Date().toISOString();
-  return date.toISOString();
-}
+function mapRowToContact(row: AdminContactsRow): ContactDTO {
+  const createdAt = (() => {
+    if (!row.last_contact_at) return '';
+    const date = row.last_contact_at instanceof Date ? row.last_contact_at : new Date(row.last_contact_at);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toISOString();
+  })();
 
-function mapContactRow(row: ContactQueryRow): ContactDTO {
   return {
     name: row.name?.trim() ?? '',
     email: row.email?.trim() ?? '',
     phone: row.phone?.trim() ?? '',
-    createdAt: toIsoString(row.createdAt),
-    agreePrivacy: Boolean(row.agreePrivacy),
-    agreeMarketing: Boolean(row.agreeMarketing),
-    totalBookings: Number(row.totalBookings ?? 0),
+    createdAt,
+    agreePrivacy: Boolean(row.privacy),
+    agreeMarketing: Boolean(row.newsletter),
+    totalBookings: Number(row.total_bookings ?? 0),
   };
 }
 
-/**
- * Ritorna una riga per email (deduplicata), con conteggio totale prenotazioni.
- * NB: niente generics sui $queryRawUnsafe → cast dopo await (fix ts(2347)).
- */
 export async function fetchContactsData({
-  whereClause,
-  params,
-  limit,
-  offset = 0,
+  filters,
 }: {
-  whereClause: string;
-  params: unknown[];
-  limit?: number;
-  offset?: number;
-}): Promise<ContactDTO[]> {
-  const paginationClause = typeof limit === 'number' ? ' LIMIT ? OFFSET ?' : '';
-  const queryParams: any[] = [...params];
-  if (typeof limit === 'number') {
-    queryParams.push(limit, offset);
-  }
+  filters: NormalizedContactsFilters;
+}): Promise<{ items: ContactDTO[]; total: number }> {
+  const limit = filters.limit;
+  const offset = filters.offset;
 
-  const query = `
-    WITH filtered AS (
-      SELECT
-        id,
-        name,
-        TRIM(email) AS email,
-        LOWER(TRIM(email)) AS normalizedEmail,
-        phone,
-        agreePrivacy,
-        agreeMarketing,
-        createdAt
-      FROM Booking
-      WHERE ${whereClause}
-    ),
-    ranked AS (
-      SELECT
-        id,
-        name,
-        email,
-        phone,
-        agreePrivacy,
-        agreeMarketing,
-        createdAt,
-        normalizedEmail,
-        ROW_NUMBER() OVER (PARTITION BY normalizedEmail ORDER BY createdAt DESC, id DESC) AS rowNumber,
-        COUNT(*) OVER (PARTITION BY normalizedEmail) AS totalBookings
-      FROM filtered
+  const rows = await prisma.$queryRaw<Array<AdminContactsRow>>(Prisma.sql`
+    select * from public.admin_contacts_search(
+      ${filters.search ?? null},
+      ${filters.newsletter ?? 'all'},
+      ${filters.privacy ?? 'all'},
+      ${filters.from ?? null}::date,
+      ${filters.to ?? null}::date,
+      ${limit},
+      ${offset}
     )
-    SELECT
-      name,
-      email,
-      phone,
-      agreePrivacy,
-      agreeMarketing,
-      createdAt,
-      totalBookings
-    FROM ranked
-    WHERE rowNumber = 1
-    ORDER BY createdAt DESC${paginationClause};
-  `;
+  `);
 
-  const rows = (await prisma.$queryRawUnsafe(query, ...queryParams)) as ContactQueryRow[];
-  return rows.map(mapContactRow);
+  const [{ count }] = await prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
+    select count(*)::bigint as count
+    from public.admin_contacts_search(
+      ${filters.search ?? null},
+      ${filters.newsletter ?? 'all'},
+      ${filters.privacy ?? 'all'},
+      ${filters.from ?? null}::date,
+      ${filters.to ?? null}::date,
+      1000000,
+      0
+    )
+  `);
+
+  const safeCount = count > BigInt(Number.MAX_SAFE_INTEGER)
+    ? BigInt(Number.MAX_SAFE_INTEGER)
+    : count;
+  const total = Number(safeCount);
+
+  return {
+    items: rows.map(mapRowToContact),
+    total,
+  };
 }
+

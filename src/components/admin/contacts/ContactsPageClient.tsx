@@ -22,7 +22,7 @@ export type ContactsListResponse = {
   page: number;
   pageSize: number;
   total: number;
-  totalPages: number;
+  error?: 'temporary_failure';
 };
 
 type Filters = {
@@ -79,15 +79,17 @@ function ContactsPageInner() {
   const [draftFilters, setDraftFilters] = useState<Filters>({ ...defaultFilters });
   const [filters, setFilters] = useState<Filters>({ ...defaultFilters });
   const [contacts, setContacts] = useState<ContactDTO[]>([]);
-  const [pagination, setPagination] = useState<Omit<ContactsListResponse, 'items'>>({
-    page: 1,
-    pageSize: PAGE_SIZE,
-    total: 0,
-    totalPages: 0,
-  });
+  const [pagination, setPagination] = useState<{ page: number; pageSize: number; total: number }>(
+    {
+      page: 1,
+      pageSize: PAGE_SIZE,
+      total: 0,
+    },
+  );
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [temporaryFailure, setTemporaryFailure] = useState(false);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -119,23 +121,24 @@ function ContactsPageInner() {
         }
 
         const payload = (await response.json()) as ContactsListResponse;
+        const computedTotalPages = payload.total > 0 ? Math.ceil(payload.total / payload.pageSize) : 0;
 
-        if (payload.totalPages > 0 && page > payload.totalPages) {
-          setPage(payload.totalPages);
+        if (computedTotalPages > 0 && page > computedTotalPages) {
+          setPage(computedTotalPages);
           return;
         }
 
-        if (payload.totalPages === 0 && page !== 1) {
+        if (computedTotalPages === 0 && page !== 1) {
           setPage(1);
           return;
         }
 
         setContacts(payload.items);
+        setTemporaryFailure(payload.error === 'temporary_failure');
         setPagination({
           page: payload.page,
           pageSize: payload.pageSize,
           total: payload.total,
-          totalPages: payload.totalPages,
         });
       } catch (err: any) {
         if (err?.name === 'AbortError') return;
@@ -157,12 +160,16 @@ function ContactsPageInner() {
     return `${pagination.total} contatti totali`;
   }, [pagination.total]);
 
+  const totalPages = useMemo(() => {
+    return pagination.total > 0 ? Math.ceil(pagination.total / pagination.pageSize) : 0;
+  }, [pagination.total, pagination.pageSize]);
+
   const rangeStart = pagination.total === 0 || contacts.length === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
   const rangeEnd = pagination.total === 0 || contacts.length === 0 ? 0 : rangeStart + contacts.length - 1;
 
   const hasPreviousPage = pagination.total > 0 && pagination.page > 1;
-  const hasNextPage = pagination.total > 0 && pagination.page < pagination.totalPages;
-  const totalPagesLabel = pagination.totalPages > 0 ? pagination.totalPages : 1;
+  const hasNextPage = pagination.total > 0 && pagination.page < totalPages;
+  const totalPagesLabel = totalPages > 0 ? totalPages : 1;
 
   function onFilterChange(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     const { name, value } = event.target;
@@ -247,6 +254,22 @@ function ContactsPageInner() {
           </button>
         </div>
       </header>
+
+      {temporaryFailure ? (
+        <div
+          role="status"
+          style={{
+            padding: '0.85rem 1rem',
+            borderRadius: '0.75rem',
+            backgroundColor: 'rgba(234,179,8,0.15)',
+            color: '#92400e',
+            border: '1px solid rgba(234,179,8,0.3)',
+            fontSize: '0.9rem',
+          }}
+        >
+          Dati temporaneamente non disponibili.
+        </div>
+      ) : null}
 
       <form
         onSubmit={applyFilters}
@@ -413,7 +436,9 @@ function ContactsPageInner() {
               ) : contacts.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
-                    Nessun contatto trovato con i filtri selezionati.
+                    {temporaryFailure
+                      ? 'Dati temporaneamente non disponibili.'
+                      : 'Nessun contatto trovato con i filtri selezionati.'}
                   </td>
                 </tr>
               ) : (

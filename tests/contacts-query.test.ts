@@ -5,97 +5,57 @@ import {
   CONTACTS_DEFAULT_PAGE_SIZE,
   CONTACTS_MAX_PAGE_SIZE,
   buildContactsFilters,
-  resolveContactsPagination,
+  type ContactsFilters,
 } from '@/lib/admin/contacts-query';
 
-describe('resolveContactsPagination', () => {
-  it('returns defaults when parameters are missing', () => {
-    const params = new URLSearchParams();
-
-    const result = resolveContactsPagination(params);
-
-    assert.equal(result.page, 1);
-    assert.equal(result.pageSize, CONTACTS_DEFAULT_PAGE_SIZE);
-    assert.equal(result.skip, 0);
-  });
-
-  it('normalizes invalid values and clamps to max page size', () => {
-    const params = new URLSearchParams([
-      ['page', '0'],
-      ['pageSize', '200'],
-    ]);
-
-    const result = resolveContactsPagination(params);
-
-    assert.equal(result.page, 1);
-    assert.equal(result.pageSize, CONTACTS_MAX_PAGE_SIZE);
-    assert.equal(result.skip, 0);
-  });
-
-  it('computes skip correctly for valid inputs', () => {
-    const params = new URLSearchParams([
-      ['page', '3'],
-      ['pageSize', '15'],
-    ]);
-
-    const result = resolveContactsPagination(params);
-
-    assert.equal(result.page, 3);
-    assert.equal(result.pageSize, 15);
-    assert.equal(result.skip, 30);
-  });
-});
+function build(filters: ContactsFilters = {}, options?: Parameters<typeof buildContactsFilters>[1]) {
+  return buildContactsFilters(filters, options);
+}
 
 describe('buildContactsFilters', () => {
-  it('prefers the q parameter when both q and search are provided', () => {
-    const params = new URLSearchParams([
-      ['q', 'Example'],
-      ['search', 'Legacy'],
-    ]);
+  it('normalizes values, applies defaults and clamps pagination', () => {
+    const result = build({
+      search: '  Rossi  ',
+      newsletter: 'true',
+      privacy: 'maybe' as any,
+      from: '2024-01-05',
+      to: 'invalid-date',
+      page: 0 as any,
+      pageSize: 5000 as any,
+    });
 
-    const filters = buildContactsFilters(params);
-
-    assert.match(filters.whereClause, /LOWER\(name\) LIKE \?/);
-    assert.equal(filters.params.length, 3);
-    assert.deepEqual(filters.params, ['%example%', '%example%', '%example%']);
+    assert.equal(result.search, 'Rossi');
+    assert.equal(result.newsletter, 'true');
+    assert.equal(result.privacy, 'all');
+    assert.equal(result.from, '2024-01-05');
+    assert.equal(result.to, null);
+    assert.equal(result.page, 1);
+    assert.equal(result.pageSize, CONTACTS_MAX_PAGE_SIZE);
+    assert.equal(result.limit, CONTACTS_MAX_PAGE_SIZE);
+    assert.equal(result.offset, 0);
   });
 
-  it('applies boolean and date filters with normalized values', () => {
-    const params = new URLSearchParams([
-      ['newsletter', 'true'],
-      ['privacy', 'false'],
-      ['from', '2024-01-05'],
-      ['to', '2024-02-10'],
-    ]);
+  it('defaults newsletter/privacy to all and pageSize to default when missing', () => {
+    const result = build();
 
-    const filters = buildContactsFilters(params);
-
-    assert.equal(filters.whereClause.includes('agreeMarketing = ?'), true);
-    assert.equal(filters.whereClause.includes('agreePrivacy = ?'), true);
-    assert.equal(filters.whereClause.includes('createdAt >= ?'), true);
-    assert.equal(filters.whereClause.includes('createdAt <= ?'), true);
-    assert.equal(filters.params.length, 4);
-    assert.deepEqual(filters.params, [1, 0, '2024-01-05T00:00:00.000Z', '2024-02-10T23:59:59.999Z']);
+    assert.equal(result.newsletter, 'all');
+    assert.equal(result.privacy, 'all');
+    assert.equal(result.page, 1);
+    assert.equal(result.pageSize, CONTACTS_DEFAULT_PAGE_SIZE);
+    assert.equal(result.limit, CONTACTS_DEFAULT_PAGE_SIZE);
+    assert.equal(result.offset, 0);
   });
 
-  it('supports the legacy search parameter when q is missing', () => {
-    const params = new URLSearchParams([
-      ['search', 'Legacy'],
-    ]);
+  it('supports custom pagination bounds', () => {
+    const result = build(
+      { page: 2 as any, pageSize: 1500 as any },
+      { defaultPageSize: 500, maxPageSize: 1500 },
+    );
 
-    const filters = buildContactsFilters(params);
-
-    assert.match(filters.whereClause, /LOWER\(name\) LIKE \?/);
-    assert.equal(filters.params.length, 3);
-    assert.deepEqual(filters.params, ['%legacy%', '%legacy%', '%legacy%']);
-  });
-
-  it('falls back to 1=1 when no filters are provided', () => {
-    const params = new URLSearchParams();
-
-    const filters = buildContactsFilters(params);
-
-    assert.equal(filters.whereClause, '1=1');
-    assert.deepEqual(filters.params, []);
+    assert.equal(result.page, 2);
+    assert.equal(result.pageSize, 1500);
+    assert.equal(result.limit, 1500);
+    assert.equal(result.offset, 1500);
   });
 });
+

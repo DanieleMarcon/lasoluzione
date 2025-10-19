@@ -3,6 +3,7 @@ import {
   buildContactsFilters,
   fetchContactsData,
   type ContactDTO,
+  type ContactsFilters,
 } from '@/lib/admin/contacts-query';
 
 export const runtime = 'nodejs';
@@ -52,20 +53,29 @@ export async function GET(req: Request) {
   await assertAdmin();
 
   const { searchParams } = new URL(req.url);
-  const filters = buildContactsFilters(searchParams);
+  const filters = buildContactsFilters(
+    {
+      search: searchParams.get('q') ?? searchParams.get('search'),
+      newsletter: searchParams.get('newsletter') as ContactsFilters['newsletter'],
+      privacy: searchParams.get('privacy') as ContactsFilters['privacy'],
+      from: searchParams.get('from'),
+      to: searchParams.get('to'),
+      page: 1,
+      pageSize: EXPORT_MAX_ROWS + 1,
+    },
+    {
+      defaultPageSize: EXPORT_MAX_ROWS + 1,
+      maxPageSize: EXPORT_MAX_ROWS + 1,
+    },
+  );
 
-  const rows = await fetchContactsData({
-    whereClause: filters.whereClause,
-    params: filters.params,
-    limit: EXPORT_MAX_ROWS + 1,
-    offset: 0,
-  });
+  const { items, total } = await fetchContactsData({ filters });
 
   let truncated = false;
-  let data: ContactDTO[] = rows;
-  if (rows.length > EXPORT_MAX_ROWS) {
+  let data: ContactDTO[] = items;
+  if (total > EXPORT_MAX_ROWS) {
     truncated = true;
-    data = rows.slice(0, EXPORT_MAX_ROWS);
+    data = items.slice(0, EXPORT_MAX_ROWS);
   }
 
   const csvLines: string[] = [];

@@ -11,7 +11,8 @@ export type ContactDTO = {
   name: string;
   email: string;
   phone: string;
-  createdAt: string;
+  createdAt: string | null;
+  lastContactAt: string | null;
   agreePrivacy: boolean;
   agreeMarketing: boolean;
   totalBookings: number;
@@ -22,10 +23,10 @@ type ContactRow = {
   name?: string | null;
   email?: string | null;
   phone?: string | null;
+  lastContactAt?: string | null;
   createdAt?: string | null;
   agreePrivacy?: boolean;
   agreeNewsletter?: boolean;
-  lastContactAt?: string | null;
   bookingsCount?: number;
 };
 
@@ -33,49 +34,63 @@ type ContactsApiAny =
   | { items: any[]; total: number; page: number; pageSize: number; error?: 'temporary_failure' }
   | { data: any[]; total: number; page: number; pageSize: number; error?: 'temporary_failure' };
 
-export async function loadContacts(params: URLSearchParams, options: { signal?: AbortSignal } = {}) {
-  const res = await fetch(`/api/admin/contacts?${params.toString()}`, {
-    cache: 'no-store',
-    credentials: 'include',
-    signal: options.signal,
-  });
-  if (!res.ok) {
-    const payload = await res.json().catch(() => ({}));
-    throw new Error(payload?.error ?? 'Failed to fetch contacts');
+type LoadContactsResult = {
+  items: ContactRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  error: boolean;
+  temporaryFailure: boolean;
+};
+
+export async function loadContacts(
+  params: URLSearchParams,
+  options: { signal?: AbortSignal } = {},
+): Promise<LoadContactsResult> {
+  try {
+    const res = await fetch(`/api/admin/contacts?${params.toString()}`, {
+      cache: 'no-store',
+      credentials: 'include',
+      signal: options.signal,
+    });
+
+    if (!res.ok) {
+      return { items: [], total: 0, page: 1, pageSize: PAGE_SIZE, error: true as const, temporaryFailure: true };
+    }
+
+    const payload: ContactsApiAny = await res.json();
+    const raw = ('items' in payload ? payload.items : payload.data) ?? [];
+    const total = payload.total ?? (Array.isArray(raw) ? raw.length : 0);
+    const requestedPage = Number.parseInt(params.get('page') ?? '1', 10);
+    const requestedPageSize = Number.parseInt(params.get('pageSize') ?? String(PAGE_SIZE), 10);
+    const page = payload.page ?? (Number.isNaN(requestedPage) ? 1 : requestedPage);
+    const pageSize = payload.pageSize ?? (Number.isNaN(requestedPageSize) ? PAGE_SIZE : requestedPageSize);
+
+    const items: ContactRow[] = Array.isArray(raw)
+      ? raw.map((r: any) => ({
+          id: r.id ?? r.contact_id ?? r.user_id,
+          name: r.name ?? r.full_name ?? null,
+          email: r.email ?? null,
+          phone: r.phone ?? r.phone_number ?? null,
+          lastContactAt: r.lastContactAt ?? r.last_contact_at ?? r.createdAt ?? r.created_at ?? null,
+          createdAt: r.createdAt ?? r.created_at ?? r.lastContactAt ?? r.last_contact_at ?? null,
+          agreePrivacy: r.agreePrivacy ?? r.privacy ?? r.agree_privacy ?? false,
+          agreeNewsletter: r.agreeNewsletter ?? r.newsletter ?? r.agree_newsletter ?? false,
+          bookingsCount: r.bookingsCount ?? r.bookings_count ?? 0,
+        }))
+      : [];
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      error: false as const,
+      temporaryFailure: payload.error === 'temporary_failure',
+    };
+  } catch {
+    return { items: [], total: 0, page: 1, pageSize: PAGE_SIZE, error: true as const, temporaryFailure: true };
   }
-
-  const payload: ContactsApiAny = await res.json();
-
-  const raw = ('items' in payload ? payload.items : payload.data) ?? [];
-  const total = payload.total ?? raw.length;
-  const requestedPage = Number.parseInt(params.get('page') ?? '1', 10);
-  const requestedPageSize = Number.parseInt(params.get('pageSize') ?? String(PAGE_SIZE), 10);
-  const page = payload.page ?? (Number.isNaN(requestedPage) ? 1 : requestedPage);
-  const pageSize = payload.pageSize ?? (Number.isNaN(requestedPageSize) ? PAGE_SIZE : requestedPageSize);
-
-  const normalized: ContactRow[] = raw.map((r: any) => ({
-    id: r.id ?? r.contact_id ?? r.user_id,
-    name: r.name ?? r.full_name ?? null,
-    email: r.email ?? null,
-    phone: r.phone ?? r.phone_number ?? null,
-    createdAt: r.createdAt ?? r.created_at ?? null,
-    agreePrivacy: r.agreePrivacy ?? r.privacy ?? r.agree_privacy ?? false,
-    agreeNewsletter: r.agreeNewsletter ?? r.newsletter ?? r.agree_newsletter ?? false,
-    lastContactAt: r.lastContactAt ?? r.last_contact_at ?? null,
-    bookingsCount: r.bookingsCount ?? r.bookings_count ?? 0,
-  }));
-
-  const items: ContactDTO[] = normalized.map((row) => ({
-    name: row.name ?? '',
-    email: row.email ?? '',
-    phone: row.phone ?? '',
-    createdAt: row.createdAt ?? '',
-    agreePrivacy: Boolean(row.agreePrivacy),
-    agreeMarketing: Boolean(row.agreeNewsletter),
-    totalBookings: row.bookingsCount ?? 0,
-  }));
-
-  return { items, total, page, pageSize, temporaryFailure: payload.error === 'temporary_failure' };
 }
 
 type Filters = {
@@ -94,16 +109,12 @@ const defaultFilters: Filters = {
   to: '',
 };
 
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('it-IT', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+function formatDateSafe(iso?: string | null) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.valueOf())
+    ? '—'
+    : d.toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function BooleanBadge({ value }: { value: boolean }) {
@@ -131,7 +142,7 @@ function ContactsPageInner() {
   const toast = useToast();
   const [draftFilters, setDraftFilters] = useState<Filters>({ ...defaultFilters });
   const [filters, setFilters] = useState<Filters>({ ...defaultFilters });
-  const [contacts, setContacts] = useState<ContactDTO[]>([]);
+  const [contacts, setContacts] = useState<ContactDTO[] | null>(null);
   const [pagination, setPagination] = useState<{ page: number; pageSize: number; total: number }>(
     {
       page: 1,
@@ -161,8 +172,22 @@ function ContactsPageInner() {
       if (filters.to) params.set('to', filters.to);
 
       try {
-        const { items, total, page: payloadPage, pageSize: payloadPageSize, temporaryFailure } =
-          await loadContacts(params, { signal: abort.signal });
+        const {
+          items,
+          total,
+          page: payloadPage,
+          pageSize: payloadPageSize,
+          temporaryFailure: tmpFailure,
+          error: loadError,
+        } = await loadContacts(params, { signal: abort.signal });
+
+        if (loadError) {
+          setContacts([]);
+          setTemporaryFailure(tmpFailure || loadError);
+          setPagination({ page: 1, pageSize: PAGE_SIZE, total: 0 });
+          setError('Dati temporaneamente non disponibili.');
+          return;
+        }
 
         const nextPageSize = payloadPageSize ?? PAGE_SIZE;
         const nextPage = payloadPage ?? page;
@@ -178,8 +203,20 @@ function ContactsPageInner() {
           return;
         }
 
-        setContacts(items);
-        setTemporaryFailure(temporaryFailure);
+        const normalizedItems: ContactDTO[] = items.map((row) => ({
+          name: row.name ?? '',
+          email: row.email ?? '',
+          phone: row.phone ?? '',
+          createdAt: row.createdAt ?? null,
+          lastContactAt: row.lastContactAt ?? null,
+          agreePrivacy: Boolean(row.agreePrivacy),
+          agreeMarketing: Boolean(row.agreeNewsletter),
+          totalBookings: row.bookingsCount ?? 0,
+        }));
+
+        setContacts(normalizedItems);
+        setTemporaryFailure(tmpFailure || false);
+        setError(null);
         setPagination({
           page: nextPage,
           pageSize: nextPageSize,
@@ -209,8 +246,11 @@ function ContactsPageInner() {
     return pagination.total > 0 ? Math.ceil(pagination.total / pagination.pageSize) : 0;
   }, [pagination.total, pagination.pageSize]);
 
-  const rangeStart = pagination.total === 0 || contacts.length === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
-  const rangeEnd = pagination.total === 0 || contacts.length === 0 ? 0 : rangeStart + contacts.length - 1;
+  const contactItems = Array.isArray(contacts) ? contacts : [];
+  const contactsCount = contactItems.length;
+
+  const rangeStart = pagination.total === 0 || contactsCount === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
+  const rangeEnd = pagination.total === 0 || contactsCount === 0 ? 0 : rangeStart + contactsCount - 1;
 
   const hasPreviousPage = pagination.total > 0 && pagination.page > 1;
   const hasNextPage = pagination.total > 0 && pagination.page < totalPages;
@@ -478,7 +518,7 @@ function ContactsPageInner() {
                     Caricamento in corso…
                   </td>
                 </tr>
-              ) : contacts.length === 0 ? (
+              ) : contactsCount === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
                     {temporaryFailure
@@ -487,12 +527,17 @@ function ContactsPageInner() {
                   </td>
                 </tr>
               ) : (
-                contacts.map((contact) => (
-                  <tr key={`${contact.email}-${contact.createdAt}`} style={{ borderTop: '1px solid #e5e7eb' }}>
+                contactItems.map((contact, index) => (
+                  <tr
+                    key={`${contact.email}-${contact.createdAt ?? contact.lastContactAt ?? index}`}
+                    style={{ borderTop: '1px solid #e5e7eb' }}
+                  >
                     <td style={{ padding: '0.75rem', fontWeight: 600, color: '#111827' }}>{contact.name || '—'}</td>
                     <td style={{ padding: '0.75rem', color: '#1d4ed8' }}>{contact.email || '—'}</td>
                     <td style={{ padding: '0.75rem', color: '#111827' }}>{contact.phone || '—'}</td>
-                    <td style={{ padding: '0.75rem', color: '#374151' }}>{formatDateTime(contact.createdAt)}</td>
+                    <td style={{ padding: '0.75rem', color: '#374151' }}>
+                      {formatDateSafe(contact.lastContactAt ?? contact.createdAt)}
+                    </td>
                     <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                       <BooleanBadge value={contact.agreePrivacy} />
                     </td>

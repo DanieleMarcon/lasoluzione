@@ -1,10 +1,11 @@
 import { assertAdmin } from '@/lib/admin/session';
 import {
-  buildContactsFilters,
-  fetchContactsData,
-  type ContactDTO,
-  type ContactsFilters,
-} from '@/lib/admin/contacts-query';
+  parseDateParam,
+  queryAdminContacts,
+  toContactDTO,
+  toYesNoAll,
+} from '@/lib/admin/contacts-service';
+import type { ContactDTO } from '@/types/admin/contacts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,8 +16,8 @@ const CSV_HEADERS = [
   'email',
   'phone',
   'createdAt',
-  'agreePrivacy',
-  'agreeMarketing',
+  'privacy',
+  'newsletter',
   'totalBookings',
 ] as const;
 
@@ -43,8 +44,8 @@ function toRecord(contact: ContactDTO): ContactCsvRow {
     email: contact.email,
     phone: contact.phone,
     createdAt: contact.createdAt,
-    agreePrivacy: contact.agreePrivacy,
-    agreeMarketing: contact.agreeMarketing,
+    privacy: contact.privacy,
+    newsletter: contact.newsletter,
     totalBookings: contact.totalBookings,
   };
 }
@@ -53,23 +54,23 @@ export async function GET(req: Request) {
   await assertAdmin();
 
   const { searchParams } = new URL(req.url);
-  const filters = buildContactsFilters(
-    {
-      search: searchParams.get('q') ?? searchParams.get('search'),
-      newsletter: searchParams.get('newsletter') as ContactsFilters['newsletter'],
-      privacy: searchParams.get('privacy') as ContactsFilters['privacy'],
-      from: searchParams.get('from'),
-      to: searchParams.get('to'),
-      page: 1,
-      pageSize: EXPORT_MAX_ROWS + 1,
-    },
-    {
-      defaultPageSize: EXPORT_MAX_ROWS + 1,
-      maxPageSize: EXPORT_MAX_ROWS + 1,
-    },
-  );
+  const search = searchParams.get('q') ?? searchParams.get('search') ?? null;
+  const newsletter = toYesNoAll(searchParams.get('newsletter'));
+  const privacy = toYesNoAll(searchParams.get('privacy'));
+  const from = parseDateParam(searchParams.get('from'));
+  const to = parseDateParam(searchParams.get('to'));
 
-  const { items, total } = await fetchContactsData({ filters });
+  const { rows, total } = await queryAdminContacts({
+    search,
+    newsletter,
+    privacy,
+    from,
+    to,
+    limit: EXPORT_MAX_ROWS + 1,
+    offset: 0,
+  });
+
+  const items = rows.map(toContactDTO);
 
   let truncated = false;
   let data: ContactDTO[] = items;

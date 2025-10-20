@@ -1,11 +1,12 @@
 import PrintTrigger from '@/components/admin/bookings/PrintTrigger';
 import { assertAdmin } from '@/lib/admin/session';
 import {
-  buildContactsFilters,
-  fetchContactsData,
-  type ContactDTO,
-  type ContactsFilters,
-} from '@/lib/admin/contacts-query';
+  parseDateParam,
+  queryAdminContacts,
+  toContactDTO,
+  toYesNoAll,
+} from '@/lib/admin/contacts-service';
+import type { ContactDTO } from '@/types/admin/contacts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,9 +19,9 @@ type ContactPrintRow = {
   name: string;
   email: string;
   phone: string;
-  createdAt: Date;
-  agreePrivacy: boolean;
-  agreeMarketing: boolean;
+  lastContactAt: Date;
+  privacy: boolean;
+  newsletter: boolean;
   totalBookings: number;
 };
 
@@ -67,12 +68,12 @@ function summarizeFilters(params: URLSearchParams) {
   if (search) parts.push(`ricerca: “${search}”`);
 
   const newsletter = params.get('newsletter');
-  if (newsletter === 'true') parts.push('newsletter: sì');
-  else if (newsletter === 'false') parts.push('newsletter: no');
+  if (newsletter === 'yes') parts.push('newsletter: sì');
+  else if (newsletter === 'no') parts.push('newsletter: no');
 
   const privacy = params.get('privacy');
-  if (privacy === 'true') parts.push('privacy: sì');
-  else if (privacy === 'false') parts.push('privacy: no');
+  if (privacy === 'yes') parts.push('privacy: sì');
+  else if (privacy === 'no') parts.push('privacy: no');
 
   const from = params.get('from');
   if (from) parts.push(`dal ${formatDate(from)}`);
@@ -83,15 +84,20 @@ function summarizeFilters(params: URLSearchParams) {
 }
 
 function normalizeRows(data: ContactDTO[]): ContactPrintRow[] {
-  return data.map((contact) => ({
-    name: contact.name,
-    email: contact.email,
-    phone: contact.phone,
-    createdAt: new Date(contact.createdAt),
-    agreePrivacy: contact.agreePrivacy,
-    agreeMarketing: contact.agreeMarketing,
-    totalBookings: contact.totalBookings,
-  }));
+  return data.map((contact) => {
+    const lastContact = contact.lastContactAt ?? contact.createdAt ?? null;
+    const lastContactDate = lastContact ? new Date(lastContact) : new Date('');
+
+    return {
+      name: contact.name ?? '',
+      email: contact.email,
+      phone: contact.phone ?? '',
+      lastContactAt: lastContactDate,
+      privacy: Boolean(contact.privacy),
+      newsletter: Boolean(contact.newsletter),
+      totalBookings: contact.bookingsCount ?? contact.totalBookings ?? 0,
+    };
+  });
 }
 
 export default async function AdminContactsPrintPage({
@@ -102,24 +108,29 @@ export default async function AdminContactsPrintPage({
   await assertAdmin();
 
   const params = toURLSearchParams(searchParams);
-  const filters = buildContactsFilters(
-    {
-      search: params.get('q') ?? params.get('search'),
-      newsletter: params.get('newsletter') as ContactsFilters['newsletter'],
-      privacy: params.get('privacy') as ContactsFilters['privacy'],
-      from: params.get('from'),
-      to: params.get('to'),
-      page: Number.parseInt(params.get('page') ?? '', 10),
-      pageSize: Number.parseInt(params.get('pageSize') ?? '', 10),
-    },
-    {
-      defaultPageSize: PRINT_MAX_PAGE_SIZE,
-      maxPageSize: PRINT_MAX_PAGE_SIZE,
-    },
-  );
+  const search = params.get('q') ?? params.get('search') ?? null;
+  const newsletter = toYesNoAll(params.get('newsletter'));
+  const privacy = toYesNoAll(params.get('privacy'));
+  const from = parseDateParam(params.get('from'));
+  const to = parseDateParam(params.get('to'));
 
-  const { items } = await fetchContactsData({ filters });
-  const contacts: ContactPrintRow[] = normalizeRows(items);
+  const parsedPage = Number.parseInt(params.get('page') ?? '', 10);
+  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const parsedPageSize = Number.parseInt(params.get('pageSize') ?? '', 10);
+  const pageSize = Number.isFinite(parsedPageSize) && parsedPageSize > 0 ? Math.min(parsedPageSize, PRINT_MAX_PAGE_SIZE) : PRINT_MAX_PAGE_SIZE;
+  const offset = (page - 1) * pageSize;
+
+  const { rows } = await queryAdminContacts({
+    search,
+    newsletter,
+    privacy,
+    from,
+    to,
+    limit: pageSize,
+    offset,
+  });
+
+  const contacts: ContactPrintRow[] = normalizeRows(rows.map(toContactDTO));
 
   const filterSummary = summarizeFilters(params);
 
@@ -160,7 +171,7 @@ export default async function AdminContactsPrintPage({
         </h1>
         <p style={{ margin: 0, color: '#4b5563' }}>{filterSummary}</p>
         <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>
-          Risultati pagina {filters.page} (max {filters.pageSize} elementi) · Contatti mostrati: {contacts.length}
+          Risultati pagina {page} (max {pageSize} elementi) · Contatti mostrati: {contacts.length}
         </p>
       </header>
 
@@ -184,14 +195,14 @@ export default async function AdminContactsPrintPage({
               </td>
             </tr>
           ) : (
-            contacts.map((contact: ContactPrintRow) => (
-              <tr key={`${contact.email}-${contact.createdAt.toISOString()}`}>
+            contacts.map((contact: ContactPrintRow, index) => (
+              <tr key={`${contact.email}-${index}`}>
                 <td style={{ fontWeight: 600, color: '#111827' }}>{contact.name || '—'}</td>
                 <td style={{ color: '#1d4ed8' }}>{contact.email || '—'}</td>
                 <td>{contact.phone || '—'}</td>
-                <td>{formatDateTime(contact.createdAt)}</td>
-                <td>{contact.agreePrivacy ? 'Sì' : 'No'}</td>
-                <td>{contact.agreeMarketing ? 'Sì' : 'No'}</td>
+                <td>{formatDateTime(contact.lastContactAt)}</td>
+                <td>{contact.privacy ? 'Sì' : 'No'}</td>
+                <td>{contact.newsletter ? 'Sì' : 'No'}</td>
                 <td style={{ textAlign: 'right', fontWeight: 600 }}>{contact.totalBookings}</td>
               </tr>
             ))

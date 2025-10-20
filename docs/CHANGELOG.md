@@ -9,7 +9,7 @@ updated: 2025-02-14
 ## [Unreleased]
 
 ### Fixed
-- fix: hardened `/api/admin/contacts` via Supabase function with bound Prisma parameters, admin UI fallback banner, and Node engines aligned to 22.x for Vercel builds.【F:package.json†L1-L11】【F:src/lib/admin/contacts-query.ts†L1-L109】【F:src/app/api/admin/contacts/route.ts†L4-L51】【F:src/components/admin/contacts/ContactsPageClient.tsx†L20-L233】
+- fix: hardened `/api/admin/contacts` via Supabase function with bound Prisma parameters, admin UI fallback banner, and Node engines aligned to 22.x for Vercel builds.【F:package.json†L1-L11】【F:src/lib/admin/contacts-service.ts†L1-L78】【F:src/app/api/admin/contacts/route.ts†L1-L63】【F:src/components/admin/contacts/ContactsPageClient.tsx†L1-L316】
 - fix: admin contacts API mapping & total count — snake_case→camelCase, compatibilità con Supabase `admin_contacts_search` e view `admin_contacts_view`.【F:src/app/api/admin/contacts/route.ts†L10-L87】【F:docs/BACKEND.md†L329-L360】
 - fix: admin contacts client normalizza payload `{ items|data }`, converte snake_case in camelCase e gestisce array mancanti per evitare fallback "Dati temporaneamente non disponibili".【F:src/components/admin/contacts/ContactsPageClient.tsx†L1-L212】
 - fix: Contacts: prefer lastContactAt, safe fetch to avoid SSR 500.【F:src/components/admin/contacts/ContactsPageClient.tsx†L1-L233】

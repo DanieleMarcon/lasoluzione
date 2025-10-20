@@ -17,13 +17,66 @@ export type ContactDTO = {
   totalBookings: number;
 };
 
-export type ContactsListResponse = {
-  items: ContactDTO[];
-  page: number;
-  pageSize: number;
-  total: number;
-  error?: 'temporary_failure';
+type ContactRow = {
+  id: string | number;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  createdAt?: string | null;
+  agreePrivacy?: boolean;
+  agreeNewsletter?: boolean;
+  lastContactAt?: string | null;
+  bookingsCount?: number;
 };
+
+type ContactsApiAny =
+  | { items: any[]; total: number; page: number; pageSize: number; error?: 'temporary_failure' }
+  | { data: any[]; total: number; page: number; pageSize: number; error?: 'temporary_failure' };
+
+export async function loadContacts(params: URLSearchParams, options: { signal?: AbortSignal } = {}) {
+  const res = await fetch(`/api/admin/contacts?${params.toString()}`, {
+    cache: 'no-store',
+    credentials: 'include',
+    signal: options.signal,
+  });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}));
+    throw new Error(payload?.error ?? 'Failed to fetch contacts');
+  }
+
+  const payload: ContactsApiAny = await res.json();
+
+  const raw = ('items' in payload ? payload.items : payload.data) ?? [];
+  const total = payload.total ?? raw.length;
+  const requestedPage = Number.parseInt(params.get('page') ?? '1', 10);
+  const requestedPageSize = Number.parseInt(params.get('pageSize') ?? String(PAGE_SIZE), 10);
+  const page = payload.page ?? (Number.isNaN(requestedPage) ? 1 : requestedPage);
+  const pageSize = payload.pageSize ?? (Number.isNaN(requestedPageSize) ? PAGE_SIZE : requestedPageSize);
+
+  const normalized: ContactRow[] = raw.map((r: any) => ({
+    id: r.id ?? r.contact_id ?? r.user_id,
+    name: r.name ?? r.full_name ?? null,
+    email: r.email ?? null,
+    phone: r.phone ?? r.phone_number ?? null,
+    createdAt: r.createdAt ?? r.created_at ?? null,
+    agreePrivacy: r.agreePrivacy ?? r.privacy ?? r.agree_privacy ?? false,
+    agreeNewsletter: r.agreeNewsletter ?? r.newsletter ?? r.agree_newsletter ?? false,
+    lastContactAt: r.lastContactAt ?? r.last_contact_at ?? null,
+    bookingsCount: r.bookingsCount ?? r.bookings_count ?? 0,
+  }));
+
+  const items: ContactDTO[] = normalized.map((row) => ({
+    name: row.name ?? '',
+    email: row.email ?? '',
+    phone: row.phone ?? '',
+    createdAt: row.createdAt ?? '',
+    agreePrivacy: Boolean(row.agreePrivacy),
+    agreeMarketing: Boolean(row.agreeNewsletter),
+    totalBookings: row.bookingsCount ?? 0,
+  }));
+
+  return { items, total, page, pageSize, temporaryFailure: payload.error === 'temporary_failure' };
+}
 
 type Filters = {
   search: string;
@@ -108,20 +161,12 @@ function ContactsPageInner() {
       if (filters.to) params.set('to', filters.to);
 
       try {
-        const response = await fetch(`/api/admin/contacts?${params.toString()}`, {
-          method: 'GET',
-          credentials: 'include',
-          cache: 'no-store',
-          signal: abort.signal,
-        });
+        const { items, total, page: payloadPage, pageSize: payloadPageSize, temporaryFailure } =
+          await loadContacts(params, { signal: abort.signal });
 
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({ error: 'Errore sconosciuto' }));
-          throw new Error(payload.error || 'Impossibile caricare i contatti');
-        }
-
-        const payload = (await response.json()) as ContactsListResponse;
-        const computedTotalPages = payload.total > 0 ? Math.ceil(payload.total / payload.pageSize) : 0;
+        const nextPageSize = payloadPageSize ?? PAGE_SIZE;
+        const nextPage = payloadPage ?? page;
+        const computedTotalPages = total > 0 ? Math.ceil(total / nextPageSize) : 0;
 
         if (computedTotalPages > 0 && page > computedTotalPages) {
           setPage(computedTotalPages);
@@ -133,12 +178,12 @@ function ContactsPageInner() {
           return;
         }
 
-        setContacts(payload.items);
-        setTemporaryFailure(payload.error === 'temporary_failure');
+        setContacts(items);
+        setTemporaryFailure(temporaryFailure);
         setPagination({
-          page: payload.page,
-          pageSize: payload.pageSize,
-          total: payload.total,
+          page: nextPage,
+          pageSize: nextPageSize,
+          total,
         });
       } catch (err: any) {
         if (err?.name === 'AbortError') return;

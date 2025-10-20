@@ -1,10 +1,6 @@
 import { assertAdmin } from '@/lib/admin/session';
-import {
-  buildContactsFilters,
-  fetchContactsData,
-  type ContactDTO,
-  type ContactsFilters,
-} from '@/lib/admin/contacts-query';
+import { fetchContactsData, type ContactDTO } from '@/lib/admin/contacts-query';
+import { resolveContactsFilters } from '@/app/api/admin/contacts/filters';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -53,23 +49,19 @@ export async function GET(req: Request) {
   await assertAdmin();
 
   const { searchParams } = new URL(req.url);
-  const filters = buildContactsFilters(
-    {
-      search: searchParams.get('q') ?? searchParams.get('search'),
-      newsletter: searchParams.get('newsletter') as ContactsFilters['newsletter'],
-      privacy: searchParams.get('privacy') as ContactsFilters['privacy'],
-      from: searchParams.get('from'),
-      to: searchParams.get('to'),
-      page: 1,
-      pageSize: EXPORT_MAX_ROWS + 1,
-    },
-    {
-      defaultPageSize: EXPORT_MAX_ROWS + 1,
-      maxPageSize: EXPORT_MAX_ROWS + 1,
-    },
-  );
+  const { filters } = resolveContactsFilters(searchParams, {
+    defaultPageSize: EXPORT_MAX_ROWS + 1,
+    maxPageSize: EXPORT_MAX_ROWS + 1,
+  });
+  const exportFilters = {
+    ...filters,
+    page: 1,
+    pageSize: EXPORT_MAX_ROWS + 1,
+    limit: EXPORT_MAX_ROWS + 1,
+    offset: 0,
+  };
 
-  const { items, total } = await fetchContactsData({ filters });
+  const { items, total } = await fetchContactsData({ filters: exportFilters });
 
   let truncated = false;
   let data: ContactDTO[] = items;

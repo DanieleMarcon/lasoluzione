@@ -1,17 +1,17 @@
 ---
-updated: 2025-10-15
+updated: 2025-10-21
 ---
 # Known Issues & Fix Log
 
 ## 2025-10-14 – Admin contacts API 500
 - **Sintomo**: chiamando `GET /api/admin/contacts` la piattaforma restituiva 500 sia con utente non autenticato sia con querystring valide.
 - **Root cause**: l'handler sollevava `AdminUnauthorizedError` senza intercettarla; Next.js propagava l'eccezione come 500 generico invece di `401/403`. In più la risposta esponeva `{ data, meta }` non allineato ai consumer e mancava la paginazione standard `page/pageSize/total`.
-- **Fix**:
--  - interfaccia a Supabase: `fetchContactsData` richiama la funzione `public.admin_contacts_search` via `Prisma.sql`, con parametri bindati e conta totale dedicata; niente più `$queryRawUnsafe`.【F:src/lib/admin/contacts-query.ts†L1-L109】【F:tests/contacts-query.test.ts†L1-L43】
--  - l'API gestisce eccezioni Prisma restituendo sempre `200` con `error: "temporary_failure"`, e la UI admin mostra un banner giallo mantenendo la tabella vuota ma consistente.【F:src/app/api/admin/contacts/route.ts†L4-L51】【F:src/components/admin/contacts/ContactsPageClient.tsx†L114-L233】
--  - vista stampa ed export CSV riusano gli stessi filtri sanificati, con limiti custom ma clampati per evitare carichi eccessivi sulla view Supabase.【F:src/app/admin/(protected)/contacts/print/page.tsx†L1-L136】【F:src/app/api/admin/contacts/export/route.ts†L1-L96】
-- **Follow-up**: monitorare versioni della funzione Supabase (`admin_contacts_search`) e aggiungere logging strutturato per failure future.
-Aggiornato al: 2025-10-15
+- **Fix (2025-10-21)**:
+  - la rotta riusa il data layer condiviso `fetchContactsData`, normalizza `newsletter/privacy` in `all|true|false`, arricchisce il payload (`bookingsCount`, `lastContactAt`) e logga i 500 con `{ route, query, errorCode }`.
+  - export CSV/print riusano lo stesso builder di filtri, evitando divergenze (`yes/no` → `true/false`).
+  - il client admin tollera `{ items|data }`, effettua fallback `bookingsCount ?? totalBookings` e mantiene `createdAt` allineato all'ultimo contatto.【F:src/app/api/admin/contacts/route.ts†L1-L123】【F:src/app/api/admin/contacts/export/route.ts†L1-L97】【F:src/components/admin/contacts/ContactsPageClient.tsx†L1-L210】
+- **Follow-up**: monitorare `admin_contacts_search` e pianificare refactor UI per separare `createdAt`/`lastContactAt`.
+Aggiornato al: 2025-10-21
 
 ## 2025-10-20 – Contacts API/Client contract mismatch – risolto con normalizzazione lato client
 - **Sintomo**: la pagina Admin → Contatti mostrava "Dati temporaneamente non disponibili" e console error da `payload.items` undefined.
@@ -36,7 +36,7 @@ Ogni issue include **riproduzione**, **causa ipotizzata**, **log da raccogliere*
 ## API & Backend
 | ID | Descrizione | Riproduzione | Ipotesi causa | Log richiesti | Priorità |
 | --- | --- | --- | --- | --- | --- |
-| API-500-Contacts | `/api/admin/contacts` restituisce 500. | `GET https://<preview>/api/admin/contacts` con sessione admin oppure aprire `/admin/contacts`. | Rotta interroga tabella non migrata (`prisma.contacts` assente). | Log Prisma (`error.code`, `query`), stack trace completo. Annotare `requestId`. | **P0** |
+| API-500-Contacts | ✅ **Risolto**: `/api/admin/contacts` 500 per payload incoerente/filtri legacy. | `GET https://<preview>/api/admin/contacts` con sessione admin oppure aprire `/admin/contacts`. | Contratto booleani legacy `yes/no` non normalizzato → errore DB; ora gestito dal data layer. | Log strutturato `{ route, query, errorCode }` in caso di nuovi 500. | **Chiuso** |
 | API-EmailOnly-Seed | Lista eventi email-only in `/admin/settings` vuota. | Aprire `/admin/settings` → sezione "Eventi prenotazione via email". | Nessun seed `EventInstance`; API supporta solo PATCH. | Log query `fetchAdminEventInstances`, output array. | **P1** |
 
 ## Frontend & Admin UI

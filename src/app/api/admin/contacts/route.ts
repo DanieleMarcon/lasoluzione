@@ -1,44 +1,10 @@
 import { NextResponse } from 'next/server';
-import { Prisma } from '@prisma/client';
-
 import { AdminUnauthorizedError, assertAdmin } from '@/lib/admin/session';
-import { prisma } from '@/lib/prisma';
+import { fetchContactsData } from '@/lib/admin/contacts-query';
+import { resolveContactsFiltersWithPage } from '@/app/api/admin/contacts/filters';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-type DbRow = {
-  name: string | null;
-  email: string | null;
-  phone: string | null;
-  last_contact_at: Date | string | null;
-  privacy: boolean | null;
-  newsletter: boolean | null;
-  total_bookings: number | bigint | null;
-};
-
-type ApiRow = {
-  name: string | null;
-  email: string | null;
-  phone: string | null;
-  lastContactAt: string | null;
-  privacy: boolean;
-  newsletter: boolean;
-  totalBookings: number;
-};
-
-function parseDateParam(v: string | null): Date | null {
-  if (!v) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function normalizeFlagParam(value: string | null): 'all' | 'yes' | 'no' {
-  if (value === 'yes' || value === 'no') {
-    return value;
-  }
-  return 'all';
-}
 
 export async function GET(req: Request) {
   try {
@@ -50,63 +16,68 @@ export async function GET(req: Request) {
     throw error;
   }
 
+  let queryLog: Record<string, string> = {};
   try {
     const { searchParams } = new URL(req.url);
+    const { filters, pagination, queryLog: resolvedLog } = resolveContactsFiltersWithPage(searchParams);
+    queryLog = resolvedLog;
 
-    const search = searchParams.get('q') || null;
-    const newsletter = normalizeFlagParam(searchParams.get('newsletter'));
-    const privacy = normalizeFlagParam(searchParams.get('privacy'));
+    const { items, total } = await fetchContactsData({ filters });
 
-    const from = parseDateParam(searchParams.get('from'));
-    const to = parseDateParam(searchParams.get('to'));
+    const data = items.map((row) => {
+      const legacyRow = row as Record<string, unknown>;
+      const rawTotalBookings = legacyRow.totalBookings ?? legacyRow.total_bookings ?? 0;
+      const totalBookings = typeof rawTotalBookings === 'number'
+        ? rawTotalBookings
+        : Number(rawTotalBookings) || 0;
+      const bookingsCountRaw = legacyRow.bookingsCount ?? legacyRow.bookings_count ?? totalBookings;
+      const bookingsCount = typeof bookingsCountRaw === 'number'
+        ? bookingsCountRaw
+        : Number(bookingsCountRaw) || 0;
 
-    const limit = Math.max(
-      1,
-      Math.min(Number.parseInt(searchParams.get('pageSize') || '20', 10) || 20, 200),
+      const lastContactAtRaw =
+        legacyRow.lastContactAt ?? legacyRow.last_contact_at ?? legacyRow.createdAt ?? legacyRow.created_at ?? null;
+      let lastContactAt: string | null = null;
+      if (typeof lastContactAtRaw === 'string') {
+        lastContactAt = lastContactAtRaw || null;
+      } else if (lastContactAtRaw instanceof Date) {
+        lastContactAt = Number.isNaN(lastContactAtRaw.getTime()) ? null : lastContactAtRaw.toISOString();
+      }
+      if (!lastContactAt && typeof row.createdAt === 'string' && row.createdAt) {
+        lastContactAt = row.createdAt;
+      }
+
+      return {
+        ...row,
+        totalBookings,
+        bookingsCount,
+        lastContactAt,
+        createdAt: lastContactAt,
+        privacy: Boolean((legacyRow.privacy ?? legacyRow.agreePrivacy ?? row.agreePrivacy) as boolean | null | undefined),
+        newsletter: Boolean(
+          (legacyRow.newsletter ?? legacyRow.agreeNewsletter ?? row.agreeMarketing ?? row.agreeNewsletter) as
+            | boolean
+            | null
+            | undefined,
+        ),
+        agreeNewsletter: Boolean(
+          (legacyRow.agreeNewsletter ?? legacyRow.newsletter ?? row.agreeMarketing ?? row.agreeNewsletter) as
+            | boolean
+            | null
+            | undefined,
+        ),
+      };
+    });
+
+    return NextResponse.json({ data, total, page: pagination.page, pageSize: pagination.pageSize });
+  } catch (error: any) {
+    console.error(
+      JSON.stringify({
+        route: '/api/admin/contacts',
+        query: queryLog,
+        errorCode: error?.code ?? 'unknown',
+      }),
     );
-    const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
-    const offset = (page - 1) * limit;
-
-    const rows = await prisma.$queryRaw<DbRow[]>(
-      Prisma.sql`select * from public.admin_contacts_search(
-        ${search}, ${newsletter}, ${privacy}, ${from}, ${to}, ${limit}, ${offset}
-      )`,
-    );
-
-    let total = 0;
-    try {
-      const totalRes = await prisma.$queryRaw<{ count: bigint }[]>(
-        Prisma.sql`select count(*)::bigint as count
-                   from public.admin_contacts_search(
-                     ${search}, ${newsletter}, ${privacy}, ${from}, ${to}, ${Prisma.sql`NULL`}, ${Prisma.sql`NULL`}
-                   )`,
-      );
-      total = Number(totalRes?.[0]?.count ?? 0);
-    } catch {
-      const totalRes = await prisma.$queryRaw<{ count: bigint }[]>(
-        Prisma.sql`select count(*)::bigint as count
-                   from (
-                     select * from public.admin_contacts_search(
-                       ${search}, ${newsletter}, ${privacy}, ${from}, ${to}, 1000000000, 0
-                     )
-                   ) t`,
-      );
-      total = Number(totalRes?.[0]?.count ?? 0);
-    }
-
-    const data: ApiRow[] = rows.map((r) => ({
-      name: r.name ?? null,
-      email: r.email ?? null,
-      phone: r.phone ?? null,
-      lastContactAt: r.last_contact_at ? new Date(r.last_contact_at).toISOString() : null,
-      privacy: Boolean(r.privacy),
-      newsletter: Boolean(r.newsletter),
-      totalBookings: Number(r.total_bookings ?? 0),
-    }));
-
-    return NextResponse.json({ data, total, page, pageSize: limit });
-  } catch (err) {
-    console.error('contacts API error:', err);
     return NextResponse.json({ error: 'INTERNAL_SERVER_ERROR' }, { status: 500 });
   }
 }

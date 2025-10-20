@@ -31,8 +31,13 @@ export default async function ProtectedAdminLayout({ children }: Props) {
       <div className="min-h-screen flex bg-gray-50">
         {/* Sidebar */}
         <aside className="w-72 shrink-0 bg-slate-900 text-white">
-          <div className="p-4 text-lg font-semibold">Dashboard Admin</div>
-          <AdminNav links={links} userEmail={userEmail} />
+          <div className="flex h-full flex-col">
+            <header className="border-b border-white/10 px-6 py-5">
+              <p className="text-lg font-semibold">Dashboard Admin</p>
+              <p className="text-sm text-slate-300">Bar La Soluzione</p>
+            </header>
+            <AdminNav links={links} userEmail={userEmail} />
+          </div>
         </aside>
 
         {/* Contenuto */}

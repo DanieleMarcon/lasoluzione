@@ -47,6 +47,7 @@ export type ContactDTO = {
   email: string;
   phone: string;
   createdAt: string;
+  lastContactAt: string;
   agreePrivacy: boolean;
   agreeMarketing: boolean;
   totalBookings: number;
@@ -124,7 +125,7 @@ export function buildContactsFilters(
 }
 
 function mapRowToContact(row: AdminContactsRow): ContactDTO {
-  const createdAt = (() => {
+  const lastContactAt = (() => {
     if (!row.last_contact_at) return '';
     const date = row.last_contact_at instanceof Date ? row.last_contact_at : new Date(row.last_contact_at);
     if (Number.isNaN(date.getTime())) return '';
@@ -135,7 +136,8 @@ function mapRowToContact(row: AdminContactsRow): ContactDTO {
     name: row.name?.trim() ?? '',
     email: row.email?.trim() ?? '',
     phone: row.phone?.trim() ?? '',
-    createdAt,
+    createdAt: lastContactAt,
+    lastContactAt,
     agreePrivacy: Boolean(row.privacy),
     agreeMarketing: Boolean(row.newsletter),
     totalBookings: Number(row.total_bookings ?? 0),

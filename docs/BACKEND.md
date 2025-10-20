@@ -318,8 +318,8 @@ Le tabelle seguenti coprono **tutte** le rotte presenti sotto `src/app/api` (pub
 | `POST /api/admin/bookings/[id]/confirm` | `assertAdmin` | — | `200` → booking `confirmed` + email inviata | `404` booking; `409` stato non pendente; `500` mailer | Aggiorna `Booking.status`, `confirmedAt`, invia email | `src/app/api/admin/bookings/[id]/confirm/route.ts` |
 | `POST /api/admin/bookings/[id]/cancel` | `assertAdmin` | Body `{ reason?: string }` | `200` → booking `cancelled` | `404` booking; `409` `already_cancelled` | Aggiorna stato, invia email testo | `src/app/api/admin/bookings/[id]/cancel/route.ts` |
 | `POST /api/admin/bookings/[id]/resend` | `assertAdmin` | — | `200` → email reinviata | `404` booking; `409` `no_email_template` | Genera email HTML/testo e invia via Nodemailer | `src/app/api/admin/bookings/[id]/resend/route.ts` |
-| `GET /api/admin/contacts` | `assertAdmin` | Query `q`, `newsletter`, `privacy`, `from`, `to`, `page`, `pageSize` | `200` → `{ data, total, page, pageSize }` (camelCase) | `500` errore Supabase/DB | Proxy Supabase `admin_contacts_search` | `src/app/api/admin/contacts/route.ts` |
-| `GET /api/admin/contacts/export` | `assertAdmin` | Query `format` | `500` (stesso bug) | `500` | Tentativo export contatti | `src/app/api/admin/contacts/export/route.ts` |
+| `GET /api/admin/contacts` | `assertAdmin` | Query `q`, `newsletter` (`all`/`true`/`false`, accetta legacy `yes/no`), `privacy`, `from`, `to`, `page`, `pageSize` | `200` → `{ data, total, page, pageSize }` (camelCase) | `500` errore Supabase/DB | Wrapper `fetchContactsData` su `admin_contacts_search` | `src/app/api/admin/contacts/route.ts` |
+| `GET /api/admin/contacts/export` | `assertAdmin` | Query `format`, stessi filtri della lista | `200` stream CSV (max 10k righe) | `500` errore Supabase/DB | Serializza `fetchContactsData` | `src/app/api/admin/contacts/export/route.ts` |
 | `GET /api/admin/menu/dishes` | `assertAdmin` | Query `page`, `visibleAt` | `200` → `{ data: MenuDish[], meta }` | — | Lettura `MenuDish` | `src/app/api/admin/menu/dishes/route.ts` |
 | `POST /api/admin/menu/dishes` | `assertAdmin` | Body `createMenuDishSchema` | `201` → dish creato | `400` validazione; `409` slug duplicato | Crea `MenuDish` | `src/app/api/admin/menu/dishes/route.ts` |
 | `PATCH /api/admin/menu/dishes/[id]` | `assertAdmin` | Body `updateMenuDishSchema` | `200` → dish aggiornato | `404` dish; `409` slug duplicato | Aggiorna record | `src/app/api/admin/menu/dishes/[id]/route.ts` |
@@ -360,14 +360,15 @@ Le tabelle seguenti coprono **tutte** le rotte presenti sotto `src/app/api` (pub
 - **Autenticazione**: `assertAdmin` riusa la sessione NextAuth per verificare la whitelist.
 - **Parametri query**:
   - `q`: testo libero, inoltrato come `search` alla funzione Supabase per match su nome/email/telefono.
-  - `newsletter`: `all` (default), `yes`, `no`; valori non riconosciuti vengono normalizzati a `all`.
+  - `newsletter`: tri-state `all`/`true`/`false`; accetta anche i legacy `yes`/`no` che vengono normalizzati.
   - `privacy`: stessi valori di `newsletter`, applicati ai consensi privacy.
   - `from` / `to`: date parseabili (`Date` ISO/locale); valori invalidi o vuoti vengono ignorati.
   - `page`: intero ≥ 1, default `1`.
   - `pageSize`: intero tra `1` e `200`, default `20`.
-- **Risposta**: `{ data: ApiRow[], total: number, page: number, pageSize: number }` dove ogni `ApiRow` contiene `name`, `email`, `phone`, `lastContactAt` (ISO string o `null`), `privacy`, `newsletter`, `totalBookings`.
-- **Mappatura snake_case → camelCase**: la funzione Supabase e la view espongono colonne snake_case (`last_contact_at`, `total_bookings`, `privacy`, `newsletter`); l'handler converte date in ISO string, coerces boolean a `false`/`true` e numeri a `number` JavaScript per la UI admin.【F:src/app/api/admin/contacts/route.ts†L10-L87】
-- **Calcolo `total`**: viene effettuata una query dedicata con gli stessi filtri ma senza `limit/offset`; se la funzione non accetta `NULL` per quei parametri, viene eseguito un fallback su subquery con limiti ampi per mantenere coerenza di paginazione.【F:src/app/api/admin/contacts/route.ts†L71-L86】
+- **Risposta**: `{ data: ApiRow[], total: number, page: number, pageSize: number }` con righe arricchite da `agreePrivacy`, `agreeMarketing`, `totalBookings`, `bookingsCount` (fallback su `totalBookings`), `lastContactAt` e `createdAt` (temporaneamente uguale a `lastContactAt`).
+- **Mappatura snake_case → camelCase**: `fetchContactsData` centralizza la conversione da Supabase (`last_contact_at`, `total_bookings`); l'handler aggiunge compat legacy (`bookingsCount`, `newsletter`, `privacy`) e normalizza date/booleani.【F:src/lib/admin/contacts-query.ts†L1-L182】【F:src/app/api/admin/contacts/route.ts†L1-L123】
+- **Calcolo `total`**: delegato al data layer condiviso (`fetchContactsData`), che esegue count dedicato su `admin_contacts_search` e tronca al `Number.MAX_SAFE_INTEGER`.
+- **Logging**: su errori 500 viene emesso log JSON `{ route, query, errorCode }` per velocizzare la diagnosi.【F:src/app/api/admin/contacts/route.ts†L99-L118】
 
 **Database references**
 

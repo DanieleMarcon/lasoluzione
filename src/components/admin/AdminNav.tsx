@@ -6,16 +6,6 @@ import { signOut } from 'next-auth/react';
 
 const SHOW_LEGACY = process.env.NEXT_PUBLIC_ADMIN_SHOW_LEGACY === 'true';
 
-const navStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  justifyContent: 'space-between',
-  padding: '2rem 1.5rem',
-  minWidth: 220,
-  backgroundColor: '#111827',
-  color: '#fff',
-};
-
 const linkStyle: React.CSSProperties = {
   padding: '0.75rem 1rem',
   borderRadius: 12,
@@ -79,37 +69,48 @@ export default function AdminNav({ links, userEmail }: Props) {
     { href: '/admin/catalog/sections', label: 'Sezioni' },
   ];
 
-  const crmLinks: NavLink[] = [{ href: '/admin/contacts', label: 'Contatti' }];
+  const providedLinks = new Set(enhancedLinks.map((link) => link.href));
+  const crmLinks: NavLink[] = [{ href: '/admin/contacts', label: 'Contatti' }].filter(
+    (link) => !providedLinks.has(link.href),
+  );
 
   const sections: Array<{ key: string; title: string | null; items: NavLink[]; depth: 0 | 1 }> = [
     { key: 'main', title: null, items: enhancedLinks, depth: 0 },
     { key: 'catalog', title: 'Catalogo', items: catalogLinks, depth: 1 },
-    { key: 'crm', title: 'CRM', items: crmLinks, depth: 1 },
   ];
 
+  if (crmLinks.length > 0) {
+    sections.push({ key: 'crm', title: 'CRM', items: crmLinks, depth: 1 });
+  }
+
   return (
-    <aside style={navStyle}>
-      <div style={{ display: 'grid', gap: '2rem' }}>
-        <div>
-          <p style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>Dashboard Admin</p>
-          <p style={{ margin: '0.25rem 0 0', color: '#9ca3af', fontSize: '0.9rem' }}>Bar La Soluzione</p>
-        </div>
-        <nav style={{ display: 'grid', gap: '1.5rem' }}>
-          {sections.map((section) => (
-            <div key={section.key} style={{ display: 'grid', gap: '0.5rem' }}>
-              {section.title ? <p style={sectionTitleStyle}>{section.title}</p> : null}
-              {section.items.map((link) => {
-                const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
-                const style = section.depth > 0 ? (isActive ? childActiveStyle : childLinkStyle) : isActive ? activeStyle : linkStyle;
-                return (
-                  <Link key={link.href} href={link.href} style={style}>
-                    {link.label}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
+    <nav
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        padding: '2rem 1.5rem',
+        minWidth: 220,
+        gap: '2rem',
+        height: '100%',
+        flex: '1 1 auto',
+      }}
+    >
+      <div style={{ display: 'grid', gap: '1.5rem' }}>
+        {sections.map((section) => (
+          <div key={section.key} style={{ display: 'grid', gap: '0.5rem' }}>
+            {section.title ? <p style={sectionTitleStyle}>{section.title}</p> : null}
+            {section.items.map((link) => {
+              const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
+              const style = section.depth > 0 ? (isActive ? childActiveStyle : childLinkStyle) : isActive ? activeStyle : linkStyle;
+              return (
+                <Link key={link.href} href={link.href} style={style}>
+                  {link.label}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </div>
 
       <div
@@ -141,6 +142,6 @@ export default function AdminNav({ links, userEmail }: Props) {
           Esci
         </button>
       </div>
-    </aside>
+    </nav>
   );
 }

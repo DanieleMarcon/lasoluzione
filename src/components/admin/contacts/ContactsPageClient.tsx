@@ -76,7 +76,7 @@ export async function loadContacts(
           createdAt: r.createdAt ?? r.created_at ?? r.lastContactAt ?? r.last_contact_at ?? null,
           agreePrivacy: r.agreePrivacy ?? r.privacy ?? r.agree_privacy ?? false,
           agreeNewsletter: r.agreeNewsletter ?? r.newsletter ?? r.agree_newsletter ?? false,
-          bookingsCount: r.bookingsCount ?? r.bookings_count ?? 0,
+          bookingsCount: r.bookingsCount ?? r.totalBookings ?? r.bookings_count ?? 0,
         }))
       : [];
 

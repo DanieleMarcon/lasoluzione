@@ -4,19 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 
 import { ToastProvider, useToast } from '@/components/admin/ui/toast';
+import type { ContactDTO } from '@/types/admin/contacts';
 
 const PAGE_SIZE = 20;
-
-export type ContactDTO = {
-  name: string;
-  email: string;
-  phone: string;
-  createdAt: string | null;
-  lastContactAt: string | null;
-  agreePrivacy: boolean;
-  agreeMarketing: boolean;
-  totalBookings: number;
-};
 
 type ContactRow = {
   id: string | number;
@@ -24,10 +14,14 @@ type ContactRow = {
   email?: string | null;
   phone?: string | null;
   lastContactAt?: string | null;
+  last_contact_at?: string | null;
   createdAt?: string | null;
-  agreePrivacy?: boolean;
-  agreeNewsletter?: boolean;
-  bookingsCount?: number;
+  created_at?: string | null;
+  privacy?: boolean | null;
+  newsletter?: boolean | null;
+  bookingsCount?: number | null;
+  totalBookings?: number | null;
+  total_bookings?: number | null;
 };
 
 type ContactsApiAny =
@@ -67,17 +61,58 @@ export async function loadContacts(
     const pageSize = payload.pageSize ?? (Number.isNaN(requestedPageSize) ? PAGE_SIZE : requestedPageSize);
 
     const items: ContactRow[] = Array.isArray(raw)
-      ? raw.map((r: any) => ({
-          id: r.id ?? r.contact_id ?? r.user_id,
-          name: r.name ?? r.full_name ?? null,
-          email: r.email ?? null,
-          phone: r.phone ?? r.phone_number ?? null,
-          lastContactAt: r.lastContactAt ?? r.last_contact_at ?? r.createdAt ?? r.created_at ?? null,
-          createdAt: r.createdAt ?? r.created_at ?? r.lastContactAt ?? r.last_contact_at ?? null,
-          agreePrivacy: r.agreePrivacy ?? r.privacy ?? r.agree_privacy ?? false,
-          agreeNewsletter: r.agreeNewsletter ?? r.newsletter ?? r.agree_newsletter ?? false,
-          bookingsCount: r.bookingsCount ?? r.bookings_count ?? 0,
-        }))
+      ? raw.map((r: any) => {
+          const row: ContactRow = {
+            id: r.id ?? r.contact_id ?? r.user_id,
+            name: r.name ?? r.full_name ?? null,
+            email: r.email ?? null,
+            phone: r.phone ?? r.phone_number ?? null,
+            lastContactAt: r.lastContactAt ?? r.last_contact_at ?? null,
+            last_contact_at: r.last_contact_at ?? null,
+            createdAt: r.createdAt ?? r.created_at ?? null,
+            created_at: r.created_at ?? null,
+            privacy: typeof r.privacy === 'boolean' ? r.privacy : typeof r.agreePrivacy === 'boolean' ? r.agreePrivacy : null,
+            newsletter:
+              typeof r.newsletter === 'boolean'
+                ? r.newsletter
+                : typeof r.agreeNewsletter === 'boolean'
+                  ? r.agreeNewsletter
+                  : null,
+            bookingsCount:
+              typeof r.bookingsCount === 'number'
+                ? r.bookingsCount
+                : typeof r.bookingsCount === 'bigint'
+                  ? Number(r.bookingsCount)
+                  : typeof r.bookings_count === 'bigint'
+                    ? Number(r.bookings_count)
+                    : typeof r.bookings_count === 'number'
+                      ? r.bookings_count
+                      : null,
+            totalBookings:
+              typeof r.totalBookings === 'number'
+                ? r.totalBookings
+                : typeof r.totalBookings === 'bigint'
+                  ? Number(r.totalBookings)
+                  : typeof r.total_bookings === 'bigint'
+                    ? Number(r.total_bookings)
+                    : typeof r.total_bookings === 'number'
+                      ? r.total_bookings
+                      : null,
+            total_bookings:
+              typeof r.total_bookings === 'bigint'
+                ? Number(r.total_bookings)
+                : typeof r.total_bookings === 'number'
+                  ? r.total_bookings
+                  : null,
+          };
+
+          row.bookingsCount = row.bookingsCount ?? row.totalBookings ?? 0;
+          row.lastContactAt = row.lastContactAt ?? row.last_contact_at ?? null;
+          row.createdAt = row.createdAt ?? row.lastContactAt ?? null;
+          row.totalBookings = row.totalBookings ?? row.bookingsCount ?? 0;
+
+          return row;
+        })
       : [];
 
     return {
@@ -95,8 +130,8 @@ export async function loadContacts(
 
 type Filters = {
   search: string;
-  newsletter: 'all' | 'true' | 'false';
-  privacy: 'all' | 'true' | 'false';
+  newsletter: 'all' | 'yes' | 'no';
+  privacy: 'all' | 'yes' | 'no';
   from: string;
   to: string;
 };
@@ -204,14 +239,20 @@ function ContactsPageInner() {
         }
 
         const normalizedItems: ContactDTO[] = items.map((row) => ({
-          name: row.name ?? '',
+          name: row.name ?? null,
           email: row.email ?? '',
-          phone: row.phone ?? '',
+          phone: row.phone ?? null,
           createdAt: row.createdAt ?? null,
           lastContactAt: row.lastContactAt ?? null,
-          agreePrivacy: Boolean(row.agreePrivacy),
-          agreeMarketing: Boolean(row.agreeNewsletter),
-          totalBookings: row.bookingsCount ?? 0,
+          privacy: typeof row.privacy === 'boolean' ? row.privacy : null,
+          newsletter: typeof row.newsletter === 'boolean' ? row.newsletter : null,
+          bookingsCount: typeof row.bookingsCount === 'number' ? row.bookingsCount : 0,
+          totalBookings:
+            typeof row.totalBookings === 'number'
+              ? row.totalBookings
+              : typeof row.bookingsCount === 'number'
+                ? row.bookingsCount
+                : 0,
         }));
 
         setContacts(normalizedItems);
@@ -399,8 +440,8 @@ function ContactsPageInner() {
               }}
             >
               <option value="all">Tutti</option>
-              <option value="true">Solo iscritti</option>
-              <option value="false">Solo non iscritti</option>
+              <option value="yes">Solo iscritti</option>
+              <option value="no">Solo non iscritti</option>
             </select>
           </label>
 
@@ -419,8 +460,8 @@ function ContactsPageInner() {
               }}
             >
               <option value="all">Tutti</option>
-              <option value="true">Solo consensi</option>
-              <option value="false">Solo senza consenso</option>
+              <option value="yes">Solo consensi</option>
+              <option value="no">Solo senza consenso</option>
             </select>
           </label>
 
@@ -539,12 +580,14 @@ function ContactsPageInner() {
                       {formatDateSafe(contact.lastContactAt ?? contact.createdAt)}
                     </td>
                     <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                      <BooleanBadge value={contact.agreePrivacy} />
+                      <BooleanBadge value={Boolean(contact.privacy)} />
                     </td>
                     <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                      <BooleanBadge value={contact.agreeMarketing} />
+                      <BooleanBadge value={Boolean(contact.newsletter)} />
                     </td>
-                    <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 600 }}>{contact.totalBookings}</td>
+                    <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 600 }}>
+                      {contact.bookingsCount ?? contact.totalBookings ?? 0}
+                    </td>
                   </tr>
                 ))
               )}

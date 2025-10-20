@@ -7,9 +7,9 @@ updated: 2025-10-15
 - **Sintomo**: chiamando `GET /api/admin/contacts` la piattaforma restituiva 500 sia con utente non autenticato sia con querystring valide.
 - **Root cause**: l'handler sollevava `AdminUnauthorizedError` senza intercettarla; Next.js propagava l'eccezione come 500 generico invece di `401/403`. In più la risposta esponeva `{ data, meta }` non allineato ai consumer e mancava la paginazione standard `page/pageSize/total`.
 - **Fix**:
--  - interfaccia a Supabase: `fetchContactsData` richiama la funzione `public.admin_contacts_search` via `Prisma.sql`, con parametri bindati e conta totale dedicata; niente più `$queryRawUnsafe`.【F:src/lib/admin/contacts-query.ts†L1-L109】【F:tests/contacts-query.test.ts†L1-L43】
+-  - interfaccia a Supabase: i wrapper condivisi (`queryAdminContacts`) invocano `public.admin_contacts_search` via `Prisma.sql` con parametri bindati e conteggio separato; niente più `$queryRawUnsafe`.【F:src/lib/admin/contacts-service.ts†L1-L78】
 -  - l'API gestisce eccezioni Prisma restituendo sempre `200` con `error: "temporary_failure"`, e la UI admin mostra un banner giallo mantenendo la tabella vuota ma consistente.【F:src/app/api/admin/contacts/route.ts†L4-L51】【F:src/components/admin/contacts/ContactsPageClient.tsx†L114-L233】
--  - vista stampa ed export CSV riusano gli stessi filtri sanificati, con limiti custom ma clampati per evitare carichi eccessivi sulla view Supabase.【F:src/app/admin/(protected)/contacts/print/page.tsx†L1-L136】【F:src/app/api/admin/contacts/export/route.ts†L1-L96】
+-  - vista stampa ed export CSV riusano gli stessi filtri sanificati, con limiti custom ma clampati per evitare carichi eccessivi sulla view Supabase.【F:src/app/admin/(protected)/contacts/print/page.tsx†L1-L211】【F:src/app/api/admin/contacts/export/route.ts†L1-L114】
 - **Follow-up**: monitorare versioni della funzione Supabase (`admin_contacts_search`) e aggiungere logging strutturato per failure future.
 Aggiornato al: 2025-10-15
 

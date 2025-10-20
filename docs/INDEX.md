@@ -5,6 +5,7 @@ Aggiornato al: 2025-02-15
 - [Archivio storico](#archivio-storico)
 - [Mappa consolidamento (vecchio → nuovo)](#mappa-consolidamento-vecchio--nuovo)
 - [Provenienza & Storia](#provenienza--storia)
+- [Admin Contacts API (Supabase mapping)](./BACKEND.md#admin-contacts-api)
 
 # Indice documentazione attiva
 | Titolo | Path | Ultima modifica |

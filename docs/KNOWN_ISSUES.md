@@ -17,6 +17,7 @@ Aggiornato al: 2025-10-15
 - **Sintomo**: la pagina Admin → Contatti mostrava "Dati temporaneamente non disponibili" e console error da `payload.items` undefined.
 - **Root cause**: la route `/api/admin/contacts` restituiva `{ data, total, page, pageSize }` con campi snake_case (`created_at`, `agree_privacy`, ...), mentre il client si aspettava `{ items, ... }` camelCase.
 - **Fix**: normalizzazione lato client con fallback `items/data`, mapping snake_case→camelCase e rendering difensivo su array mancanti.
+- **Storico**: API/Client timestamp field mismatch risolto con normalizzazione lato client.
 - **Follow-up**: valutare contratto API stabile e includere schema Zod condiviso tra server e client per evitare regressioni future.
 Aggiornato al: 2025-10-20
 

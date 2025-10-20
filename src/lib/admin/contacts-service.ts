@@ -35,6 +35,10 @@ function parseCount(value: unknown): number | undefined {
   if (typeof value === 'bigint') {
     return Number(value);
   }
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  }
   return undefined;
 }
 
@@ -42,7 +46,7 @@ export function toContactDTO(row: any): ContactDTO {
   const last = row.lastContactAt ?? row.last_contact_at ?? null;
 
   const totalBookings = parseCount(row.totalBookings) ?? parseCount(row.total_bookings);
-  const bookingsCount = parseCount(row.bookingsCount) ?? (typeof totalBookings === 'number' ? totalBookings : 0);
+  const bookingsCount = parseCount(row.bookingsCount) ?? (totalBookings ?? 0);
 
   const lastDate = last ? String(last) : null;
 
@@ -76,9 +80,12 @@ export async function queryAdminContacts({
 
   const totalRes = await prisma.$queryRaw<{ count: bigint }[]>(
     Prisma.sql`select count(*)::bigint as count
-               from public.admin_contacts_search(
-                 ${search}, ${newsletter}, ${privacy}, ${from}, ${to}, ${Prisma.sql`NULL`}, ${Prisma.sql`NULL`}
-               )`,
+               from (
+                 select 1
+                 from public.admin_contacts_search(
+                   ${search}, ${newsletter}, ${privacy}, ${from}, ${to}, ${limit}, ${offset}
+                 )
+               ) as s`,
   );
 
   const total = Number(totalRes?.[0]?.count ?? 0);

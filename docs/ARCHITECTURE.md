@@ -122,6 +122,8 @@ Prisma ORM → PostgreSQL/Supabase (prisma/schema.prisma, seed.ts)
 | `/eventi/[slug]` | `src/app/eventi/[slug]/page.tsx` | Booking email-only per evento (`EventForm`) | Pubblica |
 | `/admin/...` | Vedi `docs/FRONTEND.md` sezione area amministrazione | Admin (Auth.js) |
 
+> CRM: per contratto `/api/admin/contacts` consulta `docs/BACKEND.md` (sezione *Admin Contacts API*); per struttura e navigazione aggiornata dell'area admin vedi `docs/FRONTEND.md` (*Navigazione laterale*).
+
 ## API principali (estratto)
 | Metodo | Path | File | Note |
 | --- | --- | --- | --- |

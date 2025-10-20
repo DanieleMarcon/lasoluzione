@@ -62,7 +62,13 @@ export default function AdminNav({ links, userEmail }: Props) {
   const pathname = usePathname();
 
   const legacyHrefs = new Set(['/admin/menu/dishes', '/admin/tiers']);
-  const visibleLinks = SHOW_LEGACY ? links : links.filter((link) => !legacyHrefs.has(link.href));
+  const crmLink: NavLink = { href: '/admin/contacts', label: 'Contatti' };
+
+  const withoutLegacy = SHOW_LEGACY
+    ? links
+    : links.filter((link) => !legacyHrefs.has(link.href));
+  const visibleLinks = withoutLegacy.filter((link) => link.href !== crmLink.href);
+
   const enhancedLinks = visibleLinks.map((link) => {
     const shouldMarkLegacy =
       SHOW_LEGACY && legacyHrefs.has(link.href) && !link.label.includes('(Legacy)');
@@ -78,17 +84,14 @@ export default function AdminNav({ links, userEmail }: Props) {
     { href: '/admin/catalog/sections', label: 'Sezioni' },
   ];
 
-  const hasContactsLink = enhancedLinks.some((link) => link.href === '/admin/contacts');
-  const crmLinks: NavLink[] = hasContactsLink ? [] : [{ href: '/admin/contacts', label: 'Contatti' }];
+  const crmLinks: NavLink[] = [crmLink];
 
   const sections: Array<{ key: string; title: string | null; items: NavLink[]; depth: 0 | 1 }> = [];
   sections.push({ key: 'main', title: null, items: enhancedLinks, depth: 0 });
   if (catalogLinks.length > 0) {
     sections.push({ key: 'catalog', title: 'Catalogo', items: catalogLinks, depth: 1 });
   }
-  if (crmLinks.length > 0) {
-    sections.push({ key: 'crm', title: 'CRM', items: crmLinks, depth: 1 });
-  }
+  sections.push({ key: 'crm', title: 'CRM', items: crmLinks, depth: 1 });
 
   return (
     <nav style={navStyle}>

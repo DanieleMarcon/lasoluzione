@@ -116,6 +116,11 @@ Cliente clic link email (fallback legacy): GET /api/payments/email-verify?token
 - Middleware Next.js (`src/_middleware.ts.off` → rinominare `middleware.ts`) forza login per `/admin/*` e API admin. Utilizza `getToken` (NextAuth JWT) + redirect a `/admin/signin?from=...`.
 - Client: `AdminProviders` avvolge layout con `SessionProvider` + `Toaster`.
 
+### Navigazione laterale
+- `AdminNav` restituisce esclusivamente l'elemento `<nav>` con sezioni e link; il wrapper scuro con heading vive nel layout protetto (`src/app/admin/(protected)/layout.tsx`).
+- L'intestazione laterale mostra solo "Dashboard Admin" (niente sottotitoli duplicati).
+- Il link "Contatti" è fornito da `AdminNav` solo all'interno della sezione CRM; non compare più tra i link principali passati dal layout.
+
 ### Mappa pagine admin
 | Path | File | Descrizione | Note UI |
 | --- | --- | --- | --- |
@@ -126,7 +131,7 @@ Cliente clic link email (fallback legacy): GET /api/payments/email-verify?token
 | `/admin/events` | `src/app/admin/(protected)/events/page.tsx` | Lista eventi + collegamenti tier/prodotti. | Richiede completamento API search. |
 | `/admin/menu/dishes` | `src/app/admin/(protected)/menu/dishes/page.tsx` | Legacy menu pranzo/cena. | Flag `NEXT_PUBLIC_ADMIN_SHOW_LEGACY`. |
 | `/admin/tiers` | `src/app/admin/(protected)/tiers/page.tsx` | CRUD pacchetti evento/aperitivo. | Mostra stato attivo/draft. |
-| `/admin/contacts` | `src/app/admin/(protected)/contacts/page.tsx` | Gestione contatti (rotte 500 al momento). | Vedi `KNOWN_ISSUES.md`. |
+| `/admin/contacts` | `src/app/admin/(protected)/contacts/page.tsx` | Gestione contatti (`ContactsPageClient`). | Accetta payload `{ data }` o `{ items }`; `bookingsCount` usa fallback `totalBookings`; "Ultimo contatto" legge `lastContactAt` (fallback `createdAt`). |
 | `/admin/settings` | `src/app/admin/(protected)/settings/page.tsx` | Configurazione `BookingSettings`. | Elenco eventi email-only (vuoto per mancanza seed). |
 
 ### Tabella Prenotazioni

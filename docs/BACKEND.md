@@ -318,8 +318,8 @@ Le tabelle seguenti coprono **tutte** le rotte presenti sotto `src/app/api` (pub
 | `POST /api/admin/bookings/[id]/confirm` | `assertAdmin` | — | `200` → booking `confirmed` + email inviata | `404` booking; `409` stato non pendente; `500` mailer | Aggiorna `Booking.status`, `confirmedAt`, invia email | `src/app/api/admin/bookings/[id]/confirm/route.ts` |
 | `POST /api/admin/bookings/[id]/cancel` | `assertAdmin` | Body `{ reason?: string }` | `200` → booking `cancelled` | `404` booking; `409` `already_cancelled` | Aggiorna stato, invia email testo | `src/app/api/admin/bookings/[id]/cancel/route.ts` |
 | `POST /api/admin/bookings/[id]/resend` | `assertAdmin` | — | `200` → email reinviata | `404` booking; `409` `no_email_template` | Genera email HTML/testo e invia via Nodemailer | `src/app/api/admin/bookings/[id]/resend/route.ts` |
-| `GET /api/admin/contacts` | `assertAdmin` | Query `q`, `newsletter`, `privacy`, `from`, `to`, `page`, `pageSize` | `200` → `{ data, total, page, pageSize }` (camelCase) | `500` errore Supabase/DB | Proxy Supabase `admin_contacts_search` | `src/app/api/admin/contacts/route.ts` |
-| `GET /api/admin/contacts/export` | `assertAdmin` | Query `format` | `500` (stesso bug) | `500` | Tentativo export contatti | `src/app/api/admin/contacts/export/route.ts` |
+| `GET /api/admin/contacts` | `assertAdmin` | Query `page` ≥1, `pageSize` ≤200, `q`, `newsletter`/`privacy` (`yes`\|`no`\|`all`), `from`/`to` (YYYY-MM-DD) | `200` → `{ data, total, page, pageSize }` (camelCase) | `500` errori DB | Proxy Supabase `admin_contacts_search` con subquery `count(*)` | `src/app/api/admin/contacts/route.ts` |
+| `GET /api/admin/contacts/export` | `assertAdmin` | Query `q`, `newsletter`, `privacy`, `from`, `to` (+ opz. `format`) | `200` CSV/JSON | `500` errori DB | Serializza contatti con stessi filtri dell'endpoint principale | `src/app/api/admin/contacts/export/route.ts` |
 | `GET /api/admin/menu/dishes` | `assertAdmin` | Query `page`, `visibleAt` | `200` → `{ data: MenuDish[], meta }` | — | Lettura `MenuDish` | `src/app/api/admin/menu/dishes/route.ts` |
 | `POST /api/admin/menu/dishes` | `assertAdmin` | Body `createMenuDishSchema` | `201` → dish creato | `400` validazione; `409` slug duplicato | Crea `MenuDish` | `src/app/api/admin/menu/dishes/route.ts` |
 | `PATCH /api/admin/menu/dishes/[id]` | `assertAdmin` | Body `updateMenuDishSchema` | `200` → dish aggiornato | `404` dish; `409` slug duplicato | Aggiorna record | `src/app/api/admin/menu/dishes/[id]/route.ts` |
@@ -360,19 +360,23 @@ Le tabelle seguenti coprono **tutte** le rotte presenti sotto `src/app/api` (pub
 - **Autenticazione**: `assertAdmin` riusa la sessione NextAuth per verificare la whitelist.
 - **Parametri query**:
   - `q`: testo libero, inoltrato come `search` alla funzione Supabase per match su nome/email/telefono.
-  - `newsletter`: `all` (default), `yes`, `no`; valori non riconosciuti vengono normalizzati a `all`.
-  - `privacy`: stessi valori di `newsletter`, applicati ai consensi privacy.
-  - `from` / `to`: date parseabili (`Date` ISO/locale); valori invalidi o vuoti vengono ignorati.
+  - `newsletter`: input libero (`true`/`false`/`1`/`0`/`yes`/`no`/etc.) normalizzato a `yes`\|`no`\|`all` (default `all`).
+  - `privacy`: stesso normalizzatore di `newsletter` (`yes`\|`no`\|`all`).
+  - `from` / `to`: date validabili (`YYYY-MM-DD` o ISO); stringhe vuote o invalide diventano `null`.
   - `page`: intero ≥ 1, default `1`.
   - `pageSize`: intero tra `1` e `200`, default `20`.
-- **Risposta**: `{ data: ContactDTO[], total: number, page: number, pageSize: number }` dove `ContactDTO` include `name`, `email`, `phone`, `lastContactAt`/`createdAt` (`string | null`), `privacy`/`newsletter` (`boolean | null`) e contatori `bookingsCount`/`totalBookings` con fallback a `0`.
+- **Risposta**: `{ data: ContactDTO[], total: number, page: number, pageSize: number }` dove `ContactDTO` espone `name`, `email`, `phone`, `lastContactAt`, `createdAt`, `privacy`, `newsletter`, `bookingsCount`, `totalBookings` (tutti camelCase). `lastContactAt`/`createdAt` sono stringhe ISO o `null`; i contatori hanno fallback `0` quando assenti.
 - **Mappatura snake_case → camelCase**: la funzione Supabase espone colonne snake_case (`last_contact_at`, `total_bookings`); l'handler converte date in stringa, conserva booleani/null e normalizza i contatori in numeri JS.【F:src/lib/admin/contacts-service.ts†L15-L74】
-- **Calcolo `total`**: query dedicata `count(*)` sulla stessa funzione con filtri identici e `limit/offset` nulli per mantenere coerenza di paginazione.【F:src/lib/admin/contacts-service.ts†L56-L78】
+- **Calcolo `total`**: query dedicata `count(*)` in subquery sulla stessa funzione con gli stessi filtri (senza passare `NULL` a `limit`/`offset`).【F:src/lib/admin/contacts-service.ts†L56-L78】
 
 **Database references**
 
 - `public.admin_contacts_view` — espone `name`, `email`, `phone`, `last_contact_at`, `privacy`, `newsletter`, `total_bookings` in snake_case (gestito su Supabase, non modificare qui).
-- `public.admin_contacts_search(search text, newsletter text, privacy text, from date, to date, limit int, offset int)` — funzione Supabase che applica filtri/paginazione sulla view; l'API la richiama tramite `prisma.$queryRaw` con parametri bindati.【F:src/app/api/admin/contacts/route.ts†L57-L68】
+- `public.admin_contacts_search(search text, newsletter text, privacy text, from date, to date, limit int, offset int)` — funzione Supabase che applica filtri/paginazione sulla view; l'API la richiama tramite `prisma.$queryRaw` con parametri bindati (runtime `nodejs`, `dynamic = 'force-dynamic'`).【F:src/app/api/admin/contacts/route.ts†L1-L63】
+
+- **Esempi**:
+  - `GET /api/admin/contacts?page=1&pageSize=20`
+  - `GET /api/admin/contacts?newsletter=yes&privacy=no&from=2025-10-01&to=2025-10-31`
 
 ### Rotte di utilità e debug
 | Metodo & Path | Auth | Query / Body | Risposte principali | Errori specifici | Side effects | Owner |

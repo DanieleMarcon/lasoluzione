@@ -27,18 +27,24 @@ export async function GET(req: Request) {
 
     query = Object.fromEntries(searchParams.entries());
 
-    const search = searchParams.get('q') || null;
+    const rawSearch = searchParams.get('q');
+    const search = rawSearch && rawSearch.trim().length > 0 ? rawSearch : null;
+
     const newsletter = toYesNoAll(searchParams.get('newsletter'));
     const privacy = toYesNoAll(searchParams.get('privacy'));
 
-    const from = parseDateParam(searchParams.get('from'));
-    const to = parseDateParam(searchParams.get('to'));
+    const rawFrom = searchParams.get('from');
+    const rawTo = searchParams.get('to');
+    const from = parseDateParam(rawFrom?.trim() || null);
+    const to = parseDateParam(rawTo?.trim() || null);
 
-    const limit = Math.max(
-      1,
-      Math.min(Number.parseInt(searchParams.get('pageSize') || '20', 10) || 20, 200),
-    );
-    const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
+    const rawPageSize = searchParams.get('pageSize');
+    const parsedPageSize = Number.parseInt(rawPageSize ?? '20', 10);
+    const limit = Math.max(1, Math.min(Number.isNaN(parsedPageSize) ? 20 : parsedPageSize, 200));
+
+    const rawPage = searchParams.get('page');
+    const parsedPage = Number.parseInt(rawPage ?? '1', 10);
+    const page = Math.max(1, Number.isNaN(parsedPage) ? 1 : parsedPage);
     const offset = (page - 1) * limit;
 
     const { rows, total } = await queryAdminContacts({

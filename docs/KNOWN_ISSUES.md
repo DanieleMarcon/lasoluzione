@@ -12,6 +12,8 @@ Aggiornato al: 2025-10-24
 
 ### Tech Debt
 - Portare il calcolo dei consensi dentro `admin_contacts_view`/funzioni SQL; la patch attuale è lato app.
+- Validazione telefono contatti limitata a max length lato UI/API; valutare normalizzazione E.164 server-side.【F:src/app/api/admin/contacts/[email]/route.ts†L44-L106】【F:src/components/admin/contacts/EditContactModal.tsx†L25-L108】
+- Il merge contatti aggiorna esclusivamente la tabella `Booking`; estendere ad altre entità se in futuro nasceranno dipendenze aggiuntive del CRM.【F:src/app/api/admin/contacts/merge/route.ts†L54-L128】
 
 ## 2025-10-22 – Admin contacts count NULL limit/offset – risolto
 - **Sintomo**: `GET /api/admin/contacts` restituiva 500 quando `page`/`pageSize` venivano passati alla funzione Supabase come `NULL` (conteggio totale).

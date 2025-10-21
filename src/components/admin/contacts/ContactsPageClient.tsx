@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 
 import { ToastProvider, useToast } from '@/components/admin/ui/toast';
+import EditContactModal from './EditContactModal';
+import MergeContactsDialog from './MergeContactsDialog';
 import type { ContactDTO } from '@/types/admin/contacts';
 
 const PAGE_SIZE = 20;
@@ -186,9 +188,14 @@ function ContactsPageInner() {
     },
   );
   const [page, setPage] = useState(1);
+  const [refreshToken, setRefreshToken] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [temporaryFailure, setTemporaryFailure] = useState(false);
+  const [editingContact, setEditingContact] = useState<ContactDTO | null>(null);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isMergeOpen, setIsMergeOpen] = useState(false);
+  const [pendingHideEmail, setPendingHideEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -275,7 +282,11 @@ function ContactsPageInner() {
 
     fetchContacts();
     return () => abort.abort();
-  }, [filters, page, toast]);
+  }, [filters, page, toast, refreshToken]);
+
+  function refreshContacts() {
+    setRefreshToken((prev) => prev + 1);
+  }
 
   const totalLabel = useMemo(() => {
     if (pagination.total === 0) return 'Nessun contatto trovato';
@@ -338,6 +349,42 @@ function ContactsPageInner() {
     window.open(url, '_blank');
   }
 
+  function handleOpenEdit(contact: ContactDTO) {
+    setEditingContact(contact);
+    setIsEditOpen(true);
+  }
+
+  function handleCloseEdit() {
+    setIsEditOpen(false);
+    setEditingContact(null);
+  }
+
+  async function handleHide(contact: ContactDTO) {
+    if (!contact.email) return;
+    const confirmed = window.confirm(`Nascondere ${contact.email}? Verrà escluso da lista ed export.`);
+    if (!confirmed) return;
+
+    try {
+      setPendingHideEmail(contact.email);
+      const res = await fetch(`/api/admin/contacts/${encodeURIComponent(contact.email)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        throw new Error('Impossibile nascondere il contatto.');
+      }
+
+      toast.success('Contatto nascosto.');
+      refreshContacts();
+    } catch (err: any) {
+      const message = err?.message ?? 'Impossibile nascondere il contatto.';
+      toast.error(message);
+    } finally {
+      setPendingHideEmail(null);
+    }
+  }
+
   return (
     <div style={{ display: 'grid', gap: '1.75rem' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
@@ -348,6 +395,21 @@ function ContactsPageInner() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setIsMergeOpen(true)}
+            style={{
+              padding: '0.65rem 1.4rem',
+              borderRadius: 999,
+              border: '1px solid #1d4ed8',
+              backgroundColor: '#1d4ed8',
+              color: '#f9fafb',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Unisci contatti
+          </button>
           <button
             type="button"
             onClick={handlePrint}
@@ -550,18 +612,19 @@ function ContactsPageInner() {
                 <th style={{ padding: '0.65rem 0.75rem', textAlign: 'center' }}>Privacy</th>
                 <th style={{ padding: '0.65rem 0.75rem', textAlign: 'center' }}>Newsletter</th>
                 <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right' }}>Prenotazioni</th>
+                <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left' }}>Azioni</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
+                  <td colSpan={8} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
                     Caricamento in corso…
                   </td>
                 </tr>
               ) : contactsCount === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
+                  <td colSpan={8} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
                     {temporaryFailure
                       ? 'Dati temporaneamente non disponibili.'
                       : 'Nessun contatto trovato con i filtri selezionati.'}
@@ -587,6 +650,42 @@ function ContactsPageInner() {
                     </td>
                     <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 600 }}>
                       {contact.bookingsCount ?? contact.totalBookings ?? 0}
+                    </td>
+                    <td style={{ padding: '0.75rem' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(contact)}
+                          style={{
+                            padding: '0.45rem 1rem',
+                            borderRadius: 999,
+                            border: '1px solid #d1d5db',
+                            backgroundColor: '#fff',
+                            color: '#111827',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Modifica
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleHide(contact)}
+                          disabled={pendingHideEmail === contact.email}
+                          style={{
+                            padding: '0.45rem 1rem',
+                            borderRadius: 999,
+                            border: '1px solid #b91c1c',
+                            backgroundColor: '#b91c1c',
+                            color: '#fef2f2',
+                            fontWeight: 600,
+                            cursor: pendingHideEmail === contact.email ? 'wait' : 'pointer',
+                            opacity: pendingHideEmail === contact.email ? 0.7 : 1,
+                          }}
+                        >
+                          Nascondi
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -639,6 +738,25 @@ function ContactsPageInner() {
           </button>
         </div>
       </section>
+
+      <EditContactModal
+        open={isEditOpen && Boolean(editingContact)}
+        contact={editingContact}
+        onClose={handleCloseEdit}
+        onSuccess={() => {
+          refreshContacts();
+          handleCloseEdit();
+        }}
+      />
+      <MergeContactsDialog
+        open={isMergeOpen}
+        contacts={contactItems}
+        onClose={() => setIsMergeOpen(false)}
+        onMerged={() => {
+          refreshContacts();
+          setIsMergeOpen(false);
+        }}
+      />
     </div>
   );
 }

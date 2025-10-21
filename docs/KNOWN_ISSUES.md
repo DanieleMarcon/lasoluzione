@@ -7,10 +7,10 @@ updated: 2025-10-15
 - **Sintomo**: `GET /api/admin/contacts` restituiva 500 quando `page`/`pageSize` venivano passati alla funzione Supabase come `NULL` (conteggio totale).
 - **Root cause**: la query `count(*)` usava `NULL` su parametri `_limit`/`_offset`, generando errore Postgres.
 - **Fix**:
-  - conteggio spostato in subquery (`select 1 from admin_contacts_search(...)`) con stessi filtri ma senza `NULL` sui parametri numerici.【F:src/lib/admin/contacts-service.ts†L56-L78】
-  - normalizzazione coerente dei filtri `newsletter`/`privacy` (`yes`\|`no`\|`all`) e delle date `from`/`to` (`null` se invalide).【F:src/app/api/admin/contacts/route.ts†L1-L63】
-  - export CSV/JSON riusa gli stessi helper e mapping DTO dell'endpoint principale per evitare divergenze.【F:src/app/api/admin/contacts/export/route.ts†L1-L110】
-- **Regression note**: evitare di passare `NULL` a parametri numerici (`limit`, `offset`) quando si invocano funzioni SQL che li aspettano valorizzati.
+  - sostituita la doppia query con la stored procedure `admin_contacts_search_with_total`, che ritorna righe + `total_count` senza richiedere parametri `NULL`.【F:src/lib/admin/contacts-service.ts†L88-L124】
+  - normalizzazione coerente dei filtri (`toYesNoAll`, `parseDateOrNull`) e clamp sicuro di `page`/`pageSize` (mai `NULL` in `limit`/`offset`).【F:src/app/api/admin/contacts/route.ts†L13-L77】
+  - export CSV riusa lo stesso pipeline (singola chiamata + DTO) ignorando `total_count` nelle righe del file.【F:src/app/api/admin/contacts/export/route.ts†L1-L118】
+- **Regression note**: mantenere i guardrail su normalizzatori e stored procedure unica quando si modifica la feature.
 Aggiornato al: 2025-10-22
 
 ## 2025-10-14 – Admin contacts API 500
@@ -48,7 +48,10 @@ Ogni issue include **riproduzione**, **causa ipotizzata**, **log da raccogliere*
 | --- | --- | --- | --- | --- | --- |
 | API-EmailOnly-Seed | Lista eventi email-only in `/admin/settings` vuota. | Aprire `/admin/settings` → sezione "Eventi prenotazione via email". | Nessun seed `EventInstance`; API supporta solo PATCH. | Log query `fetchAdminEventInstances`, output array. | **P1** |
 
-> Nota: `API-500-Contacts` è stato chiuso il 2025-10-22 (vedi sezione fix log dedicata) grazie al conteggio senza `NULL` su `limit`/`offset`.
+> Nota: `API-500-Contacts` è stato chiuso il 2025-10-22 grazie alla stored procedure con `total_count`; mantenere `limit`/`offset` valorizzati evita il ritorno di 500 dal database.
+
+## Guardrails
+- **Contacts API**: usare sempre `admin_contacts_search_with_total` (niente subquery manuali); non passare `NULL` per `limit`/`offset`, loggare i parametri normalizzati in preview/dev.【F:src/lib/admin/contacts-service.ts†L88-L124】
 
 ## Frontend & Admin UI
 | ID | Descrizione | Riproduzione | Ipotesi causa | Log richiesti | Priorità |

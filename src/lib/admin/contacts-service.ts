@@ -15,6 +15,12 @@ export type ContactQuery = {
   offset: number;
 };
 
+export type ContactQueryLogContext = {
+  requestId?: string | null;
+  stage?: string | null;
+  fingerprint?: string;
+};
+
 export function toYesNoAll(v: unknown): ContactTriState {
   const s = String(v ?? '').trim().toLowerCase();
   if (['true', '1', 'yes', 'y'].includes(s)) return 'yes';
@@ -22,73 +28,113 @@ export function toYesNoAll(v: unknown): ContactTriState {
   return 'all';
 }
 
-export function parseDateParam(value: string | null): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+export function parseDateOrNull(v: unknown): Date | null {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function parseCount(value: unknown): number | undefined {
+function toNumberOrNull(value: unknown): number | null {
   if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : undefined;
+    return Number.isFinite(value) ? value : null;
   }
   if (typeof value === 'bigint') {
     return Number(value);
   }
   if (typeof value === 'string') {
     const parsed = Number.parseInt(value, 10);
-    return Number.isNaN(parsed) ? undefined : parsed;
+    return Number.isNaN(parsed) ? null : parsed;
   }
-  return undefined;
+  return null;
+}
+
+function toStringOrNull(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? null : trimmed;
+  }
+  return String(value);
+}
+
+function serializeQuery(query: ContactQuery) {
+  return {
+    search: query.search,
+    newsletter: query.newsletter,
+    privacy: query.privacy,
+    from: query.from ? query.from.toISOString() : null,
+    to: query.to ? query.to.toISOString() : null,
+    limit: query.limit,
+    offset: query.offset,
+  };
 }
 
 export function toContactDTO(row: any): ContactDTO {
-  const last = row.lastContactAt ?? row.last_contact_at ?? null;
-
-  const totalBookings = parseCount(row.totalBookings) ?? parseCount(row.total_bookings);
-  const bookingsCount = parseCount(row.bookingsCount) ?? (totalBookings ?? 0);
-
-  const lastDate = last ? String(last) : null;
+  const lastContactAt = toStringOrNull(row.last_contact_at);
+  const totalBookings = toNumberOrNull(row.total_bookings) ?? 0;
 
   return {
     name: row.name ?? null,
     email: row.email,
     phone: row.phone ?? null,
-    lastContactAt: lastDate,
-    createdAt: lastDate,
+    lastContactAt,
+    createdAt: lastContactAt,
     privacy: typeof row.privacy === 'boolean' ? row.privacy : null,
     newsletter: typeof row.newsletter === 'boolean' ? row.newsletter : null,
-    bookingsCount,
+    bookingsCount: totalBookings,
     totalBookings,
   };
 }
 
-export async function queryAdminContacts({
-  search,
-  newsletter,
-  privacy,
-  from,
-  to,
-  limit,
-  offset,
-}: ContactQuery): Promise<{ rows: any[]; total: number }> {
+export async function queryAdminContacts(
+  query: ContactQuery,
+  logContext: ContactQueryLogContext = {},
+): Promise<{ rows: any[]; total: number }> {
+  const start = Date.now();
+
   const rows = await prisma.$queryRaw<any[]>(
-    Prisma.sql`select * from public.admin_contacts_search(
-      ${search}, ${newsletter}, ${privacy}, ${from}, ${to}, ${limit}, ${offset}
+    Prisma.sql`select * from public.admin_contacts_search_with_total(
+      ${query.search},
+      ${query.newsletter},
+      ${query.privacy},
+      ${query.from},
+      ${query.to},
+      ${query.limit},
+      ${query.offset}
     )`,
   );
 
-  const totalRes = await prisma.$queryRaw<{ count: bigint }[]>(
-    Prisma.sql`select count(*)::bigint as count
-               from (
-                 select 1
-                 from public.admin_contacts_search(
-                   ${search}, ${newsletter}, ${privacy}, ${from}, ${to}, ${limit}, ${offset}
-                 )
-               ) as s`,
-  );
+  const total = toNumberOrNull(rows?.[0]?.total_count) ?? 0;
 
-  const total = Number(totalRes?.[0]?.count ?? 0);
+  if (process.env.NODE_ENV !== 'production') {
+    const stage =
+      logContext.stage ??
+      process.env.APP_STAGE ??
+      process.env.VERCEL_ENV ??
+      process.env.NODE_ENV ??
+      null;
+
+    console.info('admin_contacts_search_with_total', {
+      requestId: logContext.requestId ?? null,
+      stage,
+      queryNormalized: serializeQuery(query),
+      sqlArgs: [
+        query.search,
+        query.newsletter,
+        query.privacy,
+        query.from,
+        query.to,
+        query.limit,
+        query.offset,
+      ],
+      durations: { totalMs: Date.now() - start },
+      fingerprint: logContext.fingerprint ?? 'api/admin/contacts',
+    });
+  }
 
   return { rows, total };
 }

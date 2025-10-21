@@ -1,6 +1,6 @@
 import { assertAdmin } from '@/lib/admin/session';
 import {
-  parseDateParam,
+  parseDateOrNull,
   queryAdminContacts,
   toContactDTO,
   toYesNoAll,
@@ -63,18 +63,28 @@ export async function GET(req: Request) {
 
   const rawFrom = searchParams.get('from');
   const rawTo = searchParams.get('to');
-  const from = parseDateParam(rawFrom?.trim() || null);
-  const to = parseDateParam(rawTo?.trim() || null);
+  const from = parseDateOrNull(rawFrom);
+  const to = parseDateOrNull(rawTo);
 
-  const { rows, total } = await queryAdminContacts({
-    search,
-    newsletter,
-    privacy,
-    from,
-    to,
-    limit: EXPORT_MAX_ROWS + 1,
-    offset: 0,
-  });
+  const requestId = req.headers.get('x-request-id') ?? req.headers.get('x-vercel-id');
+  const stage = process.env.APP_STAGE ?? process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? null;
+
+  const { rows, total } = await queryAdminContacts(
+    {
+      search,
+      newsletter,
+      privacy,
+      from,
+      to,
+      limit: EXPORT_MAX_ROWS + 1,
+      offset: 0,
+    },
+    {
+      requestId,
+      stage,
+      fingerprint: 'api/admin/contacts#export',
+    },
+  );
 
   const items = rows.map(toContactDTO);
 

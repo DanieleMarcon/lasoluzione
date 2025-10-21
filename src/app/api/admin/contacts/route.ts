@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { AdminUnauthorizedError, assertAdmin } from '@/lib/admin/session';
 import {
-  parseDateParam,
+  parseDateOrNull,
   queryAdminContacts,
   toContactDTO,
   toYesNoAll,
@@ -35,8 +35,8 @@ export async function GET(req: Request) {
 
     const rawFrom = searchParams.get('from');
     const rawTo = searchParams.get('to');
-    const from = parseDateParam(rawFrom?.trim() || null);
-    const to = parseDateParam(rawTo?.trim() || null);
+    const from = parseDateOrNull(rawFrom);
+    const to = parseDateOrNull(rawTo);
 
     const rawPageSize = searchParams.get('pageSize');
     const parsedPageSize = Number.parseInt(rawPageSize ?? '20', 10);
@@ -47,15 +47,25 @@ export async function GET(req: Request) {
     const page = Math.max(1, Number.isNaN(parsedPage) ? 1 : parsedPage);
     const offset = (page - 1) * limit;
 
-    const { rows, total } = await queryAdminContacts({
-      search,
-      newsletter,
-      privacy,
-      from,
-      to,
-      limit,
-      offset,
-    });
+    const requestId = req.headers.get('x-request-id') ?? req.headers.get('x-vercel-id');
+    const stage = process.env.APP_STAGE ?? process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? null;
+
+    const { rows, total } = await queryAdminContacts(
+      {
+        search,
+        newsletter,
+        privacy,
+        from,
+        to,
+        limit,
+        offset,
+      },
+      {
+        requestId,
+        stage,
+        fingerprint: 'api/admin/contacts#list',
+      },
+    );
 
     return NextResponse.json({
       data: rows.map(toContactDTO),

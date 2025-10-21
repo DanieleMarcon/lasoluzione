@@ -17,6 +17,7 @@ updated: 2025-02-14
 
 ### Changed
 - change: navigazione Admin ripulita — heading unico in layout, `AdminNav` restituisce solo `<nav>` e il link "Contatti" vive esclusivamente nella sezione CRM.【F:src/app/admin/(protected)/layout.tsx†L1-L39】【F:src/components/admin/AdminNav.tsx†L1-L138】【F:docs/FRONTEND.md†L125-L152】
+- feat: `/api/admin/contacts` usa `admin_contacts_search_with_total` in singola chiamata, logging strutturato in preview/dev ed export CSV riallineato ai nuovi normalizzatori.【F:src/lib/admin/contacts-service.ts†L1-L124】【F:src/app/api/admin/contacts/route.ts†L1-L77】【F:src/app/api/admin/contacts/export/route.ts†L1-L118】
 
 ## 2025-02-15 – Docs hardening & deepening
 ### Added

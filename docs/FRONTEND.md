@@ -131,7 +131,7 @@ Cliente clic link email (fallback legacy): GET /api/payments/email-verify?token
 | `/admin/events` | `src/app/admin/(protected)/events/page.tsx` | Lista eventi + collegamenti tier/prodotti. | Richiede completamento API search. |
 | `/admin/menu/dishes` | `src/app/admin/(protected)/menu/dishes/page.tsx` | Legacy menu pranzo/cena. | Flag `NEXT_PUBLIC_ADMIN_SHOW_LEGACY`. |
 | `/admin/tiers` | `src/app/admin/(protected)/tiers/page.tsx` | CRUD pacchetti evento/aperitivo. | Mostra stato attivo/draft. |
-| `/admin/contacts` | `src/app/admin/(protected)/contacts/page.tsx` | Gestione contatti (`ContactsPageClient`). | Accetta payload `{ data }` o `{ items }`; `bookingsCount` usa fallback `totalBookings`; "Ultimo contatto" legge `lastContactAt` (fallback `createdAt`). |
+| `/admin/contacts` | `src/app/admin/(protected)/contacts/page.tsx` | Gestione contatti (`ContactsPageClient`). | Accetta payload `{ data }` o `{ items }`; `bookingsCount` usa fallback `totalBookings`; `createdAt` viene forzato a `lastContactAt` quando mancante; "Ultimo contatto" legge `lastContactAt` (fallback `createdAt`).【F:src/components/admin/contacts/ContactsPageClient.tsx†L68-L116】 |
 | `/admin/settings` | `src/app/admin/(protected)/settings/page.tsx` | Configurazione `BookingSettings`. | Elenco eventi email-only (vuoto per mancanza seed). |
 
 ### Tabella Prenotazioni

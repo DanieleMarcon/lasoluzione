@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
+
 import { assertAdmin } from '@/lib/admin/session';
 import {
-  parseDateParam,
+  parseDateOrNull,
   queryAdminContacts,
   toContactDTO,
   toYesNoAll,
@@ -54,51 +57,121 @@ export async function GET(req: Request) {
   await assertAdmin();
 
   const { searchParams } = new URL(req.url);
+  const query = Object.fromEntries(searchParams.entries());
 
-  const rawSearch = searchParams.get('q') ?? searchParams.get('search');
-  const search = rawSearch && rawSearch.trim().length > 0 ? rawSearch : null;
+  const requestId = randomUUID();
+  const requestStart = performance.now();
+  const isProduction = process.env.NODE_ENV === 'production';
 
-  const newsletter = toYesNoAll(searchParams.get('newsletter'));
-  const privacy = toYesNoAll(searchParams.get('privacy'));
+  const log = (entry: Record<string, unknown>) => {
+    if (isProduction) return;
+    console.log({ requestId, ...entry });
+  };
 
-  const rawFrom = searchParams.get('from');
-  const rawTo = searchParams.get('to');
-  const from = parseDateParam(rawFrom?.trim() || null);
-  const to = parseDateParam(rawTo?.trim() || null);
+  try {
+    const parseStart = performance.now();
 
-  const { rows, total } = await queryAdminContacts({
-    search,
-    newsletter,
-    privacy,
-    from,
-    to,
-    limit: EXPORT_MAX_ROWS + 1,
-    offset: 0,
-  });
+    const rawSearch = searchParams.get('q') ?? searchParams.get('search');
+    const search = rawSearch && rawSearch.trim().length > 0 ? rawSearch : null;
 
-  const items = rows.map(toContactDTO);
+    const newsletter = toYesNoAll(searchParams.get('newsletter'));
+    const privacy = toYesNoAll(searchParams.get('privacy'));
 
-  let truncated = false;
-  let data: ContactDTO[] = items;
-  if (total > EXPORT_MAX_ROWS) {
-    truncated = true;
-    data = items.slice(0, EXPORT_MAX_ROWS);
+    const from = parseDateOrNull(searchParams.get('from'));
+    const to = parseDateOrNull(searchParams.get('to'));
+
+    const pageSize = EXPORT_MAX_ROWS + 1;
+    const page = 1;
+    const offset = 0;
+
+    log({
+      stage: 'parse',
+      queryNormalized: {
+        search,
+        newsletter,
+        privacy,
+        from: from ? from.toISOString() : null,
+        to: to ? to.toISOString() : null,
+        page,
+        pageSize,
+        offset,
+      },
+      durations: { stageMs: performance.now() - parseStart, totalMs: performance.now() - requestStart },
+    });
+
+    const { rows, total } = await queryAdminContacts(
+      {
+        search,
+        newsletter,
+        privacy,
+        from,
+        to,
+        limit: pageSize,
+        offset,
+      },
+      {
+        logger: (entry) =>
+          log({
+            stage: entry.stage,
+            sqlArgs: entry.sqlArgs,
+            durations: entry.durations,
+            error: entry.error,
+            fingerprint: entry.fingerprint,
+          }),
+      },
+    );
+
+    const mapStart = performance.now();
+    const items = rows.map(toContactDTO);
+    log({
+      stage: 'map',
+      durations: { stageMs: performance.now() - mapStart, totalMs: performance.now() - requestStart },
+    });
+
+    let truncated = false;
+    let data: ContactDTO[] = items;
+    if (total > EXPORT_MAX_ROWS) {
+      truncated = true;
+      data = items.slice(0, EXPORT_MAX_ROWS);
+    }
+
+    const csvLines: string[] = [];
+    csvLines.push(CSV_HEADERS.join(','));
+
+    for (const contact of data) {
+      const record = toRecord(contact);
+      const line = CSV_HEADERS.map((header) => sanitize(record[header])).join(',');
+      csvLines.push(line);
+    }
+
+    if (truncated) csvLines.push('# truncated');
+
+    const headers = new Headers();
+    headers.set('Content-Type', CONTENT_TYPE);
+    headers.set('Content-Disposition', CONTENT_DISPOSITION);
+
+    log({ stage: 'done', durations: { totalMs: performance.now() - requestStart }, total, exported: data.length, truncated });
+
+    return new Response(csvLines.join('\n'), { status: 200, headers });
+  } catch (err) {
+    log({
+      stage: 'done',
+      error: true,
+      fingerprint:
+        err && typeof err === 'object'
+          ? {
+              name: (err as any).name,
+              code: (err as any).code,
+              message: typeof (err as any).message === 'string' ? (err as any).message.split('\n')[0] : undefined,
+            }
+          : { name: typeof err, message: String(err) },
+      durations: { totalMs: performance.now() - requestStart },
+    });
+    console.error('contacts export API error:', {
+      route: '/api/admin/contacts/export',
+      query,
+      cause: err,
+    });
+    return new Response('INTERNAL_SERVER_ERROR', { status: 500 });
   }
-
-  const csvLines: string[] = [];
-  csvLines.push(CSV_HEADERS.join(','));
-
-  for (const contact of data) {
-    const record = toRecord(contact);
-    const line = CSV_HEADERS.map((header) => sanitize(record[header])).join(',');
-    csvLines.push(line);
-  }
-
-  if (truncated) csvLines.push('# truncated');
-
-  const headers = new Headers();
-  headers.set('Content-Type', CONTENT_TYPE);
-  headers.set('Content-Disposition', CONTENT_DISPOSITION);
-
-  return new Response(csvLines.join('\n'), { status: 200, headers });
 }

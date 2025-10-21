@@ -10,6 +10,7 @@ updated: 2025-02-14
 
 ### Added
 - Added: admin contacts endpoint ora usa `public.admin_contacts_search_with_total` per recuperare righe + `total_count` in un'unica chiamata, con fallback automatico alla funzione legacy + subquery `count(*)` quando la nuova firma non esiste su Supabase.【F:src/lib/admin/contacts-service.ts†L100-L230】
+- Added – Admin `/admin/contacts`: pulsanti Modifica/Nascondi con modal dedicata e nuove rotte admin (`PATCH`/`DELETE`/`POST restore`) per aggiornare o nascondere contatti senza perdere le prenotazioni.【F:src/components/admin/contacts/ContactsPageClient.tsx†L177-L705】【F:src/components/admin/contacts/EditContactModal.tsx†L16-L199】【F:src/app/api/admin/contacts/[email]/route.ts†L61-L126】【F:src/app/api/admin/contacts/[email]/restore/route.ts†L33-L67】
 
 ### Fixed
 - Fixed – Contacts privacy/newsletter now reflect Booking consents (email aggregate).【F:src/lib/admin/contacts-service.ts†L102-L149】【F:src/app/api/admin/contacts/route.ts†L70-L123】【F:src/app/api/admin/contacts/export/route.ts†L70-L127】
@@ -25,6 +26,10 @@ updated: 2025-02-14
 ### Changed
 - Changed: logging strutturato in anteprima/dev per `/api/admin/contacts` ed export CSV, con `requestId`, stage e fingerprint errori; silenzio invariato in produzione.【F:src/app/api/admin/contacts/route.ts†L17-L151】【F:src/app/api/admin/contacts/export/route.ts†L62-L176】【F:src/lib/admin/contacts-service.ts†L19-L230】
 - change: navigazione Admin ripulita — heading unico in layout, `AdminNav` restituisce solo `<nav>` e il link "Contatti" vive esclusivamente nella sezione CRM.【F:src/app/admin/(protected)/layout.tsx†L1-L39】【F:src/components/admin/AdminNav.tsx†L1-L138】【F:docs/FRONTEND.md†L125-L152】
+- Changed – Query contatti/esportazione escludono i contatti soft-deleted tramite join su `admin_contacts_hidden` con bootstrap automatico della tabella nascosta.【F:src/lib/admin/contacts-service.ts†L7-L319】
+
+### Security
+- Security – Nuove rotte admin per edit/hide/restore contatti enforce `assertAdmin` e loggano `action/targetEmail/by/ok` in preview/dev per audit.【F:src/app/api/admin/contacts/[email]/route.ts†L32-L124】【F:src/app/api/admin/contacts/[email]/restore/route.ts†L19-L67】
 
 ## 2025-02-15 – Docs hardening & deepening
 ### Added

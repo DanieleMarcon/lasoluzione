@@ -5,6 +5,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 
 import { ToastProvider, useToast } from '@/components/admin/ui/toast';
 import type { ContactDTO } from '@/types/admin/contacts';
+import EditContactModal from './EditContactModal';
 
 const PAGE_SIZE = 20;
 
@@ -189,6 +190,8 @@ function ContactsPageInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [temporaryFailure, setTemporaryFailure] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [editTarget, setEditTarget] = useState<ContactDTO | null>(null);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -275,7 +278,7 @@ function ContactsPageInner() {
 
     fetchContacts();
     return () => abort.abort();
-  }, [filters, page, toast]);
+  }, [filters, page, toast, refreshTick]);
 
   const totalLabel = useMemo(() => {
     if (pagination.total === 0) return 'Nessun contatto trovato';
@@ -336,6 +339,48 @@ function ContactsPageInner() {
     const query = params.toString();
     const url = query ? `/api/admin/contacts/export?${query}` : '/api/admin/contacts/export';
     window.open(url, '_blank');
+  }
+
+  function refreshList() {
+    setRefreshTick((prev) => prev + 1);
+  }
+
+  function handleEdit(contact: ContactDTO) {
+    if (!contact.email) {
+      toast.error('Email del contatto non disponibile');
+      return;
+    }
+    setEditTarget(contact);
+  }
+
+  async function handleHide(contact: ContactDTO) {
+    if (!contact.email) {
+      toast.error('Email del contatto non disponibile');
+      return;
+    }
+    const confirmed = window.confirm('Nascondere il contatto non cancella le prenotazioni. Confermi?');
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`/api/admin/contacts/${encodeURIComponent(contact.email)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        throw new Error('Impossibile nascondere il contatto');
+      }
+
+      toast.success('Contatto nascosto');
+      refreshList();
+    } catch (err: any) {
+      const message = err?.message ?? 'Impossibile nascondere il contatto';
+      toast.error(message);
+    }
+  }
+
+  function closeEditModal() {
+    setEditTarget(null);
   }
 
   return (
@@ -550,18 +595,19 @@ function ContactsPageInner() {
                 <th style={{ padding: '0.65rem 0.75rem', textAlign: 'center' }}>Privacy</th>
                 <th style={{ padding: '0.65rem 0.75rem', textAlign: 'center' }}>Newsletter</th>
                 <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right' }}>Prenotazioni</th>
+                <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right' }}>Azioni</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
+                  <td colSpan={8} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
                     Caricamento in corso…
                   </td>
                 </tr>
               ) : contactsCount === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
+                  <td colSpan={8} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
                     {temporaryFailure
                       ? 'Dati temporaneamente non disponibili.'
                       : 'Nessun contatto trovato con i filtri selezionati.'}
@@ -587,6 +633,51 @@ function ContactsPageInner() {
                     </td>
                     <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 600 }}>
                       {contact.bookingsCount ?? contact.totalBookings ?? 0}
+                    </td>
+                    <td style={{ padding: '0.75rem' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: '0.5rem',
+                          justifyContent: 'flex-end',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(contact)}
+                          disabled={!contact.email || loading}
+                          style={{
+                            padding: '0.35rem 0.9rem',
+                            borderRadius: 999,
+                            border: '1px solid #d1d5db',
+                            backgroundColor: '#fff',
+                            color: '#111827',
+                            fontWeight: 600,
+                            cursor: !contact.email || loading ? 'not-allowed' : 'pointer',
+                            opacity: !contact.email || loading ? 0.6 : 1,
+                          }}
+                        >
+                          Modifica
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleHide(contact)}
+                          disabled={!contact.email || loading}
+                          style={{
+                            padding: '0.35rem 0.9rem',
+                            borderRadius: 999,
+                            border: '1px solid #b91c1c',
+                            backgroundColor: '#fee2e2',
+                            color: '#b91c1c',
+                            fontWeight: 600,
+                            cursor: !contact.email || loading ? 'not-allowed' : 'pointer',
+                            opacity: !contact.email || loading ? 0.6 : 1,
+                          }}
+                        >
+                          Nascondi
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -639,6 +730,15 @@ function ContactsPageInner() {
           </button>
         </div>
       </section>
+      <EditContactModal
+        open={Boolean(editTarget)}
+        contact={editTarget}
+        onClose={closeEditModal}
+        onSaved={() => {
+          refreshList();
+          closeEditModal();
+        }}
+      />
     </div>
   );
 }

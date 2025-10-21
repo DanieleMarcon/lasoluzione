@@ -4,6 +4,15 @@ import { performance } from 'node:perf_hooks';
 import type { ContactDTO } from '@/types/admin/contacts';
 import { prisma } from '@/lib/prisma';
 
+const ensureHiddenContactsTableSQL = Prisma.sql`
+  create table if not exists public.admin_contacts_hidden(
+    email text primary key,
+    hidden boolean not null default true,
+    hidden_at timestamptz not null default now(),
+    hidden_by text
+  )
+`;
+
 export type ContactTriState = 'yes' | 'no' | 'all';
 
 export type ContactQuery = {
@@ -38,6 +47,10 @@ export function toYesNoAll(v: unknown): ContactTriState {
   if (['true', '1', 'yes', 'y'].includes(s)) return 'yes';
   if (['false', '0', 'no', 'n'].includes(s)) return 'no';
   return 'all';
+}
+
+export async function ensureAdminContactsHiddenTable() {
+  await prisma.$executeRaw(ensureHiddenContactsTableSQL);
 }
 
 function legacyParseDateParam(value: string | null): Date | null {
@@ -170,6 +183,34 @@ function buildErrorFingerprint(error: unknown) {
   };
 }
 
+function isMissingHiddenContactsTableError(error: unknown) {
+  if (!error || typeof error !== 'object') return false;
+
+  const err = error as Record<string, any>;
+  const candidates: Array<unknown> = [err.code, err?.meta?.code, err?.original?.code];
+
+  if (candidates.includes('42P01')) return true;
+
+  const message = typeof err.message === 'string' ? err.message.toLowerCase() : '';
+  if (message.includes('42p01')) return true;
+  if (message.includes('admin_contacts_hidden') && message.includes('does not exist')) return true;
+
+  return false;
+}
+
+async function queryWithHiddenTableGuard<T>(query: () => Promise<T>): Promise<T> {
+  try {
+    return await query();
+  } catch (error) {
+    if (!isMissingHiddenContactsTableError(error)) {
+      throw error;
+    }
+
+    await ensureAdminContactsHiddenTable();
+    return await query();
+  }
+}
+
 function isMissingFunctionError(error: unknown) {
   if (!error) return false;
 
@@ -207,10 +248,17 @@ export async function queryAdminContacts(
 
   const withTotalStart = performance.now();
 
+  const withTotalQuery = Prisma.sql`
+    select v.*, count(*) over() as visible_total
+    from (
+      select * from public.admin_contacts_search_with_total(${castedArgs})
+    ) as v
+    left join public.admin_contacts_hidden h on lower(v.email) = h.email
+    where coalesce(h.hidden, false) = false
+  `;
+
   try {
-    const rows = await prisma.$queryRaw<any[]>(
-      Prisma.sql`select * from public.admin_contacts_search_with_total(${castedArgs})`,
-    );
+    const rows = await queryWithHiddenTableGuard<any[]>(() => prisma.$queryRaw<any[]>(withTotalQuery));
 
     const stageDuration = performance.now() - withTotalStart;
     logger?.({
@@ -219,7 +267,7 @@ export async function queryAdminContacts(
       durations: { stageMs: stageDuration, totalMs: performance.now() - start },
     });
 
-    const total = Number(rows?.[0]?.total_count ?? 0);
+    const total = Number(rows?.[0]?.visible_total ?? rows?.[0]?.total_count ?? 0);
 
     return { rows, total };
   } catch (error) {
@@ -238,9 +286,15 @@ export async function queryAdminContacts(
   }
 
   const fallbackDataStart = performance.now();
-  const rows = await prisma.$queryRaw<any[]>(
-    Prisma.sql`select * from public.admin_contacts_search(${castedArgs})`,
-  );
+  const fallbackDataQuery = Prisma.sql`
+    select v.*, count(*) over() as visible_total
+    from (
+      select * from public.admin_contacts_search(${castedArgs})
+    ) as v
+    left join public.admin_contacts_hidden h on lower(v.email) = h.email
+    where coalesce(h.hidden, false) = false
+  `;
+  const rows = await queryWithHiddenTableGuard<any[]>(() => prisma.$queryRaw<any[]>(fallbackDataQuery));
 
   logger?.({
     stage: 'sql:fallback:data',
@@ -249,12 +303,19 @@ export async function queryAdminContacts(
   });
 
   const fallbackCountStart = performance.now();
-  const totalRes = await prisma.$queryRaw<{ count: bigint }[]>(
-    Prisma.sql`select count(*)::bigint as count
-               from (
-                 select 1
-                 from public.admin_contacts_search(${castedArgs})
-               ) as s`,
+  const fallbackCountQuery = Prisma.sql`
+    select count(*)::bigint as count
+    from (
+      select 1
+      from (
+        select * from public.admin_contacts_search(${castedArgs})
+      ) as v
+      left join public.admin_contacts_hidden h on lower(v.email) = h.email
+      where coalesce(h.hidden, false) = false
+    ) as s
+  `;
+  const totalRes = await queryWithHiddenTableGuard<{ count: bigint }[]>(() =>
+    prisma.$queryRaw<{ count: bigint }[]>(fallbackCountQuery),
   );
 
   logger?.({

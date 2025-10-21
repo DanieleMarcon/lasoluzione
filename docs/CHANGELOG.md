@@ -12,6 +12,7 @@ updated: 2025-02-14
 - Added: admin contacts endpoint ora usa `public.admin_contacts_search_with_total` per recuperare righe + `total_count` in un'unica chiamata, con fallback automatico alla funzione legacy + subquery `count(*)` quando la nuova firma non esiste su Supabase.【F:src/lib/admin/contacts-service.ts†L100-L230】
 
 ### Fixed
+- Fixed – Contacts privacy/newsletter now reflect Booking consents (email aggregate).【F:src/lib/admin/contacts-service.ts†L102-L149】【F:src/app/api/admin/contacts/route.ts†L70-L123】【F:src/app/api/admin/contacts/export/route.ts†L70-L127】
 - Fixed – Contacts API: explicit arg casts to avoid 42883 (function not found).【F:src/lib/admin/contacts-service.ts†L154-L231】
 - Fixed: `GET /api/admin/contacts` normalizza `page`/`pageSize` evitando di propagare `NULL` a `LIMIT/OFFSET` e restituisce `400` in anteprima/dev quando i parametri escono dal range supportato.【F:src/app/api/admin/contacts/route.ts†L45-L94】
 - Fixed: build rotto da missing export `parseDateParam`; aggiunto alias deprecato e garantita presenza di `parseDateOrNull` per i servizi contatti admin.【F:src/lib/admin/contacts-service.ts†L18-L45】

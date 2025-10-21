@@ -5,6 +5,7 @@ import { performance } from 'node:perf_hooks';
 import { AdminUnauthorizedError, assertAdmin } from '@/lib/admin/session';
 import {
   parseDateOrNull,
+  reconcileContactConsents,
   queryAdminContacts,
   toContactDTO,
   toYesNoAll,
@@ -114,6 +115,8 @@ export async function GET(req: Request) {
           }),
       },
     );
+
+    await reconcileContactConsents(rows);
 
     const mapStart = performance.now();
     const data = rows.map(toContactDTO);

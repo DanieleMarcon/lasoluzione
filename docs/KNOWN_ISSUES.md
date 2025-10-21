@@ -10,6 +10,9 @@ updated: 2025-10-15
 - **Regression note**: mantenere i cast in sincronia con la firma reale della funzione Supabase quando vengono introdotte nuove versioni.
 Aggiornato al: 2025-10-24
 
+### Tech Debt
+- Portare il calcolo dei consensi dentro `admin_contacts_view`/funzioni SQL; la patch attuale è lato app.
+
 ## 2025-10-22 – Admin contacts count NULL limit/offset – risolto
 - **Sintomo**: `GET /api/admin/contacts` restituiva 500 quando `page`/`pageSize` venivano passati alla funzione Supabase come `NULL` (conteggio totale).
 - **Root cause**: la query `count(*)` usava `NULL` su parametri `_limit`/`_offset`, generando errore Postgres.

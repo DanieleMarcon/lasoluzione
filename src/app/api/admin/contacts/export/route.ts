@@ -4,6 +4,7 @@ import { performance } from 'node:perf_hooks';
 import { assertAdmin } from '@/lib/admin/session';
 import {
   parseDateOrNull,
+  reconcileContactConsents,
   queryAdminContacts,
   toContactDTO,
   toYesNoAll,
@@ -120,6 +121,8 @@ export async function GET(req: Request) {
           }),
       },
     );
+
+    await reconcileContactConsents(rows);
 
     const mapStart = performance.now();
     const items = rows.map(toContactDTO);

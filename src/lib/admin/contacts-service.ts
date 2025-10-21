@@ -22,11 +22,27 @@ export function toYesNoAll(v: unknown): ContactTriState {
   return 'all';
 }
 
-export function parseDateParam(value: string | null): Date | null {
+function legacyParseDateParam(value: string | null): Date | null {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
+
+export function parseDateOrNull(v: unknown): Date | null {
+  try {
+    return legacyParseDateParam(v as string | null);
+  } catch {
+    // fallback inline implementation
+  }
+
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** @deprecated use parseDateOrNull */
+export const parseDateParam = parseDateOrNull as any;
 
 function parseCount(value: unknown): number | undefined {
   if (typeof value === 'number') {

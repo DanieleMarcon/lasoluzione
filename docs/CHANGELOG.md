@@ -9,6 +9,7 @@ updated: 2025-02-14
 ## [Unreleased]
 
 ### Fixed
+- Fixed: build rotto da missing export `parseDateParam`; aggiunto alias deprecato e garantita presenza di `parseDateOrNull` per i servizi contatti admin.【F:src/lib/admin/contacts-service.ts†L18-L45】
 - fix: `/api/admin/contacts` non passa più `NULL` a `_limit`/`_offset`, normalizza i filtri `newsletter`/`privacy` a `yes|no|all` e riallinea il mapping `ContactDTO` (date ISO, contatori fallback).【F:src/lib/admin/contacts-service.ts†L15-L78】【F:src/app/api/admin/contacts/route.ts†L1-L63】【F:src/app/api/admin/contacts/export/route.ts†L1-L110】
 - fix: hardened `/api/admin/contacts` via Supabase function with bound Prisma parameters, admin UI fallback banner, and Node engines aligned to 22.x for Vercel builds.【F:package.json†L1-L11】【F:src/lib/admin/contacts-service.ts†L1-L78】【F:src/app/api/admin/contacts/route.ts†L1-L63】【F:src/components/admin/contacts/ContactsPageClient.tsx†L1-L316】
 - fix: admin contacts API mapping & total count — snake_case→camelCase, compatibilità con Supabase `admin_contacts_search` e view `admin_contacts_view`.【F:src/app/api/admin/contacts/route.ts†L10-L87】【F:docs/BACKEND.md†L329-L360】

@@ -132,6 +132,7 @@ Aggiornato al: 2025-02-15
 - `admin/settings-dto.ts` — Normalizza BookingSettings per UI admin.【F:src/lib/admin/settings-dto.ts†L5-L24】
 - `admin/session.ts` — Helper `assertAdmin` su base NextAuth + whitelist.【F:src/lib/admin/session.ts†L7-L23】
 - `admin/emails.ts` — Parsing e cache di `ADMIN_EMAILS`.【F:src/lib/admin/emails.ts†L6-L28】
+- `admin/contacts-service.ts` — Normalizza filtri tri-state/contatori e offre parser date condivisi; l'API ufficiale è `parseDateOrNull(v): Date|null`, mentre `parseDateParam` resta alias deprecato per compatibilità con consumer legacy.【F:src/lib/admin/contacts-service.ts†L18-L45】
 - `auth.ts` — Config NextAuth email provider con env obbligatorie.【F:src/lib/auth.ts†L13-L91】
 - `bookingSettings.ts` — Lettura, default e conversione DTO prenotazioni.【F:src/lib/bookingSettings.ts†L1-L104】
 - `bookingVerification.ts` — Emissione/consumo token conferma (usato da API email-only).【F:src/lib/bookingVerification.ts†L1-L160】

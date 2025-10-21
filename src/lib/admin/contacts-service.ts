@@ -157,17 +157,22 @@ export async function queryAdminContacts(
 ): Promise<{ rows: any[]; total: number }> {
   const { logger } = options;
   const sqlArgs = buildSqlArgs(query);
+  const castedArgs = Prisma.sql`
+    ${sqlArgs.search}::text,
+    ${sqlArgs.newsletter}::text,
+    ${sqlArgs.privacy}::text,
+    ${sqlArgs.from}::date,
+    ${sqlArgs.to}::date,
+    ${sqlArgs.limit}::int,
+    ${sqlArgs.offset}::int
+  `;
   const start = performance.now();
-
-  const { search, newsletter, privacy, from, to, limit, offset } = query;
 
   const withTotalStart = performance.now();
 
   try {
     const rows = await prisma.$queryRaw<any[]>(
-      Prisma.sql`select * from public.admin_contacts_search_with_total(
-        ${search}, ${newsletter}, ${privacy}, ${from}, ${to}, ${limit}, ${offset}
-      )`,
+      Prisma.sql`select * from public.admin_contacts_search_with_total(${castedArgs})`,
     );
 
     const stageDuration = performance.now() - withTotalStart;
@@ -197,9 +202,7 @@ export async function queryAdminContacts(
 
   const fallbackDataStart = performance.now();
   const rows = await prisma.$queryRaw<any[]>(
-    Prisma.sql`select * from public.admin_contacts_search(
-      ${search}, ${newsletter}, ${privacy}, ${from}, ${to}, ${limit}, ${offset}
-    )`,
+    Prisma.sql`select * from public.admin_contacts_search(${castedArgs})`,
   );
 
   logger?.({
@@ -213,9 +216,7 @@ export async function queryAdminContacts(
     Prisma.sql`select count(*)::bigint as count
                from (
                  select 1
-                 from public.admin_contacts_search(
-                   ${search}, ${newsletter}, ${privacy}, ${from}, ${to}, ${limit}, ${offset}
-                 )
+                 from public.admin_contacts_search(${castedArgs})
                ) as s`,
   );
 

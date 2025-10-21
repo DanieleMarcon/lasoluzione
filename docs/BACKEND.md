@@ -367,14 +367,33 @@ Le tabelle seguenti coprono **tutte** le rotte presenti sotto `src/app/api` (pub
   - `page`: intero ≥ 1, default `1`; in anteprima/dev richieste con `page < 1` rispondono `400`, in produzione vengono clampate a `1`.
   - `pageSize`: intero tra `1` e `200`, default `20`; valori fuori range generano `400` in anteprima/dev e vengono clamped a `1..200` in produzione.
 - **Risposta**: `{ data: ContactDTO[], total: number, page: number, pageSize: number }` dove `ContactDTO` espone `name`, `email`, `phone`, `lastContactAt`, `createdAt`, `privacy`, `newsletter`, `bookingsCount`, `totalBookings` (tutti camelCase). `lastContactAt`/`createdAt` sono stringhe ISO o `null`; i contatori hanno fallback `0` quando assenti.【F:src/app/api/admin/contacts/route.ts†L70-L134】【F:src/lib/admin/contacts-service.ts†L79-L98】
-- **Pipeline**: l'handler tenta `public.admin_contacts_search_with_total(search, newsletter, privacy, from, to, limit, offset)` per ottenere righe e `total_count` in un'unica chiamata; gli argomenti sono sempre castati lato SQL (`::text`/`::date`/`::int`) per evitare errori di firma (`42883`). In assenza della funzione "with_total" si ricade su `public.admin_contacts_search(...)` più subquery `count(*)` con gli stessi parametri, senza mai passare `NULL` a `limit`/`offset`.【F:src/lib/admin/contacts-service.ts†L154-L231】
+- **Pipeline**: l'handler tenta `public.admin_contacts_search_with_total(search, newsletter, privacy, from, to, limit, offset)` per ottenere righe e `total_count` in un'unica chiamata; gli argomenti sono sempre castati lato SQL (`::text`/`::date`/`::int`) per evitare errori di firma (`42883`). In assenza della funzione "with_total" si ricade su `public.admin_contacts_search(...)` più subquery `count(*)` con gli stessi parametri, senza mai passare `NULL` a `limit`/`offset`. Tutte le SELECT includono `LEFT JOIN public.admin_contacts_hidden h ON lower(v.email) = h.email` e `WHERE coalesce(h.hidden,false)=false`, con retry automatico che crea la tabella (`CREATE TABLE IF NOT EXISTS`) quando Postgres risponde `42P01`.【F:src/lib/admin/contacts-service.ts†L8-L121】【F:src/lib/admin/contacts-service.ts†L199-L231】
 - **Mappatura snake_case → camelCase**: la funzione Supabase espone colonne snake_case (`last_contact_at`, `total_bookings`); l'handler converte date in stringa, conserva booleani/null e normalizza i contatori in numeri JS.【F:src/lib/admin/contacts-service.ts†L79-L98】
 - **Logging**: in preview/dev (`NODE_ENV !== 'production'`) log strutturati con `requestId`, `stage` (`parse`, `sql:*`, `map`, `done`), `queryNormalized`, `sqlArgs`, `durations` e `fingerprint` degli errori; in produzione i log sono soppressi.【F:src/app/api/admin/contacts/route.ts†L17-L151】【F:src/lib/admin/contacts-service.ts†L19-L230】
+
+- **Endpoint**: `PATCH /api/admin/contacts/[email]`.
+  - **Body**: `{ name?: string | null, phone?: string | null }` con trimming lato Zod, max rispettivamente `255`/`32` caratteri; se entrambi `nullish` la risposta è `{ ok: true, noop: true }` senza SQL eseguito.【F:src/app/api/admin/contacts/[email]/route.ts†L27-L78】
+  - **Effetto**: `UPDATE public."Booking" SET name = coalesce($name, name), phone = coalesce($phone, phone) WHERE lower(email) = lower($email)`; aggiorna tutte le prenotazioni colpite per riallineare consensi aggregati e colonne derivate.【F:src/app/api/admin/contacts/[email]/route.ts†L80-L103】
+  - **Risposta**: `{ ok: true }` + log strutturati in anteprima/dev (`event: admin.contacts.edit`, `by`, `targetEmail`, `rows`).【F:src/app/api/admin/contacts/[email]/route.ts†L24-L110】
+
+- **Endpoint**: `DELETE /api/admin/contacts/[email]` (soft delete).
+  - **Effetto**: `INSERT ... ON CONFLICT` in `public.admin_contacts_hidden` con `hidden=true`, `hidden_at=now()`, `hidden_by` uguale all'admin autenticato; retry automatico crea la tabella se assente.【F:src/app/api/admin/contacts/[email]/route.ts†L112-L147】
+  - **Risposta**: `{ ok: true }` e log `admin.contacts.hide`. La presenza nella tabella fa sì che lista ed export escludano il contatto fino al restore.【F:src/app/api/admin/contacts/[email]/route.ts†L132-L147】【F:src/lib/admin/contacts-service.ts†L199-L231】
+
+- **Endpoint**: `POST /api/admin/contacts/[email]/restore`.
+  - **Effetto**: `INSERT ... ON CONFLICT` che forza `hidden=false` e aggiorna `hidden_at/hidden_by`; la tabella viene creata on-demand se mancante.【F:src/app/api/admin/contacts/[email]/restore/route.ts†L14-L78】
+  - **Risposta**: `{ ok: true }` con log `admin.contacts.restore` per ambienti non-prod.【F:src/app/api/admin/contacts/[email]/restore/route.ts†L46-L80】
+
+- **Endpoint**: `POST /api/admin/contacts/merge`.
+  - **Body**: `{ sourceEmails: string[], targetEmail: string, targetName?: string | null, targetPhone?: string | null }` con normalizzazione lower-case lato server; `targetEmail` non può comparire in `sourceEmails` (errore `400`).【F:src/app/api/admin/contacts/merge/route.ts†L11-L52】
+  - **Transazione**: per ogni sorgente esegue `UPDATE Booking SET email = target`, facoltativo update `name/phone`, ripulisce `admin_contacts_hidden` per le sorgenti e marca `hidden=false` il target; l'intero blocco viene rerun se Postgres segnala la tabella mancante.【F:src/app/api/admin/contacts/merge/route.ts†L54-L116】
+  - **Risposta**: `{ ok: true, merged: number }` dove `merged` è il totale prenotazioni aggiornate; log `admin.contacts.merge` include sorgenti, target e righe coinvolte.【F:src/app/api/admin/contacts/merge/route.ts†L118-L130】
 
 **Database references**
 
 - `public.admin_contacts_view` — espone `name`, `email`, `phone`, `last_contact_at`, `privacy`, `newsletter`, `total_bookings` in snake_case (gestito su Supabase, non modificare qui).
 - `public.admin_contacts_search_with_total(search text, newsletter text, privacy text, from date, to date, limit int, offset int)` — funzione preferita: restituisce righe + `total_count`; se non disponibile, l'API ricade su `public.admin_contacts_search(...)` con subquery `count(*)` separata (stessi parametri, niente `NULL` su `limit`/`offset`).【F:src/lib/admin/contacts-service.ts†L154-L231】
+- `public.admin_contacts_hidden` — tabella soft-delete (`email` PK lowercase, `hidden` boolean default `true`, `hidden_at timestamptz`, `hidden_by text`). Creata on-demand dalle API admin per consentire hide/restore idempotenti.【F:src/lib/admin/contacts-service.ts†L8-L37】【F:src/app/api/admin/contacts/[email]/route.ts†L112-L147】
 
 - **Esempi**:
   - `GET /api/admin/contacts?page=1&pageSize=20`

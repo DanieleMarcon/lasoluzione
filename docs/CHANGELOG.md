@@ -10,6 +10,8 @@ updated: 2025-02-14
 
 ### Added
 - Added: admin contacts endpoint ora usa `public.admin_contacts_search_with_total` per recuperare righe + `total_count` in un'unica chiamata, con fallback automatico alla funzione legacy + subquery `count(*)` quando la nuova firma non esiste su Supabase.【F:src/lib/admin/contacts-service.ts†L100-L230】
+- Added – Admin può modificare nome/telefono di un contatto, nasconderlo o ripristinarlo direttamente dalla UI `/admin/contacts`, con relative API idempotenti (`PATCH/DELETE/POST restore`).【F:src/app/api/admin/contacts/[email]/route.ts†L14-L147】【F:src/app/api/admin/contacts/[email]/restore/route.ts†L14-L80】【F:src/components/admin/contacts/EditContactModal.tsx†L1-L142】
+- Added – Dialog "Unisci contatti" per consolidare prenotazioni su una singola email, con API transazionale che riallinea `Booking` e soft-delete.【F:src/app/api/admin/contacts/merge/route.ts†L11-L130】【F:src/components/admin/contacts/MergeContactsDialog.tsx†L1-L208】
 
 ### Fixed
 - Fixed – Contacts privacy/newsletter now reflect Booking consents (email aggregate).【F:src/lib/admin/contacts-service.ts†L102-L149】【F:src/app/api/admin/contacts/route.ts†L70-L123】【F:src/app/api/admin/contacts/export/route.ts†L70-L127】
@@ -25,6 +27,10 @@ updated: 2025-02-14
 ### Changed
 - Changed: logging strutturato in anteprima/dev per `/api/admin/contacts` ed export CSV, con `requestId`, stage e fingerprint errori; silenzio invariato in produzione.【F:src/app/api/admin/contacts/route.ts†L17-L151】【F:src/app/api/admin/contacts/export/route.ts†L62-L176】【F:src/lib/admin/contacts-service.ts†L19-L230】
 - change: navigazione Admin ripulita — heading unico in layout, `AdminNav` restituisce solo `<nav>` e il link "Contatti" vive esclusivamente nella sezione CRM.【F:src/app/admin/(protected)/layout.tsx†L1-L39】【F:src/components/admin/AdminNav.tsx†L1-L138】【F:docs/FRONTEND.md†L125-L152】
+- Changed – Lista contatti, stampa ed export escludono i record soft-deleted via `admin_contacts_hidden`, aggiornando anche il conteggio totale dopo l'unione delle prenotazioni.【F:src/lib/admin/contacts-service.ts†L8-L231】
+
+### Security
+- Security – Nuove route admin (edit/hide/restore/merge) verificano la sessione via `assertAdmin` e loggano azioni (`admin.contacts.*`) solo in anteprima/dev per auditing senza rumore in produzione.【F:src/app/api/admin/contacts/[email]/route.ts†L17-L147】【F:src/app/api/admin/contacts/[email]/restore/route.ts†L14-L80】【F:src/app/api/admin/contacts/merge/route.ts†L11-L130】
 
 ## 2025-02-15 – Docs hardening & deepening
 ### Added

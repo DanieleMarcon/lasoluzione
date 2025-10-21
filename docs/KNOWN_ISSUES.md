@@ -7,9 +7,9 @@ updated: 2025-10-15
 - **Sintomo**: `GET /api/admin/contacts` restituiva 500 quando `page`/`pageSize` venivano passati alla funzione Supabase come `NULL` (conteggio totale).
 - **Root cause**: la query `count(*)` usava `NULL` su parametri `_limit`/`_offset`, generando errore Postgres.
 - **Fix**:
-  - conteggio spostato in subquery (`select 1 from admin_contacts_search(...)`) con stessi filtri ma senza `NULL` sui parametri numerici.【F:src/lib/admin/contacts-service.ts†L56-L78】
-  - normalizzazione coerente dei filtri `newsletter`/`privacy` (`yes`\|`no`\|`all`) e delle date `from`/`to` (`null` se invalide).【F:src/app/api/admin/contacts/route.ts†L1-L63】
-  - export CSV/JSON riusa gli stessi helper e mapping DTO dell'endpoint principale per evitare divergenze.【F:src/app/api/admin/contacts/export/route.ts†L1-L110】
+  - aggiunta funzione preferenziale `admin_contacts_search_with_total` con fallback automatico alla `admin_contacts_search(...)` esistente + subquery `count(*)`, mai passando `NULL` a `limit`/`offset`.【F:src/lib/admin/contacts-service.ts†L154-L230】
+  - normalizzazione coerente dei filtri `newsletter`/`privacy` (`yes`\|`no`\|`all`) e delle date `from`/`to` (`null` se invalide) con clamp server dei parametri di paginazione.【F:src/app/api/admin/contacts/route.ts†L45-L150】
+  - export CSV riusa gli stessi helper, logger e mapping DTO dell'endpoint principale per evitare divergenze.【F:src/app/api/admin/contacts/export/route.ts†L56-L176】
 - **Regression note**: evitare di passare `NULL` a parametri numerici (`limit`, `offset`) quando si invocano funzioni SQL che li aspettano valorizzati.
 Aggiornato al: 2025-10-22
 

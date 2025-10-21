@@ -74,7 +74,7 @@ Aggiornato al: 2025-02-15
 | GET/POST | /api/payments/order-status | pubblico | `payments/order-status/route.ts`【F:src/app/api/payments/order-status/route.ts†L7-L53】 | Order | Nessun auth | Polling stato ordine via DB + Revolut. |
 | GET | /api/admin/_whoami | admin | `admin/_whoami/route.ts`【F:src/app/api/admin/_whoami/route.ts†L6-L32】 | (nessun modello) | Middleware + NextAuth token | Debug sessione dev con env summary. |
 | GET | /api/admin/bookings | admin | `admin/bookings/route.ts`【F:src/app/api/admin/bookings/route.ts†L12-L42】 | Booking | `assertAdmin` | Lista paginata prenotazioni con filtri. |
-| GET | /api/admin/contacts | admin | `admin/contacts/route.ts`【F:src/app/api/admin/contacts/route.ts†L1-L63】 | Booking | `assertAdmin` (401 se non admin) | Contatti deduplicati per email con paginazione (`page` ≥1, `pageSize` ≤200), filtri `q`, `newsletter`, `privacy`, `from`, `to` normalizzati a `yes`/`no`/`all`; risposta `{ data, total, page, pageSize }`.【F:src/lib/admin/contacts-service.ts†L1-L78】 |
+| GET | /api/admin/contacts | admin | `admin/contacts/route.ts`【F:src/app/api/admin/contacts/route.ts†L1-L152】 | Booking | `assertAdmin` (401 se non admin) | Contatti deduplicati per email con paginazione (`page` ≥1, `pageSize` ≤200), filtri `q`, `newsletter`, `privacy`, `from`, `to` normalizzati a `yes`/`no`/`all`; risposta `{ data, total, page, pageSize }` con fallback automatico tra funzione `*_with_total` e contatore separato.【F:src/lib/admin/contacts-service.ts†L7-L230】 |
 | PATCH/DELETE | /api/admin/bookings/[id] | admin | `admin/bookings/[id]/route.ts`【F:src/app/api/admin/bookings/[id]/route.ts†L41-L120】 | Booking, BookingSettings | `assertAdmin` | Update/soft delete booking, valida tipi e date. |
 | POST | /api/admin/bookings/[id]/confirm | admin | `admin/bookings/[id]/confirm/route.ts`【F:src/app/api/admin/bookings/[id]/confirm/route.ts†L18-L62】 | Booking | `assertAdmin` | Imposta stato `confirmed` e reinvia email. |
 | POST | /api/admin/bookings/[id]/cancel | admin | `admin/bookings/[id]/cancel/route.ts`【F:src/app/api/admin/bookings/[id]/cancel/route.ts†L15-L41】 | Booking | `assertAdmin` | Marca `cancelled` e invia email testo (se SMTP). |
@@ -364,16 +364,17 @@ Le tabelle seguenti coprono **tutte** le rotte presenti sotto `src/app/api` (pub
   - `newsletter`: input libero (`true`/`false`/`1`/`0`/`yes`/`no`/etc.) normalizzato a `yes`\|`no`\|`all` (default `all`).
   - `privacy`: stesso normalizzatore di `newsletter` (`yes`\|`no`\|`all`).
   - `from` / `to`: date validabili (`YYYY-MM-DD` o ISO); stringhe vuote o invalide diventano `null`.
-  - `page`: intero ≥ 1, default `1`.
-  - `pageSize`: intero tra `1` e `200`, default `20`.
-- **Risposta**: `{ data: ContactDTO[], total: number, page: number, pageSize: number }` dove `ContactDTO` espone `name`, `email`, `phone`, `lastContactAt`, `createdAt`, `privacy`, `newsletter`, `bookingsCount`, `totalBookings` (tutti camelCase). `lastContactAt`/`createdAt` sono stringhe ISO o `null`; i contatori hanno fallback `0` quando assenti.
-- **Mappatura snake_case → camelCase**: la funzione Supabase espone colonne snake_case (`last_contact_at`, `total_bookings`); l'handler converte date in stringa, conserva booleani/null e normalizza i contatori in numeri JS.【F:src/lib/admin/contacts-service.ts†L15-L74】
-- **Calcolo `total`**: query dedicata `count(*)` in subquery sulla stessa funzione con gli stessi filtri (senza passare `NULL` a `limit`/`offset`).【F:src/lib/admin/contacts-service.ts†L56-L78】
+  - `page`: intero ≥ 1, default `1`; in anteprima/dev richieste con `page < 1` rispondono `400`, in produzione vengono clampate a `1`.
+  - `pageSize`: intero tra `1` e `200`, default `20`; valori fuori range generano `400` in anteprima/dev e vengono clamped a `1..200` in produzione.
+- **Risposta**: `{ data: ContactDTO[], total: number, page: number, pageSize: number }` dove `ContactDTO` espone `name`, `email`, `phone`, `lastContactAt`, `createdAt`, `privacy`, `newsletter`, `bookingsCount`, `totalBookings` (tutti camelCase). `lastContactAt`/`createdAt` sono stringhe ISO o `null`; i contatori hanno fallback `0` quando assenti.【F:src/app/api/admin/contacts/route.ts†L70-L134】【F:src/lib/admin/contacts-service.ts†L79-L98】
+- **Pipeline**: l'handler tenta `public.admin_contacts_search_with_total(search, newsletter, privacy, from, to, limit, offset)` per ottenere righe e `total_count` in un'unica chiamata; errori `SQLSTATE 42883`/funzione mancante attivano il fallback automatico alla funzione esistente `public.admin_contacts_search(...)` più subquery `count(*)` con gli stessi parametri (mai passare `NULL` a `limit`/`offset`).【F:src/lib/admin/contacts-service.ts†L154-L230】
+- **Mappatura snake_case → camelCase**: la funzione Supabase espone colonne snake_case (`last_contact_at`, `total_bookings`); l'handler converte date in stringa, conserva booleani/null e normalizza i contatori in numeri JS.【F:src/lib/admin/contacts-service.ts†L79-L98】
+- **Logging**: in preview/dev (`NODE_ENV !== 'production'`) log strutturati con `requestId`, `stage` (`parse`, `sql:*`, `map`, `done`), `queryNormalized`, `sqlArgs`, `durations` e `fingerprint` degli errori; in produzione i log sono soppressi.【F:src/app/api/admin/contacts/route.ts†L17-L151】【F:src/lib/admin/contacts-service.ts†L19-L230】
 
 **Database references**
 
 - `public.admin_contacts_view` — espone `name`, `email`, `phone`, `last_contact_at`, `privacy`, `newsletter`, `total_bookings` in snake_case (gestito su Supabase, non modificare qui).
-- `public.admin_contacts_search(search text, newsletter text, privacy text, from date, to date, limit int, offset int)` — funzione Supabase che applica filtri/paginazione sulla view; l'API la richiama tramite `prisma.$queryRaw` con parametri bindati (runtime `nodejs`, `dynamic = 'force-dynamic'`).【F:src/app/api/admin/contacts/route.ts†L1-L63】
+- `public.admin_contacts_search_with_total(search text, newsletter text, privacy text, from date, to date, limit int, offset int)` — funzione preferita: restituisce righe + `total_count`; se non disponibile, l'API ricade su `public.admin_contacts_search(...)` con subquery `count(*)` separata (stessi parametri, niente `NULL` su `limit`/`offset`).【F:src/lib/admin/contacts-service.ts†L154-L230】
 
 - **Esempi**:
   - `GET /api/admin/contacts?page=1&pageSize=20`

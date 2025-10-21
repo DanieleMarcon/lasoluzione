@@ -8,15 +8,20 @@ updated: 2025-02-14
 
 ## [Unreleased]
 
+### Added
+- Added: admin contacts endpoint ora usa `public.admin_contacts_search_with_total` per recuperare righe + `total_count` in un'unica chiamata, con fallback automatico alla funzione legacy + subquery `count(*)` quando la nuova firma non esiste su Supabase.【F:src/lib/admin/contacts-service.ts†L100-L230】
+
 ### Fixed
+- Fixed: `GET /api/admin/contacts` normalizza `page`/`pageSize` evitando di propagare `NULL` a `LIMIT/OFFSET` e restituisce `400` in anteprima/dev quando i parametri escono dal range supportato.【F:src/app/api/admin/contacts/route.ts†L45-L94】
 - Fixed: build rotto da missing export `parseDateParam`; aggiunto alias deprecato e garantita presenza di `parseDateOrNull` per i servizi contatti admin.【F:src/lib/admin/contacts-service.ts†L18-L45】
-- fix: `/api/admin/contacts` non passa più `NULL` a `_limit`/`_offset`, normalizza i filtri `newsletter`/`privacy` a `yes|no|all` e riallinea il mapping `ContactDTO` (date ISO, contatori fallback).【F:src/lib/admin/contacts-service.ts†L15-L78】【F:src/app/api/admin/contacts/route.ts†L1-L63】【F:src/app/api/admin/contacts/export/route.ts†L1-L110】
-- fix: hardened `/api/admin/contacts` via Supabase function with bound Prisma parameters, admin UI fallback banner, and Node engines aligned to 22.x for Vercel builds.【F:package.json†L1-L11】【F:src/lib/admin/contacts-service.ts†L1-L78】【F:src/app/api/admin/contacts/route.ts†L1-L63】【F:src/components/admin/contacts/ContactsPageClient.tsx†L1-L316】
-- fix: admin contacts API mapping & total count — snake_case→camelCase, compatibilità con Supabase `admin_contacts_search` e view `admin_contacts_view`.【F:src/app/api/admin/contacts/route.ts†L10-L87】【F:docs/BACKEND.md†L329-L360】
+- fix: `/api/admin/contacts` non passa più `NULL` a `_limit`/`_offset`, normalizza i filtri `newsletter`/`privacy` a `yes|no|all` e riallinea il mapping `ContactDTO` (date ISO, contatori fallback).【F:src/lib/admin/contacts-service.ts†L7-L98】【F:src/app/api/admin/contacts/route.ts†L70-L134】【F:src/app/api/admin/contacts/export/route.ts†L56-L155】
+- fix: hardened `/api/admin/contacts` via Supabase function with bound Prisma parameters, admin UI fallback banner, and Node engines aligned to 22.x for Vercel builds.【F:package.json†L1-L11】【F:src/lib/admin/contacts-service.ts†L7-L230】【F:src/app/api/admin/contacts/route.ts†L16-L151】【F:src/components/admin/contacts/ContactsPageClient.tsx†L1-L316】
+- fix: admin contacts API mapping & total count — snake_case→camelCase, compatibilità con Supabase `admin_contacts_search` e view `admin_contacts_view`.【F:src/app/api/admin/contacts/route.ts†L70-L134】【F:docs/BACKEND.md†L360-L383】
 - fix: admin contacts client normalizza payload `{ items|data }`, converte snake_case in camelCase e gestisce array mancanti per evitare fallback "Dati temporaneamente non disponibili".【F:src/components/admin/contacts/ContactsPageClient.tsx†L1-L212】
 - fix: Contacts: prefer lastContactAt, safe fetch to avoid SSR 500.【F:src/components/admin/contacts/ContactsPageClient.tsx†L1-L233】
 
 ### Changed
+- Changed: logging strutturato in anteprima/dev per `/api/admin/contacts` ed export CSV, con `requestId`, stage e fingerprint errori; silenzio invariato in produzione.【F:src/app/api/admin/contacts/route.ts†L17-L151】【F:src/app/api/admin/contacts/export/route.ts†L62-L176】【F:src/lib/admin/contacts-service.ts†L19-L230】
 - change: navigazione Admin ripulita — heading unico in layout, `AdminNav` restituisce solo `<nav>` e il link "Contatti" vive esclusivamente nella sezione CRM.【F:src/app/admin/(protected)/layout.tsx†L1-L39】【F:src/components/admin/AdminNav.tsx†L1-L138】【F:docs/FRONTEND.md†L125-L152】
 
 ## 2025-02-15 – Docs hardening & deepening

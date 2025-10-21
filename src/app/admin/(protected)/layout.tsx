@@ -20,7 +20,6 @@ export default async function ProtectedAdminLayout({ children }: Props) {
     { href: '/admin/catalog/products', label: 'Prodotti' },
     { href: '/admin/events', label: 'Eventi' },
     { href: '/admin/tiers', label: 'Tiers' },
-    { href: '/admin/contacts', label: 'Contatti' },
     { href: '/admin/settings', label: 'Impostazioni' },
   ]
 
@@ -30,10 +29,9 @@ export default async function ProtectedAdminLayout({ children }: Props) {
     <AdminProviders session={session}>
       <div className="min-h-screen flex bg-gray-50">
         <aside className="w-72 shrink-0 bg-slate-900 text-white flex flex-col">
-          <div className="border-b border-white/10 px-6 py-5">
+          <header className="border-b border-white/10 px-6 py-5">
             <p className="text-lg font-semibold">Dashboard Admin</p>
-            <p className="text-sm text-slate-300">Bar La Soluzione</p>
-          </div>
+          </header>
           <div className="flex-1 overflow-y-auto">
             <AdminNav links={links} userEmail={userEmail} />
           </div>

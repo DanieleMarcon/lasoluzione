@@ -54,11 +54,17 @@ export async function GET(req: Request) {
   await assertAdmin();
 
   const { searchParams } = new URL(req.url);
-  const search = searchParams.get('q') ?? searchParams.get('search') ?? null;
+
+  const rawSearch = searchParams.get('q') ?? searchParams.get('search');
+  const search = rawSearch && rawSearch.trim().length > 0 ? rawSearch : null;
+
   const newsletter = toYesNoAll(searchParams.get('newsletter'));
   const privacy = toYesNoAll(searchParams.get('privacy'));
-  const from = parseDateParam(searchParams.get('from'));
-  const to = parseDateParam(searchParams.get('to'));
+
+  const rawFrom = searchParams.get('from');
+  const rawTo = searchParams.get('to');
+  const from = parseDateParam(rawFrom?.trim() || null);
+  const to = parseDateParam(rawTo?.trim() || null);
 
   const { rows, total } = await queryAdminContacts({
     search,

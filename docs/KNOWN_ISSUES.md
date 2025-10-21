@@ -3,6 +3,16 @@ updated: 2025-10-15
 ---
 # Known Issues & Fix Log
 
+## 2025-10-22 – Admin contacts count NULL limit/offset – risolto
+- **Sintomo**: `GET /api/admin/contacts` restituiva 500 quando `page`/`pageSize` venivano passati alla funzione Supabase come `NULL` (conteggio totale).
+- **Root cause**: la query `count(*)` usava `NULL` su parametri `_limit`/`_offset`, generando errore Postgres.
+- **Fix**:
+  - conteggio spostato in subquery (`select 1 from admin_contacts_search(...)`) con stessi filtri ma senza `NULL` sui parametri numerici.【F:src/lib/admin/contacts-service.ts†L56-L78】
+  - normalizzazione coerente dei filtri `newsletter`/`privacy` (`yes`\|`no`\|`all`) e delle date `from`/`to` (`null` se invalide).【F:src/app/api/admin/contacts/route.ts†L1-L63】
+  - export CSV/JSON riusa gli stessi helper e mapping DTO dell'endpoint principale per evitare divergenze.【F:src/app/api/admin/contacts/export/route.ts†L1-L110】
+- **Regression note**: evitare di passare `NULL` a parametri numerici (`limit`, `offset`) quando si invocano funzioni SQL che li aspettano valorizzati.
+Aggiornato al: 2025-10-22
+
 ## 2025-10-14 – Admin contacts API 500
 - **Sintomo**: chiamando `GET /api/admin/contacts` la piattaforma restituiva 500 sia con utente non autenticato sia con querystring valide.
 - **Root cause**: l'handler sollevava `AdminUnauthorizedError` senza intercettarla; Next.js propagava l'eccezione come 500 generico invece di `401/403`. In più la risposta esponeva `{ data, meta }` non allineato ai consumer e mancava la paginazione standard `page/pageSize/total`.
@@ -36,8 +46,9 @@ Ogni issue include **riproduzione**, **causa ipotizzata**, **log da raccogliere*
 ## API & Backend
 | ID | Descrizione | Riproduzione | Ipotesi causa | Log richiesti | Priorità |
 | --- | --- | --- | --- | --- | --- |
-| API-500-Contacts | `/api/admin/contacts` restituisce 500. | `GET https://<preview>/api/admin/contacts` con sessione admin oppure aprire `/admin/contacts`. | Rotta interroga tabella non migrata (`prisma.contacts` assente). | Log Prisma (`error.code`, `query`), stack trace completo. Annotare `requestId`. | **P0** |
 | API-EmailOnly-Seed | Lista eventi email-only in `/admin/settings` vuota. | Aprire `/admin/settings` → sezione "Eventi prenotazione via email". | Nessun seed `EventInstance`; API supporta solo PATCH. | Log query `fetchAdminEventInstances`, output array. | **P1** |
+
+> Nota: `API-500-Contacts` è stato chiuso il 2025-10-22 (vedi sezione fix log dedicata) grazie al conteggio senza `NULL` su `limit`/`offset`.
 
 ## Frontend & Admin UI
 | ID | Descrizione | Riproduzione | Ipotesi causa | Log richiesti | Priorità |

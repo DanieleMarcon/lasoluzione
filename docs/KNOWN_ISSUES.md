@@ -3,11 +3,18 @@ updated: 2025-10-15
 ---
 # Known Issues & Fix Log
 
+## 2025-10-24 – Admin contacts signature mismatch / 42883 – risolto
+- **Sintomo**: chiamando `GET /api/admin/contacts` o l'export CSV su ambienti dove la funzione Supabase era stata aggiornata compariva `SQLSTATE 42883` (function not found).
+- **Root cause**: i parametri venivano passati senza cast espliciti, lasciando a Postgres il tipo inferito (`unknown` → `text`/`varchar`), con conseguente mismatch rispetto alla firma `text/date/int` prevista dall'RPC.
+- **Fix**: tutte le query `queryAdminContacts` castano gli argomenti lato SQL (`::text`, `::date`, `::int`) riusando la stessa pipeline sia per `admin_contacts_search_with_total` sia per il fallback `admin_contacts_search(...)` e per il conteggio via subquery (senza `NULL` su `limit`/`offset`).【F:src/lib/admin/contacts-service.ts†L154-L231】
+- **Regression note**: mantenere i cast in sincronia con la firma reale della funzione Supabase quando vengono introdotte nuove versioni.
+Aggiornato al: 2025-10-24
+
 ## 2025-10-22 – Admin contacts count NULL limit/offset – risolto
 - **Sintomo**: `GET /api/admin/contacts` restituiva 500 quando `page`/`pageSize` venivano passati alla funzione Supabase come `NULL` (conteggio totale).
 - **Root cause**: la query `count(*)` usava `NULL` su parametri `_limit`/`_offset`, generando errore Postgres.
 - **Fix**:
-  - aggiunta funzione preferenziale `admin_contacts_search_with_total` con fallback automatico alla `admin_contacts_search(...)` esistente + subquery `count(*)`, mai passando `NULL` a `limit`/`offset`.【F:src/lib/admin/contacts-service.ts†L154-L230】
+   - aggiunta funzione preferenziale `admin_contacts_search_with_total` con fallback automatico alla `admin_contacts_search(...)` esistente + subquery `count(*)`, mai passando `NULL` a `limit`/`offset`.【F:src/lib/admin/contacts-service.ts†L154-L231】
   - normalizzazione coerente dei filtri `newsletter`/`privacy` (`yes`\|`no`\|`all`) e delle date `from`/`to` (`null` se invalide) con clamp server dei parametri di paginazione.【F:src/app/api/admin/contacts/route.ts†L45-L150】
   - export CSV riusa gli stessi helper, logger e mapping DTO dell'endpoint principale per evitare divergenze.【F:src/app/api/admin/contacts/export/route.ts†L56-L176】
 - **Regression note**: evitare di passare `NULL` a parametri numerici (`limit`, `offset`) quando si invocano funzioni SQL che li aspettano valorizzati.

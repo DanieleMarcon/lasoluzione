@@ -97,6 +97,43 @@ export function toContactDTO(row: any): ContactDTO {
   };
 }
 
+export async function reconcileContactConsents(rows: Array<Record<string, any>>) {
+  const emails = Array.from(new Set(rows.map((r) => r.email).filter(Boolean))).map((email) =>
+    String(email).toLowerCase(),
+  );
+
+  if (!emails.length) {
+    return;
+  }
+
+  const consentRows = await prisma.$queryRaw<
+    { email: string; privacy: boolean; newsletter: boolean }[]
+  >(Prisma.sql`
+    with consents as (
+      select
+        lower(b."email")                               as email,
+        bool_or(coalesce(b."agreePrivacy",   false))   as privacy,
+        bool_or(coalesce(b."agreeMarketing", false))   as newsletter
+      from public."Booking" b
+      where lower(b."email") = any(${emails}::text[])
+      group by 1
+    )
+    select email, privacy, newsletter
+    from consents
+  `);
+
+  const byEmail = new Map(consentRows.map((row) => [row.email, row] as const));
+
+  for (const row of rows) {
+    const key = row.email?.toLowerCase?.();
+    const consent = key ? byEmail.get(key) : undefined;
+    if (consent) {
+      row.privacy = consent.privacy;
+      row.newsletter = consent.newsletter;
+    }
+  }
+}
+
 function buildSqlArgs({ search, newsletter, privacy, from, to, limit, offset }: ContactQuery) {
   return {
     search,

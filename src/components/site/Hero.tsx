@@ -22,10 +22,10 @@ export default function Hero({ heroImageUrl }: HeroProps) {
         <p className="text-sm font-medium uppercase tracking-[0.35em] text-amber-300">Bar di quartiere a Milano</p>
         <div className="max-w-3xl space-y-6">
           <h1 id="hero-heading" className="text-balance text-5xl font-semibold leading-tight md:text-6xl">
-            Il tuo bar di quartiere, eventi e buona compagnia
+            Dia de Los Muertos
           </h1>
           <p className="max-w-[60ch] text-lg leading-relaxed text-slate-200 md:text-xl">
-            Colazioni, pranzi veloci e aperitivi con musica. Prenota un tavolo o scopri i prossimi eventi senza perdere il meglio del quartiere.
+            Il 31 ottobre, il Bar La Soluzione si trasforma in un luogo di mistero e divertimento. DJ set, cocktail spettrali e un'atmosfera da brivido ti aspettano!
           </p>
           <div className="flex flex-wrap gap-4">
             <Link
@@ -37,7 +37,7 @@ export default function Hero({ heroImageUrl }: HeroProps) {
             </Link>
             <Link
               href="/#eventi"
-              className="inline-flex items-center justify-center rounded-full border border-white px-8 py-3 text-base font-semibold text-white transition hover:border-white/90 hover:bg-slate-100/10 hover:text-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200 !text-white !border-white hover:!text-white hover:!border-white"
+              className="inline-flex items-center justify-center rounded-full border border-slate-100/40 px-8 py-3 text-base font-semibold text-white transition hover:border-slate-100/60 hover:bg-slate-100/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
             >
               Guarda gli eventi
             </Link>

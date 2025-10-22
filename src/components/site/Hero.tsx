@@ -25,7 +25,7 @@ export default function Hero({ heroImageUrl }: HeroProps) {
             Dia de los Meurtos
           </h1>
           <p className="max-w-[60ch] text-lg leading-relaxed text-slate-200 md:text-xl">
-            Il 31 ottobre, il Bar La Soluzione si trasforma in un luogo di mistero e divertimento. DJ set, cocktail spettrali, specialità messicane e un&apos;atmosfera da brivido ti aspettano! E per i bimbi merenda messicana con face painting, maschere e tanti giochi. Posti limitati, prenota per non perdere l&apos;evento più spaventoso dell'anno!
+            Il 31 ottobre, il Bar La Soluzione si trasforma in un luogo di mistero e divertimento. DJ set, cocktail spettrali, specialità messicane e un&apos;atmosfera da brivido ti aspettano! E per i bimbi merenda messicana con face painting, maschere e tanti giochi. Posti limitati, prenota per non perdere l&apos;evento più spaventoso dell&apos;anno!
           </p>
           <div className="flex flex-wrap gap-4">
             <Link

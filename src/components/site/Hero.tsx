@@ -22,10 +22,10 @@ export default function Hero({ heroImageUrl }: HeroProps) {
         <p className="text-sm font-medium uppercase tracking-[0.35em] text-amber-300">Bar di quartiere a Milano</p>
         <div className="max-w-3xl space-y-6">
           <h1 id="hero-heading" className="text-balance text-5xl font-semibold leading-tight md:text-6xl">
-            Il tuo bar di quartiere, eventi e buona compagnia
+            Dia de los Meurtos
           </h1>
           <p className="max-w-[60ch] text-lg leading-relaxed text-slate-200 md:text-xl">
-            Il 31 ottobre, il Bar La Soluzione si trasforma in un luogo di mistero e divertimento. DJ set, cocktail spettrali e un'atmosfera da brivido ti aspettano!
+            Il 31 ottobre, il Bar La Soluzione si trasforma in un luogo di mistero e divertimento. DJ set, cocktail spettrali e un&apos;atmosfera da brivido ti aspettano!
           </p>
           <div className="flex flex-wrap gap-4">
             <Link

@@ -19,13 +19,13 @@ export default function Hero({ heroImageUrl }: HeroProps) {
     >
       <div className="absolute inset-0 -z-10 bg-slate-600/50" aria-hidden="true" />
       <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 py-20 text-slate-100 md:px-6 md:py-28">
-        <p className="text-sm font-medium uppercase tracking-[0.35em] text-amber-300">Bar di quartiere a Milano</p>
+        <p className="text-sm font-medium uppercase tracking-[0.35em] text-amber-300">Ottoobre al bar La Soluzione</p>
         <div className="max-w-3xl space-y-6">
           <h1 id="hero-heading" className="text-balance text-5xl font-semibold leading-tight md:text-6xl">
             Dia de los Meurtos
           </h1>
           <p className="max-w-[60ch] text-lg leading-relaxed text-slate-200 md:text-xl">
-            Il 31 ottobre, il Bar La Soluzione si trasforma in un luogo di mistero e divertimento. DJ set, cocktail spettrali e un&apos;atmosfera da brivido ti aspettano!
+            Il 31 ottobre, il Bar La Soluzione si trasforma in un luogo di mistero e divertimento. DJ set, cocktail spettrali, specialità messicane e un&apos;atmosfera da brivido ti aspettano!</br>E per i bimbi merenda messicana con face painting, maschere e tanti giochi.</br>Posti limitati, prenota per non perdere l&apos;evento più spaventoso dell'anno!
           </p>
           <div className="flex flex-wrap gap-4">
             <Link

@@ -11,8 +11,8 @@ export default function Footer() {
         <div>Via Mondovì 6, 20132 – Milano</div>
         <div>
           Tel:{' '}
-          <a href="tel:+39000000000" className="text-white">
-            +39 000 000 000
+          <a href="tel:+3902864961" className="text-white">
+            +39 02 864 961
           </a>
         </div>
         <div>

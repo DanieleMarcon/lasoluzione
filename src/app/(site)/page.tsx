@@ -58,7 +58,7 @@ export default async function HomePage() {
     url: baseUrl,
     image: [site.heroImageUrl || '/hero.jpg'],
     logo: site.brandLogoUrl || '/brand.svg',
-    telephone: '+39 000 000 000',
+    telephone: '+39 02 864 961',
     address: {
       '@type': 'PostalAddress',
       streetAddress: 'Via Mondovì 6',

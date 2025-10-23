@@ -40,11 +40,11 @@ export default function Footer({ site }: FooterProps) {
                   <span itemProp="postalCode">20132</span> – <span itemProp="addressLocality">Milano</span>
                 </span>
                 <a
-                  href="tel:+39000000000"
+                  href="tel:+3902864961"
                   className="text-white/90 underline-offset-4 hover:text-white !text-white hover:!text-white"
                   itemProp="telephone"
                 >
-                  +39 000 000 000
+                  +39 02 864 961
                 </a>
                 <a
                   href="mailto:info@lasoluzione.eu"
